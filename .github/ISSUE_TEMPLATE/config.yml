@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/jterrats/smart-deployment/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📚 Documentation
+    url: https://github.com/jterrats/smart-deployment/tree/main/docs
+    about: Read the comprehensive documentation
+  - name: 💡 User Stories
+    url: https://github.com/jterrats/smart-deployment/issues?q=is%3Aissue+label%3Auser-story
+    about: View all user stories and roadmap
+
