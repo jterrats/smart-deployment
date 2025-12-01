@@ -22,8 +22,9 @@ lib
 coverage
 test_session*
 
-# generated docs
-docs
+# generated docs (auto-generated API docs, not manual documentation)
+# docs/api
+# typedoc output
 
 # ignore sfdx-trust files
 *.tgz
