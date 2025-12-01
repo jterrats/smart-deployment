@@ -7,6 +7,9 @@ on:
       - prerelease/**
     tags-ignore:
       - "*"
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
   workflow_dispatch:
     inputs:
       prerelease:
