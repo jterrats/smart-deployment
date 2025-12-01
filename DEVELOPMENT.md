@@ -234,7 +234,7 @@ Write negative scenarios for error handling:
 describe('parseApexClass()', () => {
   // Positive test
   it('should parse valid class', () => {});
-  
+
   // Negative tests (EDD)
   it('should throw on null input', () => {});
   it('should throw on corrupted file', () => {});
@@ -378,7 +378,7 @@ sf smart-deployment --help  # Test plugin
 
 **Problem**: Tests pass locally but fail in GitHub Actions
 
-**Solution**: 
+**Solution**:
 1. Check for absolute paths (use relative paths)
 2. Check for OS-specific code (use cross-platform utilities)
 3. Run `yarn clean-all && yarn install && yarn test`
@@ -430,6 +430,6 @@ All PRs must pass:
 
 ---
 
-**Last Updated**: December 1, 2025  
+**Last Updated**: December 1, 2025
 **Status**: Active Development
 

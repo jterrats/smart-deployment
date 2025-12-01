@@ -1,0 +1,231 @@
+name: Acceptance Criteria Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+jobs:
+  validate-acceptance-criteria:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Extract issue number from branch
+        id: extract-issue
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          echo "Branch: $BRANCH_NAME"
+          
+          # Extract issue number from branch name (feat/123-description -> 123)
+          ISSUE_NUMBER=$(echo "$BRANCH_NAME" | grep -oP '(?<=/)\d+(?=-)' || echo "")
+          
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "⚠️  No issue number found in branch name"
+            echo "Branch should follow format: type/123-description"
+            echo "issue_number=" >> $GITHUB_OUTPUT
+            echo "has_issue=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found issue number: $ISSUE_NUMBER"
+            echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+            echo "has_issue=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run unit tests with coverage
+        id: unit-tests
+        run: |
+          yarn test --coverage --json --outputFile=test-results-unit.json || true
+        continue-on-error: true
+
+      - name: Run integration tests
+        id: integration-tests
+        run: |
+          yarn test:integration --json --outputFile=test-results-integration.json || true
+        continue-on-error: true
+
+      - name: Run E2E tests
+        id: e2e-tests
+        run: |
+          yarn test:e2e --json --outputFile=test-results-e2e.json || true
+        continue-on-error: true
+
+      - name: Run NUTs (Salesforce integration tests)
+        id: nuts
+        run: |
+          yarn test:nuts --json --reporter json > test-results-nuts.json || true
+        continue-on-error: true
+
+      - name: Parse test results and validate AC
+        if: steps.extract-issue.outputs.has_issue == 'true'
+        id: validate-ac
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.extract-issue.outputs.issue_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/validate-acceptance-criteria.js
+
+      - name: Update PR with AC status
+        if: steps.extract-issue.outputs.has_issue == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read validation results
+            let validationResults;
+            try {
+              validationResults = JSON.parse(fs.readFileSync('ac-validation-results.json', 'utf8'));
+            } catch (error) {
+              console.log('No validation results found');
+              return;
+            }
+            
+            const { totalAC, completedAC, pendingAC, coverage, details } = validationResults;
+            const allCompleted = pendingAC === 0;
+            
+            // Create comment body
+            const emoji = allCompleted ? '✅' : '⚠️';
+            const status = allCompleted ? 'All Acceptance Criteria Completed!' : 'Acceptance Criteria Pending';
+            
+            let body = `## ${emoji} Acceptance Criteria Status\n\n`;
+            body += `**User Story**: #${validationResults.issueNumber}\n\n`;
+            body += `### Summary\n`;
+            body += `- **Total AC**: ${totalAC}\n`;
+            body += `- **Completed**: ${completedAC} ✅\n`;
+            body += `- **Pending**: ${pendingAC} ⏳\n`;
+            body += `- **Coverage**: ${coverage}%\n\n`;
+            
+            if (pendingAC > 0) {
+              body += `### ⏳ Pending Acceptance Criteria\n\n`;
+              details.pending.forEach(ac => {
+                body += `- [ ] ${ac.text}\n`;
+                if (ac.missingTests && ac.missingTests.length > 0) {
+                  body += `  - Missing tests: ${ac.missingTests.join(', ')}\n`;
+                }
+              });
+              body += `\n`;
+            }
+            
+            if (completedAC > 0) {
+              body += `### ✅ Completed Acceptance Criteria\n\n`;
+              details.completed.forEach(ac => {
+                body += `- [x] ${ac.text}\n`;
+                if (ac.coveredBy && ac.coveredBy.length > 0) {
+                  body += `  - Covered by: ${ac.coveredBy.join(', ')}\n`;
+                }
+              });
+              body += `\n`;
+            }
+            
+            body += `---\n\n`;
+            
+            if (allCompleted) {
+              body += `🎉 **This PR is ready for review!** All acceptance criteria are covered by tests.\n`;
+            } else {
+              body += `⚠️ **This PR cannot be merged yet.** Please add tests to cover all acceptance criteria.\n`;
+            }
+            
+            // Post or update comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Acceptance Criteria Status')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      - name: Check if AC are complete (required for merge)
+        if: steps.extract-issue.outputs.has_issue == 'true'
+        run: |
+          if [ -f ac-validation-results.json ]; then
+            PENDING=$(jq -r '.pendingAC' ac-validation-results.json)
+            
+            if [ "$PENDING" -gt 0 ]; then
+              echo "❌ Cannot merge: $PENDING acceptance criteria are not covered by tests"
+              echo ""
+              echo "Please add tests that cover the following acceptance criteria:"
+              jq -r '.details.pending[] | "  - " + .text' ac-validation-results.json
+              exit 1
+            else
+              echo "✅ All acceptance criteria are covered by tests"
+              exit 0
+            fi
+          else
+            echo "⚠️  No validation results found"
+            exit 0
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results-*.json
+            ac-validation-results.json
+            coverage/
+
+      - name: Create check run summary
+        if: always() && steps.extract-issue.outputs.has_issue == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let summary = '## 🧪 Acceptance Criteria Validation\n\n';
+            
+            if (fs.existsSync('ac-validation-results.json')) {
+              const results = JSON.parse(fs.readFileSync('ac-validation-results.json', 'utf8'));
+              const allComplete = results.pendingAC === 0;
+              
+              summary += allComplete 
+                ? '✅ **All acceptance criteria are covered by tests**\n\n'
+                : '⚠️ **Some acceptance criteria are not covered yet**\n\n';
+              
+              summary += `- Total AC: ${results.totalAC}\n`;
+              summary += `- Completed: ${results.completedAC}\n`;
+              summary += `- Pending: ${results.pendingAC}\n`;
+              summary += `- Coverage: ${results.coverage}%\n`;
+            } else {
+              summary += '⚠️ No issue linked to this branch\n';
+              summary += '\nBranch name should follow format: `type/123-description`\n';
+            }
+            
+            await core.summary
+              .addRaw(summary)
+              .write();
+
