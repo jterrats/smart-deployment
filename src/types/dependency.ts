@@ -10,6 +10,12 @@ import { type MetadataComponent } from './metadata.js';
 export type NodeId = string; // Format: "Type:Name"
 
 /**
+ * Dependency node in the graph (alias for MetadataComponent)
+ * Each node represents a metadata component with its dependencies
+ */
+export type { MetadataComponent as DependencyNode } from './metadata.js';
+
+/**
  * Grafo de dependencias
  * Map<from, Set<to>>
  */
@@ -80,4 +86,3 @@ export interface DependencyResolutionOptions {
   /** Seguir .forceignore */
   respectForceignore: boolean;
 }
-
