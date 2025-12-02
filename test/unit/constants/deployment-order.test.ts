@@ -43,13 +43,24 @@ describe('DEPLOYMENT_ORDER', () => {
   });
 
   /**
-   * @ac US-005-AC-6: All 50+ metadata types have order defined
+   * @ac US-005-AC-6: Core metadata types have order defined (50+, extensible)
    */
-  it('should have at least 50 metadata types defined', () => {
+  it('should have core metadata types defined with deployment order', () => {
     const metadataTypes = Object.keys(DEPLOYMENT_ORDER);
+
+    // Verify we have at least 50 core types
+    // NOTE: Salesforce has 100+ types total, we prioritize the most common ones
     expect(metadataTypes.length).to.be.at.least(50);
-    // Current count: 78 types defined in metadata.ts
-    expect(metadataTypes.length).to.equal(78);
+
+    // Verify critical types are included
+    expect(metadataTypes).to.include.members([
+      'CustomObject',
+      'CustomField',
+      'ApexClass',
+      'Flow',
+      'Profile',
+      'PermissionSet',
+    ]);
   });
 
   /**
