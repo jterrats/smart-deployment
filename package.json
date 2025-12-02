@@ -49,11 +49,7 @@
     "devPlugins": [
       "@oclif/plugin-help"
     ],
-    "topics": {
-      "hello": {
-        "description": "Commands to say hello."
-      }
-    },
+    "topics": {},
     "flexibleTaxonomy": true
   },
   "scripts": {
