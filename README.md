@@ -32,18 +32,32 @@ smart-deployment/
 └── README.md                                     # This file
 ```
 
-## 🎯 Next Steps
+## ✅ Implementation Progress
 
-### 1. Implement Constants
+### Phase 1: Foundation (2/11 completed - 3/40 pts)
+
+- ✅ **Issue #4**: Salesforce Limits Constants (1 pt) - [PR #91](https://github.com/jterrats/smart-deployment/pull/91)
+- ✅ **Issue #5**: Deployment Order Constants (2 pts) - Current branch
+- ⏳ **Issue #6**: Metadata Type Definitions (2 pts)
+- ⏳ **Issue #1**: Functional Utilities (3 pts)
+- ⏳ **Issue #2**: Graph Algorithms (5 pts)
+- ⏳ **Issue #3**: File System Utilities (3 pts)
+
+**Next**: Continue with remaining Phase 1 issues
+
+## 🎯 Current Implementation
+
+### 1. ✅ Constants (2/3 completed)
+
 ```bash
-# Create Salesforce limits, deployment order, and metadata types
 src/constants/
-├── salesforce-limits.ts
-├── deployment-order.ts
-└── metadata-types.ts
+├── ✅ salesforce-limits.ts      # API limits and constraints
+├── ✅ deployment-order.ts       # 78 metadata types prioritized
+└── ⏳ metadata-types.ts         # Type-specific configurations
 ```
 
-### 2. Implement Functional Utils
+### 2. ⏳ Functional Utils
+
 ```bash
 # Create functional programming utilities
 src/utils/
@@ -53,7 +67,8 @@ src/utils/
 └── xml-utils.ts         # XML parsing/generation
 ```
 
-### 3. Implement Parsers
+### 3. ⏳ Parsers (Phase 2)
+
 ```bash
 # Create metadata parsers (50+ types)
 src/parsers/
@@ -64,7 +79,8 @@ src/parsers/
 └── ... (more parsers)
 ```
 
-### 4. Implement Services
+### 4. ⏳ Services (Phase 3-4)
+
 ```bash
 # Create service layer
 src/services/
@@ -74,7 +90,8 @@ src/services/
 └── deployment-executor.ts
 ```
 
-### 5. Implement Core Engine
+### 5. ⏳ Core Engine (Phase 3-4)
+
 ```bash
 # Create business logic
 src/core/
@@ -83,7 +100,8 @@ src/core/
 └── test-optimizer.ts
 ```
 
-### 6. Implement CLI Commands
+### 6. ⏳ CLI Commands (Phase 5)
+
 ```bash
 src/commands/smart-deployment/
 ├── start.ts      # Main deployment command
@@ -94,6 +112,7 @@ src/commands/smart-deployment/
 ```
 
 ### 7. Testing
+
 ```bash
 npm test                    # Unit tests
 npm run test:integration    # Integration tests
@@ -102,6 +121,7 @@ npm run test:coverage      # Coverage report
 ```
 
 ### 8. Publication
+
 ```bash
 npm publish --access public
 ```
@@ -119,6 +139,7 @@ Generators      AI Services (Agentforce)
 ```
 
 ### Key Principles
+
 - **Functional Programming**: Pure functions, immutability, composition
 - **Modularity**: Small, testable, reusable components
 - **Type Safety**: Strict TypeScript
@@ -130,6 +151,7 @@ Generators      AI Services (Agentforce)
 ## 🤖 Agentforce Integration
 
 The plugin uses **Agentforce** (Salesforce's LLM) for:
+
 1. **Dependency Inference**: Detect non-obvious dependencies
 2. **Priority Weighting**: Suggest optimal deployment order
 3. **Wave Validation**: Validate generated deployment waves
@@ -141,6 +163,7 @@ The plugin uses **Agentforce** (Salesforce's LLM) for:
 ## 🔑 Key Concepts
 
 ### Hardcoded Limits (NOT user-configurable)
+
 - **Max components per wave**: 300 (avoids UNKNOWN_EXCEPTION)
 - **Max CMT records per wave**: 200 (proven SF limit)
 - **Max files per deployment**: ~400-500 (API limit)
@@ -148,7 +171,9 @@ The plugin uses **Agentforce** (Salesforce's LLM) for:
 These should NOT be public flags - they are technical Salesforce limits.
 
 ### Metadata Type Mapping
+
 The analyzer must use exact names expected by SF CLI in package.xml:
+
 - `Translations` (not `Translation`)
 - `CustomNotificationType` (not `NotificationType`)
 - `Settings` (not `OrgSettings`)
@@ -161,19 +186,20 @@ The analyzer must use exact names expected by SF CLI in package.xml:
 
 ### Test Coverage Goals
 
-| Layer | Unit Tests | Integration Tests | E2E Tests | Coverage Goal |
-|-------|-----------|-------------------|-----------|---------------|
-| Utils | 61 | 0 | 0 | 100% |
-| Parsers | 100 | 5 | 0 | 95% |
-| Services | 57 | 10 | 3 | 90% |
-| Core | 22 | 8 | 5 | 90% |
-| Generators | 14 | 2 | 0 | 95% |
-| Commands | 0 | 5 | 28 | 85% |
-| **TOTAL** | **254** | **30** | **36** | **92%** |
+| Layer      | Unit Tests | Integration Tests | E2E Tests | Coverage Goal |
+| ---------- | ---------- | ----------------- | --------- | ------------- |
+| Utils      | 61         | 0                 | 0         | 100%          |
+| Parsers    | 100        | 5                 | 0         | 95%           |
+| Services   | 57         | 10                | 3         | 90%           |
+| Core       | 22         | 8                 | 5         | 90%           |
+| Generators | 14         | 2                 | 0         | 95%           |
+| Commands   | 0          | 5                 | 28        | 85%           |
+| **TOTAL**  | **254**    | **30**            | **36**    | **92%**       |
 
 **Total Tests: 320**
 
 ### Testing Approaches
+
 - **TDD (Test-Driven Development)**: Write tests before implementation
 - **BDD (Behavior-Driven Development)**: User-centric scenarios with Gherkin
 - **EDD (Error-Driven Development)**: Negative scenarios and error handling
@@ -201,13 +227,13 @@ The analyzer must use exact names expected by SF CLI in package.xml:
 
 ## 📊 Project Status
 
-**Status**: 🟡 Initial development  
-**Owner**: @jterrats  
-**Created**: Dec 1, 2025  
-**Language**: TypeScript  
-**Framework**: OCLIF (Salesforce CLI Plugin Framework)  
-**Testing**: Jest + Cucumber  
-**CI/CD**: GitHub Actions (coming soon)  
+**Status**: 🟡 Initial development
+**Owner**: @jterrats
+**Created**: Dec 1, 2025
+**Language**: TypeScript
+**Framework**: OCLIF (Salesforce CLI Plugin Framework)
+**Testing**: Jest + Cucumber
+**CI/CD**: GitHub Actions (coming soon)
 
 ---
 
@@ -236,6 +262,7 @@ sf smart-deployment start --help
 ## 🤝 Contributing
 
 Contributions are welcome! Please:
+
 1. Read the architecture documentation in `docs/`
 2. Follow TDD/BDD/EDD testing approaches
 3. Maintain test coverage >90%
