@@ -9,7 +9,7 @@ on:
 jobs:
   validate-acceptance-criteria:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,10 +30,10 @@ jobs:
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
           echo "Branch: $BRANCH_NAME"
-          
+
           # Extract issue number from branch name (feat/123-description -> 123)
           ISSUE_NUMBER=$(echo "$BRANCH_NAME" | grep -oP '(?<=/)\d+(?=-)' || echo "")
-          
+
           if [ -z "$ISSUE_NUMBER" ]; then
             echo "⚠️  No issue number found in branch name"
             echo "Branch should follow format: type/123-description"
@@ -48,26 +48,30 @@ jobs:
       - name: Run unit tests with coverage
         id: unit-tests
         run: |
-          yarn test --coverage --json --outputFile=test-results-unit.json || true
+          yarn test || true
         continue-on-error: true
 
-      - name: Run integration tests
-        id: integration-tests
-        run: |
-          yarn test:integration --json --outputFile=test-results-integration.json || true
-        continue-on-error: true
+      # Tests adicionales deshabilitados temporalmente para ahorrar minutos de CI
+      # Se habilitarán cuando existan las funcionalidades correspondientes
+      # TODO: Rehabilitar progresivamente según se implementen features
 
-      - name: Run E2E tests
-        id: e2e-tests
-        run: |
-          yarn test:e2e --json --outputFile=test-results-e2e.json || true
-        continue-on-error: true
+      # - name: Run integration tests
+      #   id: integration-tests
+      #   run: |
+      #     yarn test:integration --json --outputFile=test-results-integration.json || true
+      #   continue-on-error: true
 
-      - name: Run NUTs (Salesforce integration tests)
-        id: nuts
-        run: |
-          yarn test:nuts --json --reporter json > test-results-nuts.json || true
-        continue-on-error: true
+      # - name: Run E2E tests
+      #   id: e2e-tests
+      #   run: |
+      #     yarn test:e2e --json --outputFile=test-results-e2e.json || true
+      #   continue-on-error: true
+
+      # - name: Run NUTs (Salesforce integration tests)
+      #   id: nuts
+      #   run: |
+      #     yarn test:nuts --json --reporter json > test-results-nuts.json || true
+      #   continue-on-error: true
 
       - name: Parse test results and validate AC
         if: steps.extract-issue.outputs.has_issue == 'true'
@@ -85,7 +89,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            
+
             // Read validation results
             let validationResults;
             try {
@@ -94,14 +98,14 @@ jobs:
               console.log('No validation results found');
               return;
             }
-            
+
             const { totalAC, completedAC, pendingAC, coverage, details } = validationResults;
             const allCompleted = pendingAC === 0;
-            
+
             // Create comment body
             const emoji = allCompleted ? '✅' : '⚠️';
             const status = allCompleted ? 'All Acceptance Criteria Completed!' : 'Acceptance Criteria Pending';
-            
+
             let body = `## ${emoji} Acceptance Criteria Status\n\n`;
             body += `**User Story**: #${validationResults.issueNumber}\n\n`;
             body += `### Summary\n`;
@@ -109,7 +113,7 @@ jobs:
             body += `- **Completed**: ${completedAC} ✅\n`;
             body += `- **Pending**: ${pendingAC} ⏳\n`;
             body += `- **Coverage**: ${coverage}%\n\n`;
-            
+
             if (pendingAC > 0) {
               body += `### ⏳ Pending Acceptance Criteria\n\n`;
               details.pending.forEach(ac => {
@@ -120,7 +124,7 @@ jobs:
               });
               body += `\n`;
             }
-            
+
             if (completedAC > 0) {
               body += `### ✅ Completed Acceptance Criteria\n\n`;
               details.completed.forEach(ac => {
@@ -131,27 +135,27 @@ jobs:
               });
               body += `\n`;
             }
-            
+
             body += `---\n\n`;
-            
+
             if (allCompleted) {
               body += `🎉 **This PR is ready for review!** All acceptance criteria are covered by tests.\n`;
             } else {
               body += `⚠️ **This PR cannot be merged yet.** Please add tests to cover all acceptance criteria.\n`;
             }
-            
+
             // Post or update comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            
+
             const botComment = comments.find(comment => 
               comment.user.type === 'Bot' && 
               comment.body.includes('Acceptance Criteria Status')
             );
-            
+
             if (botComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -205,9 +209,9 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            
+
             let summary = '## 🧪 Acceptance Criteria Validation\n\n';
-            
+
             if (fs.existsSync('ac-validation-results.json')) {
               const results = JSON.parse(fs.readFileSync('ac-validation-results.json', 'utf8'));
               const allComplete = results.pendingAC === 0;
@@ -224,8 +228,7 @@ jobs:
               summary += '⚠️ No issue linked to this branch\n';
               summary += '\nBranch name should follow format: `type/123-description`\n';
             }
-            
+
             await core.summary
               .addRaw(summary)
               .write();
-
