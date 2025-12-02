@@ -1,4 +1,7 @@
 #!/bin/sh
 . "$(dirname "$0")/_/husky.sh"
 
+# Set wireit parallelism explicitly to avoid worker pool detection issues
+export WIREIT_PARALLEL=4
+
 yarn build && yarn test
