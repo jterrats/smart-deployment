@@ -10,13 +10,17 @@ on:
 jobs:
   unit-tests:
     uses: salesforcecli/github-workflows/.github/workflows/unitTest.yml@main
-  nuts:
-    needs: unit-tests
-    uses: salesforcecli/github-workflows/.github/workflows/nut.yml@main
-    secrets: inherit
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-      fail-fast: false
-    with:
-      os: ${{ matrix.os }}
+
+  # NUTs deshabilitados temporalmente hasta tener funcionalidad Salesforce real
+  # Esto ahorra minutos de CI durante la fase de desarrollo inicial (solo types/constants)
+  # TODO: Rehabilitar cuando implementemos parsers y lógica de deployment
+  # nuts:
+  #   needs: unit-tests
+  #   uses: salesforcecli/github-workflows/.github/workflows/nut.yml@main
+  #   secrets: inherit
+  #   strategy:
+  #     matrix:
+  #       os: [ubuntu-latest, windows-latest]
+  #     fail-fast: false
+  #   with:
+  #     os: ${{ matrix.os }}
