@@ -139,6 +139,8 @@ export interface WaveResult {
 export interface DeploymentError {
   /** Componente que falló */
   component: string;
+  /** Metadata component completo (para contexto adicional) */
+  componentDetails?: MetadataComponent;
   /** Tipo de metadata */
   type: MetadataType;
   /** Mensaje de error */

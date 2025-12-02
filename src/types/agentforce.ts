@@ -58,6 +58,8 @@ export interface InferredDependency {
   from: NodeId;
   /** Componente destino */
   to: NodeId;
+  /** Tipo de metadata (usado para filtrado y priorización) */
+  metadataType?: MetadataType;
   /** Razón de la inferencia */
   reason: string;
   /** Nivel de confianza (0-1) */
