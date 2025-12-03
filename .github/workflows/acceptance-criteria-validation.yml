@@ -36,7 +36,7 @@ jobs:
           echo "Branch: $BRANCH_NAME"
 
           # Extract issue number from branch name (feat/123-description -> 123)
-          ISSUE_NUMBER=$(echo "$BRANCH_NAME" | grep -oP '(?<=/)\d+(?=-)' || echo "")
+          ISSUE_NUMBER=$(echo "$BRANCH_NAME" | sed -n 's/.*\/\([0-9]\+\)-.*/\1/p')
 
           if [ -z "$ISSUE_NUMBER" ]; then
             echo "⚠️  No issue number found in branch name"
@@ -155,8 +155,8 @@ jobs:
               issue_number: context.issue.number,
             });
 
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('Acceptance Criteria Status')
             );
 
@@ -181,7 +181,7 @@ jobs:
         run: |
           if [ -f ac-validation-results.json ]; then
             PENDING=$(jq -r '.pendingAC' ac-validation-results.json)
-            
+
             if [ "$PENDING" -gt 0 ]; then
               echo "❌ Cannot merge: $PENDING acceptance criteria are not covered by tests"
               echo ""
@@ -219,11 +219,11 @@ jobs:
             if (fs.existsSync('ac-validation-results.json')) {
               const results = JSON.parse(fs.readFileSync('ac-validation-results.json', 'utf8'));
               const allComplete = results.pendingAC === 0;
-              
-              summary += allComplete 
+
+              summary += allComplete
                 ? '✅ **All acceptance criteria are covered by tests**\n\n'
                 : '⚠️ **Some acceptance criteria are not covered yet**\n\n';
-              
+
               summary += `- Total AC: ${results.totalAC}\n`;
               summary += `- Completed: ${results.completedAC}\n`;
               summary += `- Pending: ${results.pendingAC}\n`;
