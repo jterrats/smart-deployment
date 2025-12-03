@@ -1,8 +1,16 @@
 /**
  * Salesforce Metadata Deployment Order
  *
- * This defines the recommended deployment order for Salesforce metadata types
- * based on dependencies and Salesforce best practices.
+ * Defines recommended deployment order for CORE Salesforce metadata types.
+ *
+ * **Important**: Salesforce has 100+ metadata types and adds new ones each release.
+ * This file defines priorities for the MOST COMMON types (~78).
+ * For unlisted types, the plugin uses a fallback priority (99) via getDeploymentPriority().
+ *
+ * **Extensibility Strategy**:
+ * - Add new types here as needed (e.g., new Einstein features)
+ * - Unknown types automatically get priority 99 (deploy last, safe default)
+ * - Plugin works with ANY metadata type, even if not listed here
  *
  * Lower numbers = deploy first
  * Higher numbers = deploy later
@@ -134,18 +142,21 @@ export const DEPLOYMENT_ORDER: Readonly<Record<MetadataType, number>> = Object.f
 /**
  * Get deployment priority for a given metadata type.
  *
+ * **Extensibility**: Returns 99 for unknown/new metadata types (safe fallback).
+ * This ensures the plugin works with future Salesforce metadata types without updates.
+ *
  * @param metadataType - The Salesforce metadata type
  * @returns Priority number (1-99), or 99 (lowest priority) if type is unknown
  *
  * @example
  * ```typescript
- * const priority = getDeploymentPriority('CustomObject'); // 1
- * const priority2 = getDeploymentPriority('ApexClass'); // 10
- * const unknown = getDeploymentPriority('UnknownType'); // 99
+ * const priority = getDeploymentPriority('CustomObject'); // 6
+ * const priority2 = getDeploymentPriority('ApexClass'); // 31
+ * const unknown = getDeploymentPriority('UnknownNewType'); // 99 (safe fallback)
  * ```
  */
 export function getDeploymentPriority(metadataType: MetadataType): number {
-  return DEPLOYMENT_ORDER[metadataType] ?? 99; // Default to lowest priority
+  return DEPLOYMENT_ORDER[metadataType] ?? 99; // Fallback for unknown/future types
 }
 
 /**

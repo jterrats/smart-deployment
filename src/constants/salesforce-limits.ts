@@ -2,79 +2,93 @@
  * Salesforce API and Deployment Limits
  *
  * These are **hardcoded technical limits** from Salesforce that should NOT be configurable by users.
- * These limits are based on Salesforce API constraints and proven deployment best practices.
+ * These limits are based on official Salesforce Metadata API documentation and real-world production constraints.
  *
  * @see https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_deploy.htm
+ * @see https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_deploy_size.htm
  */
 
 /**
- * Maximum number of metadata components per deployment wave.
+ * Maximum number of files per deployment operation.
  *
- * **Why 300?**
- * - Salesforce has an undocumented limit around 400-500 files per deployment
- * - Each component can generate multiple files (e.g., CustomObject + fields)
- * - 300 components ~= 400-450 files with safety margin
- * - Exceeding this causes UNKNOWN_EXCEPTION errors
+ * **Official Salesforce Limit: 10,000 files**
+ * - This includes all metadata XML files and source files (Apex, LWC, static resources, etc.)
+ * - Applies to a single `sf project deploy` operation
+ * - Exceeding this causes API rejection
+ *
+ * NOTE: The previous limit of 300-500 was incorrect. The real issue causing UNKNOWN_EXCEPTION
+ * was malformed XML files (missing namespaces, incorrect schemas), not file count.
  *
  * @constant
  * @type {number}
  */
-const MAX_COMPONENTS_PER_WAVE = 300;
+export const MAX_FILES_PER_DEPLOYMENT = 10_000;
 
 /**
- * Maximum number of Custom Metadata Records per deployment wave.
+ * Maximum compressed size of deployment package (ZIP).
  *
- * **Why 200?**
- * - CustomMetadataType records have a **lower limit** than general metadata
- * - Salesforce enforces ~200-250 records per transaction
- * - 200 is a proven safe limit in production deployments
+ * **Official Salesforce Limit: 39 MB compressed**
+ * - Applies to the ZIP file sent to Salesforce Metadata API
+ * - Exceeding this causes API rejection before deployment starts
+ * - Use this to estimate if a wave needs to be split based on size
+ *
+ * @constant
+ * @type {number}
+ */
+export const MAX_DEPLOYMENT_SIZE_COMPRESSED_MB = 39;
+
+/**
+ * Maximum uncompressed size of deployment package.
+ *
+ * **Official Salesforce Limit: 600 MB uncompressed**
+ * - Applies to the total size of all files in the deployment
+ * - Useful for pre-validation before compression
  * - Exceeding this causes deployment failures
  *
  * @constant
  * @type {number}
  */
-const MAX_CMT_RECORDS_PER_WAVE = 200;
+export const MAX_DEPLOYMENT_SIZE_UNCOMPRESSED_MB = 600;
 
 /**
- * Maximum number of files per deployment (including metadata + source files).
+ * Maximum number of Custom Metadata Records per deployment wave.
  *
- * **Why 500?**
- * - Salesforce Metadata API has an approximate limit of 500 files per deploy operation
- * - This includes both metadata XML files and source files (Apex, LWC, etc.)
- * - Exceeding this can cause timeouts or UNKNOWN_EXCEPTION
+ * **Why 200?**
+ * - CustomMetadataType records have a **lower transactional limit** than general metadata
+ * - Salesforce enforces ~200-250 records per transaction due to row locking
+ * - 200 is a proven safe limit in production deployments with heavy CMT usage
+ * - Exceeding this causes "UNABLE_TO_LOCK_ROW" errors, not UNKNOWN_EXCEPTION
  *
  * @constant
  * @type {number}
  */
-const MAX_FILES_PER_DEPLOYMENT = 500;
+export const MAX_CMT_RECORDS_PER_WAVE = 200;
 
 /**
- * API timeout for Salesforce deployment operations in milliseconds.
+ * Timeout for Salesforce API calls in milliseconds.
  *
- * **Why 600000 (10 minutes)?**
- * - Salesforce deployments can take several minutes for large metadata sets
- * - Average deployment: 2-5 minutes
- * - Complex deployments with tests: 5-10 minutes
- * - 10 minutes provides reasonable buffer while preventing indefinite hangs
+ * **Why 10 minutes?**
+ * - Salesforce API calls can be long-running, especially for large deployments
+ * - Prevents premature timeouts for legitimate long-running operations
+ * - Aligns with common CI/CD timeout practices
  *
  * @constant
  * @type {number}
  */
-const API_TIMEOUT_MS = 600_000; // 10 minutes
+export const API_TIMEOUT_MS = 600_000; // 10 minutes
 
 /**
- * Salesforce API and Deployment Limits
+ * Consolidated Salesforce Limits Object (for backward compatibility)
  *
- * **IMPORTANT**: These are immutable constants. Do NOT attempt to modify these values.
- * They represent technical constraints from Salesforce, not configuration options.
- *
+ * @deprecated Use individual named exports instead (e.g., MAX_FILES_PER_DEPLOYMENT)
  * @constant
  * @readonly
  */
 export const SALESFORCE_LIMITS = Object.freeze({
-  MAX_COMPONENTS_PER_WAVE,
-  MAX_CMT_RECORDS_PER_WAVE,
   MAX_FILES_PER_DEPLOYMENT,
+  MAX_DEPLOYMENT_SIZE_COMPRESSED_MB,
+  MAX_DEPLOYMENT_SIZE_UNCOMPRESSED_MB,
+  MAX_CMT_RECORDS_PER_WAVE,
   API_TIMEOUT_MS,
 } as const);
 
