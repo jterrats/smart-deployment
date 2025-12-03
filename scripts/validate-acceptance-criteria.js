@@ -149,7 +149,7 @@ function parseTestFile(filePath, issueNumber) {
     // Only include AC from the current issue
     if (issueNum === issueNumber.toString()) {
       coveredAC.push({
-        acId: `AC-${acNum}`,
+        acId: `US-${String(issueNumber).padStart(3, '0')}-AC-${acNum}`,
         description,
         file: path.relative(process.cwd(), filePath),
       });
