@@ -8,7 +8,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Skip if there's an open PR (to avoid duplicate runs with acceptance-criteria-validation)
+  check-pr:
+    runs-on: ubuntu-latest
+    outputs:
+      has-pr: ${{ steps.check.outputs.has-pr }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          prs=$(gh pr list --head "${{ github.ref_name }}" --json number --jq length)
+          echo "has-pr=$([[ $prs -gt 0 ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   unit-tests:
+    needs: check-pr
+    if: needs.check-pr.outputs.has-pr == 'false'
     uses: salesforcecli/github-workflows/.github/workflows/unitTest.yml@main
 
   # NUTs deshabilitados temporalmente hasta tener funcionalidad Salesforce real
