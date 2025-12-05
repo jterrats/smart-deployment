@@ -53,8 +53,11 @@ async function fetchIssue(issueNumber) {
 function parseAcceptanceCriteria(issueBody, issueNumber) {
   const acceptanceCriteria = [];
 
+  // Replace literal \n with actual newlines (in case GitHub API returns escaped newlines)
+  const normalizedBody = issueBody.replace(/\\n/g, '\n');
+
   // Find "## Acceptance Criteria" section
-  const acSectionMatch = issueBody.match(/## Acceptance Criteria\s*\n([\s\S]*?)(?=\n##|$)/i);
+  const acSectionMatch = normalizedBody.match(/## Acceptance Criteria\s*\n([\s\S]*?)(?=\n##|$)/i);
 
   if (!acSectionMatch) {
     console.log('⚠️  No Acceptance Criteria section found in issue');
@@ -146,8 +149,8 @@ function parseTestFile(filePath, issueNumber) {
     const acNum = match[2];
     const description = match[3].trim();
 
-    // Only include AC from the current issue
-    if (issueNum === issueNumber.toString()) {
+    // Only include AC from the current issue (compare as numbers to handle padding)
+    if (parseInt(issueNum, 10) === parseInt(issueNumber, 10)) {
       coveredAC.push({
         acId: `US-${String(issueNumber).padStart(3, '0')}-AC-${acNum}`,
         description,
@@ -223,8 +226,11 @@ function analyzeTestCoverage(acceptanceCriteria, testFiles, issueNumber) {
  * Update issue with checked AC
  */
 async function updateIssueWithCheckedAC(issueNumber, issueBody, acceptanceCriteria) {
+  // Replace literal \n with actual newlines
+  const normalizedBody = issueBody.replace(/\\n/g, '\n');
+
   // Find the Acceptance Criteria section
-  const acSectionMatch = issueBody.match(/(## Acceptance Criteria\s*\n)([\s\S]*?)(?=\n##|$)/i);
+  const acSectionMatch = normalizedBody.match(/(## Acceptance Criteria\s*\n)([\s\S]*?)(?=\n##|$)/i);
 
   if (!acSectionMatch) {
     console.log('⚠️  Cannot update issue: No Acceptance Criteria section found');
@@ -244,8 +250,8 @@ async function updateIssueWithCheckedAC(issueNumber, issueBody, acceptanceCriter
   });
 
   // Reconstruct full issue body
-  const beforeAC = issueBody.substring(0, issueBody.indexOf(acSectionMatch[0]));
-  const afterAC = issueBody.substring(issueBody.indexOf(acSectionMatch[0]) + acSectionMatch[0].length);
+  const beforeAC = normalizedBody.substring(0, normalizedBody.indexOf(acSectionMatch[0]));
+  const afterAC = normalizedBody.substring(normalizedBody.indexOf(acSectionMatch[0]) + acSectionMatch[0].length);
   const newBody = beforeAC + acSectionStart + acSection + afterAC;
 
   // Update issue via gh CLI
