@@ -3,10 +3,17 @@ import { SALESFORCE_LIMITS } from '../../../src/constants/salesforce-limits.js';
 
 describe('SALESFORCE_LIMITS', () => {
   /**
-   * @ac US-004-AC-1: MAX_FILES_PER_DEPLOYMENT = 10000 (official Salesforce limit)
+   * @ac US-004-AC-1: MAX_COMPONENTS_PER_WAVE = 300 (real-world limit to avoid UNKNOWN_EXCEPTION)
    */
-  it('should have MAX_FILES_PER_DEPLOYMENT set to 10000', () => {
-    expect(SALESFORCE_LIMITS.MAX_FILES_PER_DEPLOYMENT).to.equal(10_000);
+  it('should have MAX_COMPONENTS_PER_WAVE set to 300', () => {
+    expect(SALESFORCE_LIMITS.MAX_COMPONENTS_PER_WAVE).to.equal(300);
+  });
+
+  /**
+   * @ac US-004-AC-2: MAX_FILES_PER_DEPLOYMENT = 500 (real-world limit)
+   */
+  it('should have MAX_FILES_PER_DEPLOYMENT set to 500', () => {
+    expect(SALESFORCE_LIMITS.MAX_FILES_PER_DEPLOYMENT).to.equal(500);
   });
 
   /**
@@ -49,6 +56,7 @@ describe('SALESFORCE_LIMITS', () => {
     expect(Object.isFrozen(SALESFORCE_LIMITS)).to.equal(true);
 
     // Verify all properties exist
+    expect(SALESFORCE_LIMITS).to.have.property('MAX_COMPONENTS_PER_WAVE');
     expect(SALESFORCE_LIMITS).to.have.property('MAX_FILES_PER_DEPLOYMENT');
     expect(SALESFORCE_LIMITS).to.have.property('MAX_DEPLOYMENT_SIZE_COMPRESSED_MB');
     expect(SALESFORCE_LIMITS).to.have.property('MAX_DEPLOYMENT_SIZE_UNCOMPRESSED_MB');
@@ -56,6 +64,7 @@ describe('SALESFORCE_LIMITS', () => {
     expect(SALESFORCE_LIMITS).to.have.property('API_TIMEOUT_MS');
 
     // Verify all values are positive numbers
+    expect(SALESFORCE_LIMITS.MAX_COMPONENTS_PER_WAVE).to.be.greaterThan(0);
     expect(SALESFORCE_LIMITS.MAX_FILES_PER_DEPLOYMENT).to.be.greaterThan(0);
     expect(SALESFORCE_LIMITS.MAX_DEPLOYMENT_SIZE_COMPRESSED_MB).to.be.greaterThan(0);
     expect(SALESFORCE_LIMITS.MAX_DEPLOYMENT_SIZE_UNCOMPRESSED_MB).to.be.greaterThan(0);
@@ -66,10 +75,11 @@ describe('SALESFORCE_LIMITS', () => {
   /**
    * @ac US-004-AC-8: Reflect real Salesforce API limits, not arbitrary numbers
    */
-  it('should use official Salesforce limits for file count', () => {
-    // Official: 10,000 files per deployment
-    // Source: https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_deploy.htm
-    expect(SALESFORCE_LIMITS.MAX_FILES_PER_DEPLOYMENT).to.equal(10_000);
+  it('should use real-world limits based on production experience', () => {
+    // Real-world: 300 components per wave, 500 files per deployment
+    // Official API limit is higher, but UNKNOWN_EXCEPTION occurs at these thresholds
+    expect(SALESFORCE_LIMITS.MAX_COMPONENTS_PER_WAVE).to.equal(300);
+    expect(SALESFORCE_LIMITS.MAX_FILES_PER_DEPLOYMENT).to.equal(500);
   });
 
   it('should use official Salesforce limits for package size', () => {
