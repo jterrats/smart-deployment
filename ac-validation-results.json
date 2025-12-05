@@ -1,0 +1,46 @@
+{
+  "issueNumber": "3",
+  "totalAC": 6,
+  "completedAC": 6,
+  "pendingAC": 0,
+  "coverage": 100,
+  "details": {
+    "completed": [
+      {
+        "id": "US-003-AC-1",
+        "text": "readFileWithEncoding() reads files with encoding detection",
+        "coveredBy": ["test/unit/utils/file-system.test.ts"]
+      },
+      {
+        "id": "US-003-AC-2",
+        "text": "scanDirectory() recursively scans with glob patterns",
+        "coveredBy": ["test/unit/utils/file-system.test.ts"]
+      },
+      {
+        "id": "US-003-AC-3",
+        "text": "parseXmlFile() parses XML with namespace support",
+        "coveredBy": ["test/unit/utils/file-system.test.ts"]
+      },
+      {
+        "id": "US-003-AC-4",
+        "text": "Handles permission errors gracefully",
+        "coveredBy": ["test/unit/utils/file-system.test.ts", "test/unit/utils/file-system.test.ts"]
+      },
+      {
+        "id": "US-003-AC-5",
+        "text": "Supports symlinks and large files (>10MB)",
+        "coveredBy": [
+          "test/unit/utils/file-system.test.ts",
+          "test/unit/utils/file-system.test.ts",
+          "test/unit/utils/file-system.test.ts"
+        ]
+      },
+      {
+        "id": "US-003-AC-6",
+        "text": "Proper error messages with file paths",
+        "coveredBy": ["test/unit/utils/file-system.test.ts", "test/unit/utils/file-system.test.ts"]
+      }
+    ],
+    "pending": []
+  }
+}
