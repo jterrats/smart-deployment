@@ -79,24 +79,22 @@ export async function scanDirectory(directoryPath: string, options: ScanOptions)
 
     const globPattern = recursive ? pattern : path.join(directoryPath, pattern);
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-    const matchedFiles: string[] = await glob(globPattern, {
+    const matchedFiles = await glob(globPattern, {
       cwd: directoryPath,
       absolute: true,
       follow: followSymlinks,
       ignore: ignorePatterns,
       nodir: true,
       maxDepth,
+      withFileTypes: false, // Ensure we get strings, not Path objects
     });
 
     logger.debug('Directory scan completed', {
       directoryPath,
       pattern,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       filesFound: matchedFiles.length,
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return matchedFiles;
   } catch (error) {
     logger.error('Failed to scan directory', { error, directoryPath, options });
