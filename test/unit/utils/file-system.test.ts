@@ -1,14 +1,29 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
+import { afterEach, beforeEach, describe, it } from 'mocha';
 import { expect } from 'chai';
-import { readFileWithEncoding, scanDirectory, parseXmlFile } from '../../../src/utils/file-system.js';
+import {
+  getFileSize,
+  isAccessible,
+  isLargeFile,
+  isSymlink,
+  parseXmlFile,
+  readFileWithEncoding,
+  scanDirectory,
+} from '../../../src/utils/file-system.js';
 
 describe('File System Utilities', () => {
-  const testDataDirectory = path.join(process.cwd(), 'test', 'fixtures', 'file-system');
+  const testDataDirectory = path.join(os.tmpdir(), `file-system-test-${Date.now()}`);
 
-  before(async () => {
+  beforeEach(async () => {
     // Create test fixtures directory
     await fs.mkdir(testDataDirectory, { recursive: true });
+  });
+
+  afterEach(async () => {
+    // Cleanup test fixtures
+    await fs.rm(testDataDirectory, { recursive: true, force: true });
   });
 
   describe('readFileWithEncoding', () => {
@@ -23,6 +38,8 @@ describe('File System Utilities', () => {
 
       expect(fileContent.content).to.equal('Hello, World! 🌍');
       expect(fileContent.encoding).to.equal('utf-8');
+      expect(fileContent.isBinary).to.be.false;
+      expect(fileContent.size).to.be.greaterThan(0);
     });
 
     it('should detect binary files', async () => {
@@ -33,6 +50,8 @@ describe('File System Utilities', () => {
       const fileContent = await readFileWithEncoding(binaryFilePath);
 
       expect(fileContent.isBinary).to.be.true;
+      expect(fileContent.encoding).to.equal('binary');
+      expect(fileContent.size).to.equal(4);
     });
 
     /**
@@ -141,21 +160,25 @@ describe('File System Utilities', () => {
 
       const parsedXml = await parseXmlFile(xmlFilePath);
 
-      expect(parsedXml.isValid).to.be.true;
-      expect(parsedXml.root).to.exist;
-      expect(parsedXml.root?.name).to.equal('ApexClass');
+      expect(parsedXml).to.be.an('object');
+      expect(parsedXml).to.have.property('ApexClass');
+      expect(parsedXml).to.have.nested.property('ApexClass.apiVersion', 60);
+      expect(parsedXml).to.have.nested.property('ApexClass.status', 'Active');
     });
 
-    it('should detect invalid XML', async () => {
+    it('should throw on invalid XML', async () => {
       const invalidXmlPath = path.join(testDataDirectory, 'invalid.xml');
       const invalidXmlContent = '<ApexClass><unclosed>';
 
       await fs.writeFile(invalidXmlPath, invalidXmlContent, 'utf-8');
 
-      const parsedXml = await parseXmlFile(invalidXmlPath);
-
-      expect(parsedXml.isValid).to.be.false;
-      expect(parsedXml.errors).to.have.lengthOf.at.least(1);
+      try {
+        await parseXmlFile(invalidXmlPath);
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(Error);
+        expect((error as Error).message).to.include('Invalid XML');
+      }
     });
 
     /**
@@ -167,19 +190,99 @@ describe('File System Utilities', () => {
 
       await fs.writeFile(malformedXmlPath, malformedContent, 'utf-8');
 
-      const parsedXml = await parseXmlFile(malformedXmlPath);
-
-      expect(parsedXml.isValid).to.be.false;
-      expect(parsedXml.errors[0]).to.include(malformedXmlPath);
+      try {
+        await parseXmlFile(malformedXmlPath);
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(Error);
+        expect((error as Error).message).to.include('Invalid XML');
+      }
     });
   });
 
-  after(async () => {
-    // Cleanup test fixtures
-    try {
-      await fs.rm(testDataDirectory, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+  describe('isAccessible', () => {
+    /**
+     * @ac US-003-AC-4: Handles permission errors gracefully
+     */
+    it('should return true for accessible files', async () => {
+      const testFile = path.join(testDataDirectory, 'accessible.txt');
+      await fs.writeFile(testFile, 'content');
+
+      const accessible = await isAccessible(testFile);
+      expect(accessible).to.be.true;
+    });
+
+    it('should return false for non-existent files', async () => {
+      const nonExistent = path.join(testDataDirectory, 'nonexistent.txt');
+      const accessible = await isAccessible(nonExistent);
+      expect(accessible).to.be.false;
+    });
+  });
+
+  describe('isSymlink', () => {
+    /**
+     * @ac US-003-AC-5: Supports symlinks
+     */
+    it('should detect symlinks', async () => {
+      const originalFile = path.join(testDataDirectory, 'original.txt');
+      const symlinkFile = path.join(testDataDirectory, 'link.txt');
+
+      await fs.writeFile(originalFile, 'content');
+      await fs.symlink(originalFile, symlinkFile);
+
+      const isLink = await isSymlink(symlinkFile);
+      expect(isLink).to.be.true;
+    });
+
+    it('should return false for regular files', async () => {
+      const regularFile = path.join(testDataDirectory, 'regular.txt');
+      await fs.writeFile(regularFile, 'content');
+
+      const isLink = await isSymlink(regularFile);
+      expect(isLink).to.be.false;
+    });
+  });
+
+  describe('getFileSize and isLargeFile', () => {
+    /**
+     * @ac US-003-AC-5: Supports large files (>10MB)
+     */
+    it('should get file size', async () => {
+      const testFile = path.join(testDataDirectory, 'sized.txt');
+      const content = 'x'.repeat(1024); // 1KB
+      await fs.writeFile(testFile, content);
+
+      const size = await getFileSize(testFile);
+      expect(size).to.equal(1024);
+    });
+
+    it('should detect large files', async () => {
+      const largeFile = path.join(testDataDirectory, 'large.txt');
+      const content = 'x'.repeat(11 * 1024 * 1024); // 11MB
+      await fs.writeFile(largeFile, content);
+
+      const isLarge = await isLargeFile(largeFile, 10);
+      expect(isLarge).to.be.true;
+    });
+
+    it('should detect small files', async () => {
+      const smallFile = path.join(testDataDirectory, 'small.txt');
+      await fs.writeFile(smallFile, 'small content');
+
+      const isLarge = await isLargeFile(smallFile, 10);
+      expect(isLarge).to.be.false;
+    });
+
+    it('should support custom threshold', async () => {
+      const testFile = path.join(testDataDirectory, 'test.txt');
+      const content = 'x'.repeat(2 * 1024 * 1024); // 2MB
+      await fs.writeFile(testFile, content);
+
+      const isLarge1MB = await isLargeFile(testFile, 1);
+      const isLarge5MB = await isLargeFile(testFile, 5);
+
+      expect(isLarge1MB).to.be.true;
+      expect(isLarge5MB).to.be.false;
+    });
   });
 });

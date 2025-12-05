@@ -7,13 +7,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { glob } from 'glob';
-import { parseStringPromise } from 'xml2js';
+import { getLogger } from './logger.js';
+import { parseXmlFile as parseXmlWithUtils, validateXml } from './xml.js';
+
+const logger = getLogger('FileSystemUtils');
 
 export type FileReadResult = {
   content: string;
   encoding: string;
   isBinary: boolean;
   filePath: string;
+  size: number;
 };
 
 export type ScanOptions = {
@@ -21,17 +25,7 @@ export type ScanOptions = {
   recursive?: boolean;
   followSymlinks?: boolean;
   ignorePatterns?: string[];
-};
-
-export type XmlParseResult = {
-  isValid: boolean;
-  root?: {
-    name: string;
-    attributes: Record<string, string>;
-    children: unknown[];
-  };
-  errors: string[];
-  filePath: string;
+  maxDepth?: number;
 };
 
 /**
@@ -41,17 +35,19 @@ export type XmlParseResult = {
  */
 export async function readFileWithEncoding(filePath: string): Promise<FileReadResult> {
   try {
-    const fileBuffer = await fs.readFile(filePath);
+    const [fileBuffer, stats] = await Promise.all([fs.readFile(filePath), fs.stat(filePath)]);
 
     // Detect if binary by checking for null bytes
     const isBinary = fileBuffer.includes(0x00);
 
     if (isBinary) {
+      logger.debug('Binary file detected', { filePath, size: stats.size });
       return {
         content: '',
         encoding: 'binary',
         isBinary: true,
         filePath,
+        size: stats.size,
       };
     }
 
@@ -63,8 +59,10 @@ export async function readFileWithEncoding(filePath: string): Promise<FileReadRe
       encoding: 'utf-8',
       isBinary: false,
       filePath,
+      size: stats.size,
     };
   } catch (error) {
+    logger.error('Failed to read file', { error, filePath });
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to read file '${filePath}': ${errorMessage}`);
   }
@@ -77,20 +75,31 @@ export async function readFileWithEncoding(filePath: string): Promise<FileReadRe
  */
 export async function scanDirectory(directoryPath: string, options: ScanOptions): Promise<string[]> {
   try {
-    const { pattern, recursive = true, followSymlinks = false, ignorePatterns = [] } = options;
+    const { pattern, recursive = true, followSymlinks = false, ignorePatterns = [], maxDepth } = options;
 
     const globPattern = recursive ? pattern : path.join(directoryPath, pattern);
 
-    const matchedFiles = await glob(globPattern, {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const matchedFiles: string[] = await glob(globPattern, {
       cwd: directoryPath,
       absolute: true,
       follow: followSymlinks,
       ignore: ignorePatterns,
       nodir: true,
+      maxDepth,
     });
 
+    logger.debug('Directory scan completed', {
+      directoryPath,
+      pattern,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      filesFound: matchedFiles.length,
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return matchedFiles;
   } catch (error) {
+    logger.error('Failed to scan directory', { error, directoryPath, options });
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to scan directory '${directoryPath}': ${errorMessage}`);
   }
@@ -98,50 +107,90 @@ export async function scanDirectory(directoryPath: string, options: ScanOptions)
 
 /**
  * Parses XML file with namespace support
+ * Uses XML Utils (Issue #10) for robust parsing
  *
  * @ac US-003-AC-3
  */
-export async function parseXmlFile(xmlFilePath: string): Promise<XmlParseResult> {
+export async function parseXmlFile(xmlFilePath: string): Promise<unknown> {
   try {
-    const fileContent = await fs.readFile(xmlFilePath, 'utf-8');
+    // Validate before parsing
+    const content = await fs.readFile(xmlFilePath, 'utf-8');
+    const validation = validateXml(content);
 
-    try {
-      const parsedData = (await parseStringPromise(fileContent, {
-        explicitArray: false,
-        mergeAttrs: false,
-        xmlns: true,
-        tagNameProcessors: [],
-      })) as Record<string, { $?: Record<string, string> }>;
-
-      const rootTagName = Object.keys(parsedData)[0];
-      const rootElement = parsedData[rootTagName];
-
-      return {
-        isValid: true,
-        root: {
-          name: rootTagName,
-          attributes: (rootElement?.$ as Record<string, string>) || {},
-          children: [],
-        },
-        errors: [],
+    if (validation !== true) {
+      logger.warn('XML validation failed', {
         filePath: xmlFilePath,
-      };
-    } catch (parseError) {
-      const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-
-      return {
-        isValid: false,
-        errors: [`XML parsing error in '${xmlFilePath}': ${parseErrorMessage}`],
-        filePath: xmlFilePath,
-      };
+        error: validation.err,
+      });
+      throw new Error(`Invalid XML: ${validation.err.msg} at line ${validation.err.line}`);
     }
-  } catch (readError) {
-    const readErrorMessage = readError instanceof Error ? readError.message : String(readError);
 
-    return {
-      isValid: false,
-      errors: [`Failed to read XML file '${xmlFilePath}': ${readErrorMessage}`],
-      filePath: xmlFilePath,
-    };
+    // Parse using XML Utils
+    const parsed = await parseXmlWithUtils(xmlFilePath);
+    logger.debug('XML file parsed successfully', { filePath: xmlFilePath });
+    return parsed;
+  } catch (error) {
+    logger.error('Failed to parse XML file', { error, filePath: xmlFilePath });
+    throw error;
+  }
+}
+
+/**
+ * Check if file/directory is accessible
+ *
+ * @ac US-003-AC-4 (Handles permission errors gracefully)
+ */
+export async function isAccessible(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath, fs.constants.R_OK);
+    return true;
+  } catch {
+    logger.warn('File not accessible', { filePath });
+    return false;
+  }
+}
+
+/**
+ * Check if path is a symlink
+ *
+ * @ac US-003-AC-5 (Supports symlinks)
+ */
+export async function isSymlink(filePath: string): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(filePath);
+    return stats.isSymbolicLink();
+  } catch (error) {
+    logger.error('Failed to check if symlink', { error, filePath });
+    return false;
+  }
+}
+
+/**
+ * Get file size in bytes
+ *
+ * @ac US-003-AC-5 (Supports large files >10MB)
+ */
+export async function getFileSize(filePath: string): Promise<number> {
+  try {
+    const stats = await fs.stat(filePath);
+    return stats.size;
+  } catch (error) {
+    logger.error('Failed to get file size', { error, filePath });
+    throw new Error(`Failed to get file size for '${filePath}': ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Check if file is larger than threshold
+ *
+ * @ac US-003-AC-5 (Supports large files >10MB)
+ */
+export async function isLargeFile(filePath: string, thresholdMB = 10): Promise<boolean> {
+  try {
+    const size = await getFileSize(filePath);
+    const sizeMB = size / (1024 * 1024);
+    return sizeMB > thresholdMB;
+  } catch {
+    return false;
   }
 }
