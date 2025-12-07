@@ -279,12 +279,21 @@ describe('Performance Monitoring', () => {
      * @ac US-012-AC-5: Bottleneck identification
      */
     it('should not report bottlenecks when all operations are similar', () => {
+      // Create operations with similar execution times
       for (let i = 0; i < 10; i++) {
-        performanceMonitor.track('similar-op', () => 1 + 1);
+        performanceMonitor.track('similar-op', () => {
+          // Small but measurable operation
+          let sum = 0;
+          for (let j = 0; j < 100; j++) {
+            sum += j;
+          }
+          return sum;
+        });
       }
 
       const report = performanceMonitor.generateReport();
 
+      // No bottlenecks expected when all operations have similar duration
       expect(report.bottlenecks).to.be.empty;
     });
   });
