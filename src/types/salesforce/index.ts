@@ -11,6 +11,9 @@
 // Common Types (shared across multiple metadata types)
 export * from './common.js';
 
+// Parser Types (permissive types for parsing unknown/future metadata)
+export * from './parser-types.js';
+
 // Apex Types
 export * from './apex.js';
 
