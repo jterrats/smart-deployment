@@ -39,12 +39,14 @@ export type MergeField = {
 /**
  * Result of parsing an email template
  * Extends EmailTemplateMetadata with parsed dependencies
+ * Overrides attachments to be string[] for easier consumption
  */
-export type EmailTemplateParseResult = EmailTemplateMetadata & {
+export type EmailTemplateParseResult = Omit<EmailTemplateMetadata, 'attachments'> & {
   mergeFields: MergeField[];
   customLabels: string[];
   dependencies: EmailTemplateDependency[];
   visualforcePage?: string;
+  attachments?: string[]; // Override to be string[] instead of Attachment[]
 };
 
 /**
@@ -123,6 +125,28 @@ async function parseMetadataXml(metadataContent: string): Promise<EmailTemplateM
     const parsedObj = parsed as Record<string, unknown>;
     const emailTemplate = (parsedObj.EmailTemplate as Record<string, unknown>) || parsedObj;
 
+    // Normalize arrays (XML parser returns single items as objects, not arrays)
+    const normalizeArray = <T>(value: T | T[] | undefined): T[] | undefined => {
+      if (value === undefined) return undefined;
+      return Array.isArray(value) ? value : [value];
+    };
+
+    // Normalize attachments (XML can have just <name> or full <content><name> structure)
+    let attachments = normalizeArray(emailTemplate.attachments as EmailTemplateMetadata['attachments']);
+    if (attachments) {
+      attachments = attachments.map((att) => {
+        // If attachment is a string, it's just the name
+        if (typeof att === 'string') {
+          return { name: att, content: '' };
+        }
+        // If it has a 'name' key with no content, set content to empty
+        if (typeof att === 'object' && att.name && !att.content) {
+          return { name: String(att.name), content: '' };
+        }
+        return att as { name: string; content: string };
+      });
+    }
+
     // Map to EmailTemplateMetadata
     const metadata: EmailTemplateMetadata = {
       apiVersion: emailTemplate.apiVersion as string | undefined,
@@ -135,11 +159,12 @@ async function parseMetadataXml(metadataContent: string): Promise<EmailTemplateM
       textOnly: emailTemplate.textOnly as string | undefined,
       type: ((emailTemplate.type as string) ?? 'text') as EmailTemplateType,
       uiType: emailTemplate.uiType as EmailTemplateMetadata['uiType'],
-      attachedContentDocuments: emailTemplate.attachedContentDocuments as string[] | undefined,
-      attachments: emailTemplate.attachments as EmailTemplateMetadata['attachments'],
+      attachedContentDocuments: normalizeArray(emailTemplate.attachedContentDocuments as string | string[] | undefined),
+      attachments,
       letterhead: emailTemplate.letterhead as string | undefined,
       packageVersions: emailTemplate.packageVersions as EmailTemplateMetadata['packageVersions'],
       relatedEntityType: emailTemplate.relatedEntityType as string | undefined,
+      visualforcePage: emailTemplate.visualforcePage as string | undefined,
     };
 
     return metadata;
@@ -209,9 +234,8 @@ export async function parseEmailTemplate(
 
     // Add Visualforce page as dependency (for visualforce template type)
     let visualforcePage: string | undefined;
-    if (metadata.type === 'visualforce' && metadata.name) {
-      // For visualforce templates, the page name is often derived from the template name
-      visualforcePage = metadata.name;
+    if (metadata.type === 'visualforce' && metadata.visualforcePage) {
+      visualforcePage = metadata.visualforcePage;
       dependencies.push({
         type: 'visualforce_page',
         name: visualforcePage,
@@ -255,8 +279,13 @@ export async function parseEmailTemplate(
       }
     }
 
+    // Map attachments to string array (just names) and include attachedContentDocuments
+    const attachmentNames = metadata.attachments?.map((att) => att.name) ?? [];
+    const allAttachments = [...attachmentNames, ...(metadata.attachedContentDocuments ?? [])];
+
     const result: EmailTemplateParseResult = {
       ...metadata,
+      attachments: allAttachments.length > 0 ? allAttachments : undefined,
       mergeFields,
       customLabels,
       dependencies,

@@ -24,6 +24,7 @@ export type EmailTemplateMetadata = {
   letterhead?: string;
   packageVersions?: PackageVersion[];
   relatedEntityType?: string;
+  visualforcePage?: string;
 };
 
 /**

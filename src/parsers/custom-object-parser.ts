@@ -7,6 +7,11 @@ import type {
   ValidationRule,
   RecordType,
   ListView,
+  ActionOverride,
+  FieldSet,
+  SharingReason,
+  SharingRecalculation,
+  WebLink,
 } from '../types/salesforce/object.js';
 
 const logger = getLogger('CustomObjectParser');
@@ -50,8 +55,16 @@ export type SharingRule = {
 /**
  * Result of parsing a custom object
  * Extends CustomObjectMetadata with parsed dependencies
+ * Ensures arrays are always defined (never undefined)
  */
-export type CustomObjectParseResult = CustomObjectMetadata & {
+export type CustomObjectParseResult = Omit<
+  CustomObjectMetadata,
+  'fields' | 'validationRules' | 'recordTypes' | 'listViews'
+> & {
+  fields: CustomField[];
+  validationRules: ValidationRule[];
+  recordTypes: RecordType[];
+  listViews: ListView[];
   sharingRules: SharingRule[];
   dependencies: CustomObjectDependency[];
 };
@@ -163,11 +176,40 @@ async function parseMetadataXml(metadataContent: string): Promise<CustomObjectMe
     const parsedObj = parsed as Record<string, unknown>;
     const customObject = (parsedObj.CustomObject as Record<string, unknown>) || parsedObj;
 
+    // Validate that we have at least label and pluralLabel
+    if (!customObject.label || !customObject.pluralLabel) {
+      logger.warn('Missing required fields in custom object metadata', {
+        hasLabel: Boolean(customObject.label),
+        hasPluralLabel: Boolean(customObject.pluralLabel),
+        parsedKeys: Object.keys(customObject),
+      });
+    }
+
+    // Normalize arrays (XML parser returns single items as objects, not arrays)
+    const normalizeArray = <T>(value: T | T[] | undefined): T[] | undefined => {
+      if (value === undefined) return undefined;
+      return Array.isArray(value) ? value : [value];
+    };
+
     // Map to CustomObjectMetadata using the robust types from src/types/salesforce/object.ts
+    let fields = normalizeArray(customObject.fields as CustomField | CustomField[] | undefined);
+
+    // Normalize referenceTo within each field (XML parser returns single string, but type expects array)
+    if (fields) {
+      fields = fields.map((field) => ({
+        ...field,
+        referenceTo: field.referenceTo
+          ? Array.isArray(field.referenceTo)
+            ? field.referenceTo
+            : [field.referenceTo]
+          : undefined,
+      }));
+    }
+
     const metadata: CustomObjectMetadata = {
       label: (customObject.label as string) ?? '',
       pluralLabel: (customObject.pluralLabel as string) ?? '',
-      actionOverrides: customObject.actionOverrides as CustomObjectMetadata['actionOverrides'],
+      actionOverrides: normalizeArray(customObject.actionOverrides as ActionOverride | ActionOverride[] | undefined),
       allowInChatterGroups: customObject.allowInChatterGroups as boolean | undefined,
       compactLayoutAssignment: customObject.compactLayoutAssignment as string | undefined,
       customHelpPage: customObject.customHelpPage as string | undefined,
@@ -185,21 +227,23 @@ async function parseMetadataXml(metadataContent: string): Promise<CustomObjectMe
       enableSharing: customObject.enableSharing as boolean | undefined,
       enableStreamingApi: customObject.enableStreamingApi as boolean | undefined,
       externalSharingModel: customObject.externalSharingModel as CustomObjectMetadata['externalSharingModel'],
-      fields: customObject.fields as CustomField[] | undefined,
-      fieldSets: customObject.fieldSets as CustomObjectMetadata['fieldSets'],
+      fields,
+      fieldSets: normalizeArray(customObject.fieldSets as FieldSet | FieldSet[] | undefined),
       gender: customObject.gender as CustomObjectMetadata['gender'],
       household: customObject.household as boolean | undefined,
-      listViews: customObject.listViews as ListView[] | undefined,
+      listViews: normalizeArray(customObject.listViews as ListView | ListView[] | undefined),
       nameField: customObject.nameField as CustomField | undefined,
-      recordTypes: customObject.recordTypes as RecordType[] | undefined,
+      recordTypes: normalizeArray(customObject.recordTypes as RecordType | RecordType[] | undefined),
       searchLayouts: customObject.searchLayouts as CustomObjectMetadata['searchLayouts'],
       sharingModel: customObject.sharingModel as CustomObjectMetadata['sharingModel'],
-      sharingReasons: customObject.sharingReasons as CustomObjectMetadata['sharingReasons'],
-      sharingRecalculations: customObject.sharingRecalculations as CustomObjectMetadata['sharingRecalculations'],
+      sharingReasons: normalizeArray(customObject.sharingReasons as SharingReason | SharingReason[] | undefined),
+      sharingRecalculations: normalizeArray(
+        customObject.sharingRecalculations as SharingRecalculation | SharingRecalculation[] | undefined
+      ),
       startsWith: customObject.startsWith as CustomObjectMetadata['startsWith'],
-      validationRules: customObject.validationRules as ValidationRule[] | undefined,
+      validationRules: normalizeArray(customObject.validationRules as ValidationRule | ValidationRule[] | undefined),
       visibility: customObject.visibility as CustomObjectMetadata['visibility'],
-      webLinks: customObject.webLinks as CustomObjectMetadata['webLinks'],
+      webLinks: normalizeArray(customObject.webLinks as WebLink | WebLink[] | undefined),
     };
 
     return metadata;
@@ -326,6 +370,10 @@ export async function parseCustomObject(objectName: string, metadataContent: str
 
     const result: CustomObjectParseResult = {
       ...metadata,
+      fields,
+      validationRules,
+      recordTypes,
+      listViews,
       sharingRules,
       dependencies,
     };
