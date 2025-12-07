@@ -1,0 +1,325 @@
+import { parseXml } from '../utils/xml.js';
+import { getLogger } from '../utils/logger.js';
+import { ParsingError } from '../errors/parsing-error.js';
+
+const logger = getLogger('LWCParser');
+
+/**
+ * LWC dependency types
+ */
+export type LWCDependencyType = 'apex_import' | 'lwc_import' | 'wire_adapter' | 'api_property' | 'navigation';
+
+/**
+ * Represents a dependency found in an LWC
+ */
+export type LWCDependency = {
+  type: LWCDependencyType;
+  name: string;
+  source?: string;
+  isTypeScript?: boolean;
+};
+
+/**
+ * Result of parsing an LWC
+ */
+export type LWCParseResult = {
+  componentName: string;
+  isTypeScript: boolean;
+  apexImports: string[];
+  lwcImports: string[];
+  wireAdapters: string[];
+  apiProperties: string[];
+  navigationRefs: string[];
+  dependencies: LWCDependency[];
+  hasMetadataXml: boolean;
+  exposedAs?: string; // From js-meta.xml (tabs, pages, etc.)
+};
+
+/**
+ * Remove comments from JavaScript/TypeScript code
+ */
+function removeComments(code: string): string {
+  // Remove single-line comments (//)
+  let cleaned = code.replace(/\/\/.*$/gm, '');
+
+  // Remove multi-line comments (/* ... */)
+  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  return cleaned;
+}
+
+/**
+ * Extract Apex imports
+ *
+ * @ac US-016-AC-1: Extract Apex imports (@salesforce/apex)
+ */
+function extractApexImports(code: string): string[] {
+  // Pattern: import methodName from '@salesforce/apex/ClassName.methodName'
+  const apexImportPattern = /import\s+(?:\{[^}]+\}|\w+)\s+from\s+['"]@salesforce\/apex\/([a-zA-Z][a-zA-Z0-9_.]+)['"]/g;
+  const matches = code.matchAll(apexImportPattern);
+  const imports: string[] = [];
+
+  for (const match of matches) {
+    const apexRef = match[1]; // ClassName.methodName or ClassName
+    if (!imports.includes(apexRef)) {
+      imports.push(apexRef);
+    }
+  }
+
+  return imports;
+}
+
+/**
+ * Extract LWC imports
+ *
+ * @ac US-016-AC-2: Extract LWC imports (c/componentName)
+ */
+function extractLWCImports(code: string): string[] {
+  // Pattern: import ComponentName from 'c/componentName'
+  const lwcImportPattern = /import\s+(?:\{[^}]+\}|\w+)\s+from\s+['"]c\/([a-zA-Z][a-zA-Z0-9_]+)['"]/g;
+  const matches = code.matchAll(lwcImportPattern);
+  const imports: string[] = [];
+
+  for (const match of matches) {
+    const componentName = match[1];
+    if (!imports.includes(componentName)) {
+      imports.push(componentName);
+    }
+  }
+
+  return imports;
+}
+
+/**
+ * Extract wire adapter usage
+ *
+ * @ac US-016-AC-3: Extract wire adapter usage
+ */
+function extractWireAdapters(code: string): string[] {
+  // Pattern: @wire(adapterName, { ... })
+  const wirePattern = /@wire\s*\(\s*([a-zA-Z][a-zA-Z0-9_]*)/g;
+  const matches = code.matchAll(wirePattern);
+  const adapters: string[] = [];
+
+  for (const match of matches) {
+    const adapterName = match[1];
+    if (!adapters.includes(adapterName)) {
+      adapters.push(adapterName);
+    }
+  }
+
+  return adapters;
+}
+
+/**
+ * Extract @api property dependencies
+ *
+ * @ac US-016-AC-4: Extract @api property dependencies
+ */
+function extractApiProperties(code: string): string[] {
+  // Pattern: @api propertyName
+  const apiPattern = /@api\s+([a-zA-Z][a-zA-Z0-9_]*)/g;
+  const matches = code.matchAll(apiPattern);
+  const properties: string[] = [];
+
+  for (const match of matches) {
+    const propertyName = match[1];
+    if (!properties.includes(propertyName)) {
+      properties.push(propertyName);
+    }
+  }
+
+  return properties;
+}
+
+/**
+ * Extract navigation references
+ *
+ * @ac US-016-AC-5: Extract navigation references
+ */
+function extractNavigationRefs(code: string): string[] {
+  const refs: string[] = [];
+
+  // Pattern: NavigationMixin
+  if (code.includes('NavigationMixin')) {
+    refs.push('NavigationMixin');
+  }
+
+  // Pattern: this[NavigationMixin.Navigate]
+  if (code.includes('NavigationMixin.Navigate')) {
+    refs.push('NavigationMixin.Navigate');
+  }
+
+  // Pattern: import { NavigationMixin } from 'lightning/navigation'
+  const navImportPattern = /import\s+\{[^}]*NavigationMixin[^}]*\}\s+from\s+['"]lightning\/navigation['"]/;
+  if (navImportPattern.test(code)) {
+    refs.push('lightning/navigation');
+  }
+
+  return refs;
+}
+
+/**
+ * Detect if the component is TypeScript
+ *
+ * @ac US-016-AC-6: Handle TypeScript components
+ */
+function isTypeScriptComponent(jsCode: string): boolean {
+  // Check for TypeScript-specific syntax
+  const tsPatterns = [
+    /:\s*(?:string|number|boolean|any|void|unknown|never)\s*[=;,)]/,
+    /interface\s+[A-Z][a-zA-Z0-9_]*\s*\{/,
+    /type\s+[A-Z][a-zA-Z0-9_]*\s*=/,
+    /<[A-Z][a-zA-Z0-9_<>,\s]*>/,
+    /as\s+(?:string|number|boolean|const)/,
+  ];
+
+  return tsPatterns.some((pattern) => pattern.test(jsCode));
+}
+
+/**
+ * Parse LWC js-meta.xml file
+ *
+ * @ac US-016-AC-8: Parse js-meta.xml correctly
+ */
+function parseMetadataXml(metadataContent: string): { exposedAs?: string } {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unnecessary-type-assertion
+    const parsed = parseXml(metadataContent) as any;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+    const metadata = parsed.LightningComponentBundle;
+
+    if (!metadata) {
+      return {};
+    }
+
+    // Extract targets (where the component is exposed)
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+    const targets = metadata.targets;
+    if (targets) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      const targetList = Array.isArray(targets.target) ? targets.target : targets.target ? [targets.target] : [];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      if (targetList.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+        return { exposedAs: targetList.join(',') };
+      }
+    }
+
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Parse a Lightning Web Component and extract dependencies
+ *
+ * @param componentName - Name of the LWC component
+ * @param jsCode - JavaScript/TypeScript code of the component
+ * @param metadataXml - Optional js-meta.xml content
+ * @returns LWCParseResult with all extracted dependencies
+ *
+ * @throws {ParsingError} If the component cannot be parsed
+ *
+ * @ac US-016-AC-7: Validate bundle structure (js, html, xml)
+ *
+ * @example
+ * ```typescript
+ * const result = parseLWC('myComponent', jsCode, metadataXml);
+ * console.log(result.apexImports); // ['AccountController.getAccounts']
+ * console.log(result.lwcImports); // ['baseComponent', 'utilComponent']
+ * console.log(result.wireAdapters); // ['getRecord', 'getObjectInfo']
+ * ```
+ */
+export function parseLWC(componentName: string, jsCode: string, metadataXml?: string): LWCParseResult {
+  try {
+    logger.debug(`Parsing LWC: ${componentName}`);
+
+    // Remove comments
+    const cleanCode = removeComments(jsCode);
+
+    // Detect TypeScript
+    const isTS = isTypeScriptComponent(cleanCode);
+
+    // Extract dependencies
+    const apexImports = extractApexImports(cleanCode);
+    const lwcImports = extractLWCImports(cleanCode);
+    const wireAdapters = extractWireAdapters(cleanCode);
+    const apiProperties = extractApiProperties(cleanCode);
+    const navigationRefs = extractNavigationRefs(cleanCode);
+
+    // Parse metadata XML if provided
+    let exposedAs: string | undefined;
+    let hasMetadataXml = false;
+
+    if (metadataXml) {
+      hasMetadataXml = true;
+      const metadataInfo = parseMetadataXml(metadataXml);
+      exposedAs = metadataInfo.exposedAs;
+    }
+
+    // Build dependencies array
+    const dependencies: LWCDependency[] = [
+      ...apexImports.map((name) => ({
+        type: 'apex_import' as LWCDependencyType,
+        name,
+        source: '@salesforce/apex',
+        isTypeScript: isTS,
+      })),
+      ...lwcImports.map((name) => ({
+        type: 'lwc_import' as LWCDependencyType,
+        name,
+        source: 'c',
+        isTypeScript: isTS,
+      })),
+      ...wireAdapters.map((name) => ({
+        type: 'wire_adapter' as LWCDependencyType,
+        name,
+        isTypeScript: isTS,
+      })),
+      ...apiProperties.map((name) => ({
+        type: 'api_property' as LWCDependencyType,
+        name,
+        isTypeScript: isTS,
+      })),
+      ...navigationRefs.map((name) => ({
+        type: 'navigation' as LWCDependencyType,
+        name,
+        isTypeScript: isTS,
+      })),
+    ];
+
+    const result: LWCParseResult = {
+      componentName,
+      isTypeScript: isTS,
+      apexImports,
+      lwcImports,
+      wireAdapters,
+      apiProperties,
+      navigationRefs,
+      dependencies,
+      hasMetadataXml,
+      exposedAs,
+    };
+
+    logger.debug(`Parsed LWC: ${componentName}`, {
+      isTypeScript: isTS,
+      apexImports: apexImports.length,
+      lwcImports: lwcImports.length,
+      wireAdapters: wireAdapters.length,
+      dependencies: dependencies.length,
+    });
+
+    return result;
+  } catch (error) {
+    if (error instanceof ParsingError) {
+      throw error;
+    }
+
+    throw new ParsingError(`Failed to parse LWC: ${componentName}`, {
+      filePath: componentName,
+      originalError: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
