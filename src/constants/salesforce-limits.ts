@@ -9,20 +9,36 @@
  */
 
 /**
- * Maximum number of files per deployment operation.
+ * Maximum number of components per deployment wave.
  *
- * **Official Salesforce Limit: 10,000 files**
- * - This includes all metadata XML files and source files (Apex, LWC, static resources, etc.)
- * - Applies to a single `sf project deploy` operation
- * - Exceeding this causes API rejection
+ * **Real-World Limit: 300 components**
+ * - Official Salesforce API limit is 10,000 files, but UNKNOWN_EXCEPTION occurs at ~300-500 components
+ * - This is a proven safe limit based on production deployments
+ * - Exceeding this causes UNKNOWN_EXCEPTION (not API rejection)
+ * - This limit is per wave, not per deployment
  *
- * NOTE: The previous limit of 300-500 was incorrect. The real issue causing UNKNOWN_EXCEPTION
- * was malformed XML files (missing namespaces, incorrect schemas), not file count.
+ * **Why not 10,000?**
+ * - Salesforce has undocumented transactional limits that cause UNKNOWN_EXCEPTION
+ * - Large deployments (>300 components) hit internal timeout/memory limits
+ * - 300 is the safe upper bound for reliable deployments
  *
  * @constant
  * @type {number}
  */
-export const MAX_FILES_PER_DEPLOYMENT = 10_000;
+export const MAX_COMPONENTS_PER_WAVE = 300;
+
+/**
+ * Maximum number of files per deployment operation.
+ *
+ * **Real-World Limit: 400-500 files**
+ * - Official Salesforce API limit is higher, but practical limit is ~400-500 files
+ * - Exceeding this causes UNKNOWN_EXCEPTION
+ * - This includes all metadata XML files and source files (Apex, LWC, static resources, etc.)
+ *
+ * @constant
+ * @type {number}
+ */
+export const MAX_FILES_PER_DEPLOYMENT = 500;
 
 /**
  * Maximum compressed size of deployment package (ZIP).
@@ -85,6 +101,7 @@ export const API_TIMEOUT_MS = 600_000; // 10 minutes
  * @readonly
  */
 export const SALESFORCE_LIMITS = Object.freeze({
+  MAX_COMPONENTS_PER_WAVE,
   MAX_FILES_PER_DEPLOYMENT,
   MAX_DEPLOYMENT_SIZE_COMPRESSED_MB,
   MAX_DEPLOYMENT_SIZE_UNCOMPRESSED_MB,
