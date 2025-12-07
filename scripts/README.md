@@ -11,10 +11,11 @@ Automates the creation of GitHub issues from `USER_STORIES.md`.
 ### Prerequisites
 
 1. **GitHub CLI** installed and authenticated:
+
    ```bash
    # Install (macOS)
    brew install gh
-   
+
    # Authenticate
    gh auth login
    ```
@@ -24,6 +25,7 @@ Automates the creation of GitHub issues from `USER_STORIES.md`.
 ### Usage
 
 #### Dry Run (Preview)
+
 See what issues would be created without actually creating them:
 
 ```bash
@@ -31,6 +33,7 @@ node scripts/create-github-issues.js --dry-run
 ```
 
 #### Create All Issues
+
 Create all 90 user stories as GitHub issues:
 
 ```bash
@@ -38,6 +41,7 @@ node scripts/create-github-issues.js
 ```
 
 #### Create Specific Epic
+
 Create issues for a specific epic only:
 
 ```bash
@@ -109,34 +113,35 @@ Creating issue: [US-002] Graph Algorithms...
 Each GitHub issue includes:
 
 - **Title**: `[US-XXX] Story Title`
-- **Labels**: 
+- **Labels**:
   - `user-story`
   - `epic:name`
   - `priority:level`
   - `points:N`
 - **Body**:
+
   ```markdown
   ## User Story
-  
-  **As a** developer  
-  **I want** to do something  
+
+  **As a** developer
+  **I want** to do something
   **So that** I achieve a goal
-  
+
   ## Acceptance Criteria
-  
+
   - [ ] Criterion 1
   - [ ] Criterion 2
   - [ ] Criterion 3
-  
+
   ## Metadata
-  
+
   - **Epic**: 1 - Core Infrastructure
   - **Priority**: Must Have
   - **Story Points**: 3
   - **Dependencies**: US-001, US-002
-  
+
   ## Epic Goal
-  
+
   Establish foundational architecture and utilities
   ```
 
@@ -150,15 +155,19 @@ Each GitHub issue includes:
 ### Troubleshooting
 
 #### Error: "gh: command not found"
+
 Install GitHub CLI: https://cli.github.com/
 
 #### Error: "gh auth status failed"
+
 Authenticate with: `gh auth login`
 
 #### Error: "API rate limit exceeded"
+
 Wait a few minutes and try again, or create issues epic by epic
 
 #### Error: "Label already exists"
+
 This is expected and handled gracefully - the script will reuse existing labels
 
 ---
@@ -173,4 +182,3 @@ This is expected and handled gracefully - the script will reuse existing labels
 ---
 
 **Last Updated**: December 1, 2025
-

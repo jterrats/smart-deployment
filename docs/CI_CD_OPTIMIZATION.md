@@ -8,7 +8,7 @@ Durante las fases iniciales del proyecto (Phase 1-2), los workflows de GitHub Ac
 
 ### 1. `test.yml` - Tests en Push
 
-**Activo**: Solo unit tests  
+**Activo**: Solo unit tests
 **Comentado**: NUTs (Salesforce integration tests en Ubuntu + Windows)
 
 **Razón**: En esta fase solo hay types y constants, no hay lógica Salesforce real que requiera integration tests.
@@ -21,7 +21,7 @@ Durante las fases iniciales del proyecto (Phase 1-2), los workflows de GitHub Ac
 
 ### 2. `acceptance-criteria-validation.yml` - Validación de AC en PRs
 
-**Activo**: Solo unit tests  
+**Activo**: Solo unit tests
 **Comentado**: Integration tests, E2E tests, NUTs
 
 **Razón**: Los scripts `test:integration`, `test:e2e` aún no existen y no hay funcionalidad que requiera estos niveles de testing.

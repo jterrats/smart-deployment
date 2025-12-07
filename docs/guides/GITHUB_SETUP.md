@@ -15,15 +15,18 @@ Navigate to: `Settings` → `Branches` → `Branch protection rules` → `Add ru
 #### Protection Settings
 
 **✅ Require a pull request before merging**
+
 - Require approvals: `1`
 - Dismiss stale pull request approvals when new commits are pushed
 - Require review from Code Owners
 - Require approval of the most recent reviewable push
 
 **✅ Require status checks to pass before merging**
+
 - Require branches to be up to date before merging
 
 **Required status checks**:
+
 - `tests / unit-tests`
 - `tests / nuts`
 - `validate-acceptance-criteria / validate-acceptance-criteria`
@@ -36,9 +39,11 @@ Navigate to: `Settings` → `Branches` → `Branch protection rules` → `Add ru
 **✅ Require linear history**
 
 **✅ Do not allow bypassing the above settings**
+
 - Administrators included
 
 **✅ Restrict pushes that create matching branches**
+
 - Only allow specified actors:
   - Repository maintainers
   - GitHub Actions (for automated releases)
@@ -91,11 +96,11 @@ Navigate to: `Settings` → `Secrets and variables` → `Actions` → `New repos
 
 **Required secrets**:
 
-| Secret Name | Description | Used For |
-|-------------|-------------|----------|
-| `GITHUB_TOKEN` | Automatically provided by GitHub | Updating issues, posting comments |
-| `NPM_TOKEN` | npm authentication token | Publishing to npm registry |
-| `SVC_CLI_BOT_GITHUB_TOKEN` | Bot account token for releases | Automated releases |
+| Secret Name                | Description                      | Used For                          |
+| -------------------------- | -------------------------------- | --------------------------------- |
+| `GITHUB_TOKEN`             | Automatically provided by GitHub | Updating issues, posting comments |
+| `NPM_TOKEN`                | npm authentication token         | Publishing to npm registry        |
+| `SVC_CLI_BOT_GITHUB_TOKEN` | Bot account token for releases   | Automated releases                |
 
 **Note**: `GITHUB_TOKEN` is automatically available in workflows. You may need to add `NPM_TOKEN` and `SVC_CLI_BOT_GITHUB_TOKEN` manually.
 
@@ -118,17 +123,21 @@ Navigate to: `Settings` → `Rules` → `Rulesets` → `New ruleset`
 #### Rules
 
 **1. Restrict creations**
+
 - Nobody can create branches matching `main`
 
 **2. Restrict deletions**
+
 - Nobody can delete `main` branch
 
 **3. Require a pull request before merging**
+
 - Required approving review count: `1`
 - Dismiss stale reviews
 - Require review from Code Owners
 
 **4. Require status checks to pass**
+
 - Require branches to be up to date
 - Status checks:
   - `validate-acceptance-criteria / validate-acceptance-criteria`
@@ -153,13 +162,13 @@ Navigate to: `Security` → `Code scanning` → `Set up CodeQL`
 Or create `.github/workflows/codeql.yml`:
 
 ```yaml
-name: "CodeQL"
+name: 'CodeQL'
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
     - cron: '0 0 * * 1'
 
@@ -175,22 +184,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'javascript' ]
+        language: ['javascript']
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
 ```
 
 ---
@@ -202,6 +211,7 @@ jobs:
 Navigate to: `Insights` → `Community Standards`
 
 Ensure you have:
+
 - ✅ README
 - ✅ Code of conduct
 - ✅ Contributing guidelines
@@ -257,10 +267,12 @@ Create `.github/CODEOWNERS`:
 The repository is configured for automated releases using semantic-release.
 
 **Prerequisites**:
+
 1. `NPM_TOKEN` secret configured
 2. `SVC_CLI_BOT_GITHUB_TOKEN` secret configured (optional, for changelog commits)
 
 **How it works**:
+
 1. Merge PR to `main`
 2. Semantic release analyzes commits
 3. Bumps version in `package.json`
@@ -306,6 +318,7 @@ After creating the repository:
 Navigate to: `Settings` → `General`
 
 **Features**:
+
 - ✅ Issues
 - ✅ Projects
 - ✅ Discussions
@@ -313,6 +326,7 @@ Navigate to: `Settings` → `General`
 - ❌ Sponsorships
 
 **Pull Requests**:
+
 - ✅ Allow squash merging (default)
 - ❌ Allow merge commits
 - ❌ Allow rebase merging
@@ -320,6 +334,7 @@ Navigate to: `Settings` → `General`
 - ✅ Automatically delete head branches
 
 **Archives**:
+
 - ❌ Do not archive this repository
 
 ---
@@ -327,6 +342,7 @@ Navigate to: `Settings` → `General`
 ## 📱 GitHub Mobile Notifications
 
 Configure notifications for:
+
 - Pull request reviews required
 - Acceptance Criteria validation failures
 - Failed CI/CD runs
@@ -341,18 +357,19 @@ While not directly enforceable, document the convention:
 **Format**: `<type>/<issue-number>-<short-description>`
 
 **Examples**:
+
 - `feat/123-implement-pipe-function`
 - `fix/456-handle-null-input`
 - `docs/789-update-readme`
 - `test/101-add-apex-parser-tests`
 
 **Benefits**:
+
 - Automatic issue linking
 - AC validation works automatically
 - Clear PR history
 
 ---
 
-**Last Updated**: December 1, 2025  
+**Last Updated**: December 1, 2025
 **Version**: 1.0.0
-

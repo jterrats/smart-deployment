@@ -37,9 +37,9 @@ describe('pipe()', () => {
   it('should execute functions left-to-right', () => {
     const add = (x: number) => x + 1;
     const multiply = (x: number) => x * 2;
-    
+
     const result = pipe(add, multiply)(5);
-    
+
     expect(result).toBe(12); // (5 + 1) * 2
   });
 
@@ -49,9 +49,9 @@ describe('pipe()', () => {
   it('should handle async functions', async () => {
     const fetchData = async (id: number) => ({ id, name: 'Test' });
     const extractName = (data: { name: string }) => data.name;
-    
+
     const result = await pipe(fetchData, extractName)(1);
-    
+
     expect(result).toBe('Test');
   });
 });
@@ -68,6 +68,7 @@ describe('pipe()', () => {
 - `<DESCRIPTION>`: Brief description of what this test covers
 
 **Examples**:
+
 ```typescript
 /**
  * @ac US-013-AC-1: Extract extends relationships
@@ -91,8 +92,8 @@ describe('pipe()', () => {
 ```markdown
 ## User Story
 
-**As a** developer  
-**I want** to parse Apex classes and extract dependencies  
+**As a** developer
+**I want** to parse Apex classes and extract dependencies
 **So that** I can build the dependency graph
 
 ## Acceptance Criteria
@@ -103,7 +104,7 @@ describe('pipe()', () => {
 - [ ] Extract object instantiations
 - [ ] Extract variable declarations
 - [ ] Handle inner classes
-- [ ] Ignore standard classes (System.*, etc.)
+- [ ] Ignore standard classes (System.\*, etc.)
 - [ ] Handle managed packages
 - [ ] Remove comments before parsing
 - [ ] Handle Type.forName() dynamic instantiation
@@ -128,9 +129,9 @@ describe('ApexParser', () => {
    */
   it('should extract extends relationships', () => {
     const content = 'public class MyClass extends BaseClass {}';
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('BaseClass');
   });
 
@@ -139,9 +140,9 @@ describe('ApexParser', () => {
    */
   it('should extract implements relationships', () => {
     const content = 'public class MyClass implements IService {}';
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('IService');
   });
 
@@ -156,9 +157,9 @@ describe('ApexParser', () => {
         }
       }
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('HelperClass');
   });
 
@@ -173,9 +174,9 @@ describe('ApexParser', () => {
         }
       }
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('ServiceClass');
   });
 
@@ -188,9 +189,9 @@ describe('ApexParser', () => {
         private HandlerClass handler;
       }
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('HandlerClass');
   });
 
@@ -201,15 +202,15 @@ describe('ApexParser', () => {
     const content = `
       public class OuterClass {
         public class InnerClass {}
-        
+
         public void useInner() {
           InnerClass inner = new InnerClass();
         }
       }
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.innerClasses).toContain('InnerClass');
   });
 
@@ -225,9 +226,9 @@ describe('ApexParser', () => {
         }
       }
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).not.toContain('System');
     expect(result.dependencies).not.toContain('String');
   });
@@ -239,9 +240,9 @@ describe('ApexParser', () => {
     const content = `
       public class MyClass extends ns__PackageClass {}
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('ns__PackageClass');
     expect(result.managedPackages).toContain('ns');
   });
@@ -255,9 +256,9 @@ describe('ApexParser', () => {
       /* Block comment with AnotherFakeClass */
       public class MyClass extends RealClass {}
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('RealClass');
     expect(result.dependencies).not.toContain('FakeClass');
     expect(result.dependencies).not.toContain('AnotherFakeClass');
@@ -275,9 +276,9 @@ describe('ApexParser', () => {
         }
       }
     `;
-    
+
     const result = parser.parseClass(content);
-    
+
     expect(result.dependencies).toContain('DynamicClass');
   });
 });
@@ -306,6 +307,7 @@ When you push to a PR:
 **User Story**: #13
 
 ### Summary
+
 - **Total AC**: 10
 - **Completed**: 10 ✅
 - **Pending**: 0 ⏳
@@ -319,7 +321,7 @@ When you push to a PR:
   - Covered by: test/unit/parsers/apex-parser.test.ts
 - [x] Extract static method calls
   - Covered by: test/unit/parsers/apex-parser.test.ts
-...
+    ...
 
 ---
 
@@ -369,6 +371,7 @@ node scripts/validate-acceptance-criteria.js
 ```
 
 **Output**:
+
 ```
 🚀 Acceptance Criteria Validator
 
@@ -481,6 +484,7 @@ Feature: Apex Class Parsing
 **Problem**: Tests have `@ac` annotations but AC not marked as covered
 
 **Solutions**:
+
 1. Check annotation format: `@ac US-<NUMBER>-AC-<NUMBER>: description`
 2. Ensure issue number in annotation matches branch name
 3. Check that test file is in `test/unit`, `test/integration`, or `test/e2e`
@@ -491,6 +495,7 @@ Feature: Apex Class Parsing
 **Problem**: CI cannot find the issue
 
 **Solutions**:
+
 1. Check branch name format: `feat/123-description`
 2. Ensure issue #123 exists in GitHub
 3. Verify issue has "Acceptance Criteria" section
@@ -513,6 +518,5 @@ Feature: Apex Class Parsing
 
 ---
 
-**Last Updated**: December 1, 2025  
+**Last Updated**: December 1, 2025
 **Version**: 1.0.0
-

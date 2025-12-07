@@ -42,17 +42,12 @@ Comprehensive coding standards for the Smart Deployment Plugin project.
 
 ```typescript
 // Function signatures
-export function parseApexClass(
-  filePath: string,
-  content: string
-): ParseResult<ApexClass> {
+export function parseApexClass(filePath: string, content: string): ParseResult<ApexClass> {
   // Implementation
 }
 
 // Complex return types
-export async function scanProject(
-  path: string
-): Promise<{
+export async function scanProject(path: string): Promise<{
   components: Component[];
   errors: Error[];
   stats: ProjectStats;
@@ -61,9 +56,7 @@ export async function scanProject(
 }
 
 // Generic constraints
-export function filterBy<T extends MetadataComponent>(
-  predicate: (item: T) => boolean
-): (items: T[]) => T[] {
+export function filterBy<T extends MetadataComponent>(predicate: (item: T) => boolean): (items: T[]) => T[] {
   return (items) => items.filter(predicate);
 }
 ```
@@ -102,16 +95,9 @@ export interface MetadataComponent {
 }
 
 // Use type aliases for unions, intersections, utilities
-export type ParseResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: Error };
+export type ParseResult<T> = { success: true; data: T } | { success: false; error: Error };
 
-export type DeploymentStatus = 
-  | 'pending'
-  | 'in_progress'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
+export type DeploymentStatus = 'pending' | 'in_progress' | 'succeeded' | 'failed' | 'cancelled';
 
 // Use enums for known constants
 export enum MetadataType {
@@ -146,9 +132,10 @@ export interface DependencyNode {
 // ✅ GOOD: Pure function
 export const add = (a: number, b: number): number => a + b;
 
-export const filterByType = (type: MetadataType) =>
+export const filterByType =
+  (type: MetadataType) =>
   (components: Component[]): Component[] =>
-    components.filter(c => c.type === type);
+    components.filter((c) => c.type === type);
 
 // ❌ BAD: Side effects
 let counter = 0;
@@ -163,26 +150,17 @@ export const incrementAndAdd = (a: number, b: number): number => {
 
 ```typescript
 // ✅ GOOD: Immutable operations
-const addComponent = (
-  components: Component[],
-  newComponent: Component
-): Component[] => [...components, newComponent];
+const addComponent = (components: Component[], newComponent: Component): Component[] => [...components, newComponent];
 
-const updateComponent = (
-  component: Component,
-  updates: Partial<Component>
-): Component => ({ ...component, ...updates });
+const updateComponent = (component: Component, updates: Partial<Component>): Component => ({
+  ...component,
+  ...updates,
+});
 
-const removeComponent = (
-  components: Component[],
-  id: string
-): Component[] => components.filter(c => c.id !== id);
+const removeComponent = (components: Component[], id: string): Component[] => components.filter((c) => c.id !== id);
 
 // ❌ BAD: Mutations
-const addComponent = (
-  components: Component[],
-  newComponent: Component
-): void => {
+const addComponent = (components: Component[], newComponent: Component): void => {
   components.push(newComponent); // Mutation!
 };
 
@@ -207,18 +185,10 @@ export const processMetadata = pipe(
 );
 
 // Compose: right-to-left
-export const deploymentPipeline = compose(
-  generateManifests,
-  splitIntoWaves,
-  resolveDependencies,
-  analyzeComponents
-);
+export const deploymentPipeline = compose(generateManifests, splitIntoWaves, resolveDependencies, analyzeComponents);
 
 // Higher-order functions
-export const withRetry = <T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3
-): (() => Promise<T>) => {
+export const withRetry = <T>(fn: () => Promise<T>, maxRetries: number = 3): (() => Promise<T>) => {
   return async () => {
     for (let i = 0; i < maxRetries; i++) {
       try {
@@ -233,9 +203,10 @@ export const withRetry = <T>(
 };
 
 // Currying
-export const filterByPredicate = <T>(
-  predicate: (item: T) => boolean
-) => (items: T[]): T[] => items.filter(predicate);
+export const filterByPredicate =
+  <T>(predicate: (item: T) => boolean) =>
+  (items: T[]): T[] =>
+    items.filter(predicate);
 
 const isApexClass = (c: Component) => c.type === MetadataType.ApexClass;
 const getApexClasses = filterByPredicate(isApexClass);
@@ -306,7 +277,7 @@ export class DeploymentOrchestrator {
     private readonly resolver: IDependencyResolver,
     private readonly generator: IWaveGenerator
   ) {}
-  
+
   async execute(): Promise<DeployResult> {
     const components = await this.scanner.scan();
     const graph = await this.resolver.resolve(components);
@@ -316,11 +287,7 @@ export class DeploymentOrchestrator {
 }
 
 // Usage with dependency injection
-const orchestrator = new DeploymentOrchestrator(
-  new MetadataScanner(),
-  new DependencyResolver(),
-  new WaveGenerator()
-);
+const orchestrator = new DeploymentOrchestrator(new MetadataScanner(), new DependencyResolver(), new WaveGenerator());
 
 // ❌ BAD: Hard-coded dependencies
 export class DeploymentOrchestrator {
@@ -347,22 +314,19 @@ export class FileSystemComponentRepository implements IComponentRepository {
   async findAll(): Promise<Component[]> {
     // Implementation
   }
-  
+
   async findById(id: string): Promise<Component | null> {
     // Implementation
   }
 }
 
 export class CachedComponentRepository implements IComponentRepository {
-  constructor(
-    private readonly innerRepo: IComponentRepository,
-    private readonly cache: ICache
-  ) {}
-  
+  constructor(private readonly innerRepo: IComponentRepository, private readonly cache: ICache) {}
+
   async findById(id: string): Promise<Component | null> {
     const cached = await this.cache.get(id);
     if (cached) return cached;
-    
+
     const component = await this.innerRepo.findById(id);
     if (component) await this.cache.set(id, component);
     return component;
@@ -379,11 +343,7 @@ export class CachedComponentRepository implements IComponentRepository {
 ```typescript
 // utils/errors.ts
 export class SmartDeploymentError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly context?: Record<string, unknown>
-  ) {
+  constructor(message: string, public readonly code: string, public readonly context?: Record<string, unknown>) {
     super(message);
     this.name = this.constructor.name;
     Error.captureStackTrace(this, this.constructor);
@@ -391,16 +351,9 @@ export class SmartDeploymentError extends Error {
 }
 
 export class ParseError extends SmartDeploymentError {
-  constructor(options: {
-    file: string;
-    line?: number;
-    column?: number;
-    originalError?: Error;
-  }) {
+  constructor(options: { file: string; line?: number; column?: number; originalError?: Error }) {
     super(
-      `Failed to parse file: ${options.file}${
-        options.line ? ` at line ${options.line}` : ''
-      }`,
+      `Failed to parse file: ${options.file}${options.line ? ` at line ${options.line}` : ''}`,
       'PARSE_ERROR',
       options
     );
@@ -419,9 +372,7 @@ export class DependencyError extends SmartDeploymentError {
 #### Pattern 1: Try-Catch with Context
 
 ```typescript
-export async function parseApexClass(
-  filePath: string
-): Promise<ParseResult<ApexClass>> {
+export async function parseApexClass(filePath: string): Promise<ParseResult<ApexClass>> {
   try {
     const content = await readFile(filePath);
     const ast = parseContent(content);
@@ -438,13 +389,9 @@ export async function parseApexClass(
 #### Pattern 2: Result Type
 
 ```typescript
-export type Result<T, E = Error> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
+export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 
-export async function parseApexClass(
-  filePath: string
-): Promise<Result<ApexClass, ParseError>> {
+export async function parseApexClass(filePath: string): Promise<Result<ApexClass, ParseError>> {
   try {
     const content = await readFile(filePath);
     const data = parse(content);
@@ -469,9 +416,7 @@ if (result.ok) {
 #### Pattern 3: Fallback Chain
 
 ```typescript
-export async function analyzeWithAI(
-  components: Component[]
-): Promise<AnalysisResult> {
+export async function analyzeWithAI(components: Component[]): Promise<AnalysisResult> {
   try {
     return await agentforceService.analyze(components);
   } catch (error) {
@@ -493,25 +438,22 @@ export async function withRetry<T>(
   } = {}
 ): Promise<T> {
   const { maxRetries = 3, initialDelay = 1000, maxDelay = 30000 } = options;
-  
+
   let lastError: Error;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error as Error;
-      
+
       if (attempt < maxRetries - 1) {
-        const delay = Math.min(
-          initialDelay * Math.pow(2, attempt),
-          maxDelay
-        );
+        const delay = Math.min(initialDelay * Math.pow(2, attempt), maxDelay);
         await sleep(delay);
       }
     }
   }
-  
+
   throw lastError!;
 }
 ```
@@ -523,12 +465,9 @@ export class CircuitBreaker {
   private failures = 0;
   private lastFailTime = 0;
   private state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
-  
-  constructor(
-    private readonly threshold: number = 5,
-    private readonly timeout: number = 60000
-  ) {}
-  
+
+  constructor(private readonly threshold: number = 5, private readonly timeout: number = 60000) {}
+
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     if (this.state === 'OPEN') {
       if (Date.now() - this.lastFailTime < this.timeout) {
@@ -536,7 +475,7 @@ export class CircuitBreaker {
       }
       this.state = 'HALF_OPEN';
     }
-    
+
     try {
       const result = await fn();
       this.onSuccess();
@@ -546,16 +485,16 @@ export class CircuitBreaker {
       throw error;
     }
   }
-  
+
   private onSuccess(): void {
     this.failures = 0;
     this.state = 'CLOSED';
   }
-  
+
   private onFailure(): void {
     this.failures++;
     this.lastFailTime = Date.now();
-    
+
     if (this.failures >= this.threshold) {
       this.state = 'OPEN';
     }
@@ -574,30 +513,30 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 
 describe('ApexParser', () => {
   let parser: ApexParser;
-  
+
   beforeEach(() => {
     parser = new ApexParser();
   });
-  
+
   describe('parseClass()', () => {
     it('should extract class name', () => {
       // Arrange
       const content = 'public class MyClass {}';
-      
+
       // Act
       const result = parser.parseClass(content);
-      
+
       // Assert
       expect(result.name).toBe('MyClass');
     });
-    
+
     it('should extract extends relationship', () => {
       // Arrange
       const content = 'public class MyClass extends BaseClass {}';
-      
+
       // Act
       const result = parser.parseClass(content);
-      
+
       // Assert
       expect(result.dependencies).toContain('BaseClass');
     });
@@ -632,10 +571,10 @@ describe('DeploymentOrchestrator', () => {
       scan: jest.fn().mockResolvedValue([]),
     };
     const orchestrator = new DeploymentOrchestrator(mockScanner);
-    
+
     // Act
     await orchestrator.execute();
-    
+
     // Assert
     expect(mockScanner.scan).toHaveBeenCalledTimes(1);
   });
@@ -652,7 +591,7 @@ describe('DeploymentOrchestrator', () => {
 // ✅ GOOD: Lazy load heavy dependencies
 export class ApexParser {
   private compiler?: ApexCompiler;
-  
+
   private getCompiler(): ApexCompiler {
     if (!this.compiler) {
       this.compiler = new ApexCompiler();
@@ -668,11 +607,9 @@ export class ApexParser {
 // ✅ GOOD: Memoize expensive operations
 import { memoize } from '../utils/functional.js';
 
-export const parseApexClass = memoize(
-  (filePath: string, content: string) => {
-    // Expensive parsing logic
-  }
-);
+export const parseApexClass = memoize((filePath: string, content: string) => {
+  // Expensive parsing logic
+});
 ```
 
 ### Streaming for Large Files
@@ -682,12 +619,10 @@ export const parseApexClass = memoize(
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 
-export async function* readLargeFile(
-  filePath: string
-): AsyncGenerator<string> {
+export async function* readLargeFile(filePath: string): AsyncGenerator<string> {
   const fileStream = createReadStream(filePath);
   const rl = createInterface({ input: fileStream });
-  
+
   for await (const line of rl) {
     yield line;
   }
@@ -706,16 +641,16 @@ export function parseApexClass(filePath: string, content: string): ApexClass {
   if (!filePath) {
     throw new ValidationError('filePath is required');
   }
-  
+
   if (!content || content.trim().length === 0) {
     throw new ValidationError('content cannot be empty');
   }
-  
+
   // Validate file extension
   if (!filePath.endsWith('.cls')) {
     throw new ValidationError('filePath must end with .cls');
   }
-  
+
   // Implementation
 }
 ```
@@ -756,17 +691,14 @@ const parser = new XMLParser({
 
 ```typescript
 // ✅ GOOD: Simple, focused function
-export function calculateDepth(
-  node: DependencyNode,
-  graph: DependencyGraph
-): number {
+export function calculateDepth(node: DependencyNode, graph: DependencyGraph): number {
   if (node.dependencies.size === 0) return 0;
-  
-  const depths = Array.from(node.dependencies).map(depId => {
+
+  const depths = Array.from(node.dependencies).map((depId) => {
     const depNode = graph.get(depId);
     return depNode ? calculateDepth(depNode, graph) : 0;
   });
-  
+
   return Math.max(...depths) + 1;
 }
 
@@ -783,10 +715,7 @@ export function deployWave(
 }
 
 // ✅ GOOD: Use options object
-export function deployWave(
-  wave: Wave,
-  options: DeploymentOptions
-) {
+export function deployWave(wave: Wave, options: DeploymentOptions) {
   // Clean!
 }
 ```
@@ -802,6 +731,5 @@ export function deployWave(
 
 ---
 
-**Version**: 1.0.0  
+**Version**: 1.0.0
 **Last Updated**: December 1, 2025
-
