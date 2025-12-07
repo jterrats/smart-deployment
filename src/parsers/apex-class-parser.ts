@@ -1,5 +1,6 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
+import type { ApexClassMetadata } from '../types/salesforce/apex.js';
 
 const logger = getLogger('ApexClassParser');
 
@@ -29,6 +30,7 @@ export type ApexDependency = {
 
 /**
  * Result of parsing an Apex class
+ * Optionally includes metadata from .cls-meta.xml
  */
 export type ApexParseResult = {
   className: string;
@@ -37,6 +39,7 @@ export type ApexParseResult = {
   implements: string[];
   dependencies: ApexDependency[];
   innerClasses: string[];
+  metadata?: ApexClassMetadata;
 };
 
 /**

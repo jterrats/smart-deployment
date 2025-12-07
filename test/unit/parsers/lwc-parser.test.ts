@@ -325,8 +325,8 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
       expect(result.hasMetadataXml).to.be.true;
-      expect(result.exposedAs).to.include('lightning__AppPage');
-      expect(result.exposedAs).to.include('lightning__RecordPage');
+      expect(result.metadata?.isExposed).to.include('lightning__AppPage');
+      expect(result.metadata?.isExposed).to.include('lightning__RecordPage');
     });
 
     it('should handle missing metadata XML', () => {
@@ -335,7 +335,7 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode);
 
       expect(result.hasMetadataXml).to.be.false;
-      expect(result.exposedAs).to.be.undefined;
+      expect(result.metadata?.isExposed).to.be.undefined;
     });
 
     it('should handle invalid metadata XML gracefully', () => {
@@ -345,7 +345,7 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
       expect(result.hasMetadataXml).to.be.true;
-      expect(result.exposedAs).to.be.undefined;
+      expect(result.metadata?.isExposed).to.be.undefined;
     });
   });
 
@@ -511,7 +511,7 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
       expect(result.hasMetadataXml).to.be.true;
-      expect(result.exposedAs).to.equal('lightning__AppPage');
+      expect(result.metadata?.isExposed).to.equal('lightning__AppPage');
     });
 
     it('should handle multiple targets in metadata XML', () => {
@@ -527,9 +527,9 @@ describe('LWC Parser', () => {
 
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
-      expect(result.exposedAs).to.include('lightning__AppPage');
-      expect(result.exposedAs).to.include('lightning__RecordPage');
-      expect(result.exposedAs).to.include('lightning__HomePage');
+      expect(result.metadata?.isExposed).to.include('lightning__AppPage');
+      expect(result.metadata?.isExposed).to.include('lightning__RecordPage');
+      expect(result.metadata?.isExposed).to.include('lightning__HomePage');
     });
   });
 

@@ -1,5 +1,6 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
+import type { AuraComponentMetadata, AuraComponentType } from '../types/salesforce/aura.js';
 
 const logger = getLogger('AuraParser');
 
@@ -19,10 +20,11 @@ export type AuraDependency = {
 
 /**
  * Result of parsing an Aura component
+ * Optionally includes metadata from .cmp-meta.xml, .app-meta.xml, etc.
  */
 export type AuraParseResult = {
   componentName: string;
-  componentType: 'component' | 'application' | 'event' | 'interface';
+  componentType: AuraComponentType;
   apexController?: string;
   extendsComponent?: string;
   implementsInterfaces: string[];
@@ -32,6 +34,7 @@ export type AuraParseResult = {
   hasController: boolean;
   hasHelper: boolean;
   hasStyle: boolean;
+  metadata?: AuraComponentMetadata;
 };
 
 /**

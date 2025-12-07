@@ -5,6 +5,7 @@
 import { parseXml } from '../utils/xml.js';
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
+import type { FlowMetadata, FlowProcessType, FlowStatus } from '../types/salesforce/flow.js';
 
 const logger = getLogger('FlowParser');
 
@@ -14,9 +15,9 @@ const logger = getLogger('FlowParser');
 export type FlowDependencyType = 'apex_action' | 'subflow' | 'record' | 'genai_prompt' | 'screen_field' | 'decision';
 
 /**
- * Flow types
+ * Re-export FlowProcessType and FlowStatus from Salesforce types
  */
-export type FlowType = 'Screen' | 'RecordTriggered' | 'Scheduled' | 'Autolaunched' | 'CustomEvent' | 'ActionPlan';
+export type { FlowProcessType, FlowStatus } from '../types/salesforce/flow.js';
 
 /**
  * Represents a dependency found in a Flow
@@ -29,16 +30,18 @@ export type FlowDependency = {
 
 /**
  * Result of parsing a Flow
+ * Optionally includes full metadata from Flow-meta.xml
  */
 export type FlowParseResult = {
   flowName: string;
-  flowType?: FlowType;
-  status?: string;
+  flowType?: FlowProcessType;
+  status?: FlowStatus;
   apexActions: string[];
   subflows: string[];
   recordReferences: string[];
   genaiPrompts: string[];
   dependencies: FlowDependency[];
+  metadata?: FlowMetadata;
 };
 
 /**
@@ -314,8 +317,8 @@ export function parseFlow(filePath: string, content: string): FlowParseResult {
     }
 
     // Extract flow metadata
-    const flowType = flowData.processType as FlowType | undefined;
-    const status = flowData.status;
+    const flowType = flowData.processType as FlowProcessType | undefined;
+    const status = flowData.status as FlowStatus | undefined;
 
     // Extract all dependency types
     const apexActions = extractApexActions(flowData);
