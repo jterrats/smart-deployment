@@ -3,6 +3,8 @@
  * Represents ApexPage and ApexComponent metadata structures
  */
 
+import type { PackageVersion } from './common.js';
+
 /**
  * Visualforce Page metadata (.page-meta.xml)
  */
@@ -23,15 +25,6 @@ export type VisualforceComponentMetadata = {
   label: string;
   description?: string;
   packageVersions?: PackageVersion[];
-};
-
-/**
- * Package version reference
- */
-export type PackageVersion = {
-  majorNumber: number;
-  minorNumber: number;
-  namespace: string;
 };
 
 /**

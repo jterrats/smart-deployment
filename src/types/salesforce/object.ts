@@ -3,6 +3,8 @@
  * Represents CustomObject and CustomField metadata structures
  */
 
+import type { Encoding } from './common.js';
+
 /**
  * Custom Object metadata (.object-meta.xml)
  */
@@ -519,21 +521,6 @@ export type WebLinkAvailability = 'online' | 'offline';
  * Web link display type
  */
 export type WebLinkDisplayType = 'link' | 'button' | 'massActionButton';
-
-/**
- * Encoding
- */
-export type Encoding =
-  | 'UTF-8'
-  | 'ISO-8859-1'
-  | 'Shift_JIS'
-  | 'ISO-2022-JP'
-  | 'EUC-JP'
-  | 'ks_c_5601-1987'
-  | 'Big5'
-  | 'GB2312'
-  | 'Big5-HKSCS'
-  | 'x-SJIS_0213';
 
 /**
  * Web link type

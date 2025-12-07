@@ -3,6 +3,8 @@
  * Represents EmailTemplate metadata structures
  */
 
+import type { Encoding, PackageVersion } from './common.js';
+
 /**
  * Email Template metadata (.email-meta.xml)
  */
@@ -47,35 +49,11 @@ export type EmailTemplateType = 'text' | 'html' | 'custom' | 'visualforce';
 export type EmailTemplateUiType = 'Aloha' | 'SFX' | 'SFX_MailMerge';
 
 /**
- * Encoding
- */
-export type Encoding =
-  | 'UTF-8'
-  | 'ISO-8859-1'
-  | 'Shift_JIS'
-  | 'ISO-2022-JP'
-  | 'EUC-JP'
-  | 'ks_c_5601-1987'
-  | 'Big5'
-  | 'GB2312'
-  | 'Big5-HKSCS'
-  | 'x-SJIS_0213';
-
-/**
  * Attachment
  */
 export type Attachment = {
   content: string;
   name: string;
-};
-
-/**
- * Package Version
- */
-export type PackageVersion = {
-  majorNumber: number;
-  minorNumber: number;
-  namespace: string;
 };
 
 /**

@@ -8,6 +8,9 @@
  * @module types/salesforce
  */
 
+// Common Types (shared across multiple metadata types)
+export * from './common.js';
+
 // Apex Types
 export * from './apex.js';
 

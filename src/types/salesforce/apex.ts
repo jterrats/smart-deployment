@@ -3,6 +3,8 @@
  * Represents ApexClass and ApexTrigger metadata structures
  */
 
+import type { PackageVersion } from './common.js';
+
 /**
  * Apex Class metadata (ApexClass.cls-meta.xml)
  */
@@ -25,15 +27,6 @@ export type ApexTriggerMetadata = {
  * Apex status values
  */
 export type ApexStatus = 'Active' | 'Inactive' | 'Deleted';
-
-/**
- * Package version reference
- */
-export type PackageVersion = {
-  majorNumber: number;
-  minorNumber: number;
-  namespace: string;
-};
 
 /**
  * Apex sharing mode
