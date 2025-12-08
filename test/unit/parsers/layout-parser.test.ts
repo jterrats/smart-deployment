@@ -20,7 +20,7 @@ describe('Layout Parser', () => {
   });
 
   describe('parseLayout', () => {
-    it('should extract related object from layout name (AC-1)', async () => {
+    it('US-021-AC-1: should extract related object from layout name', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <layoutSections>
@@ -47,7 +47,7 @@ describe('Layout Parser', () => {
       expect(result.dependencies.object).to.equal('Account');
     });
 
-    it('should extract custom object from layout name (AC-1)', async () => {
+    it('US-021-AC-1: should extract custom object from layout name', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
 </Layout>`;
@@ -60,7 +60,7 @@ describe('Layout Parser', () => {
       expect(result.object).to.equal('CustomObject__c');
     });
 
-    it('should extract custom button references (AC-2)', async () => {
+    it('US-021-AC-2: should extract custom button references', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <customButtons>New_Custom_Button</customButtons>
@@ -78,7 +78,7 @@ describe('Layout Parser', () => {
       expect(result.dependencies.customButtons).to.deep.equal(result.customButtons);
     });
 
-    it('should extract custom buttons from related lists (AC-2)', async () => {
+    it('US-021-AC-2: should extract custom buttons from related lists', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <relatedLists>
@@ -95,7 +95,7 @@ describe('Layout Parser', () => {
       expect(result.customButtons).to.include('New_Related');
     });
 
-    it('should extract Visualforce page references (AC-3)', async () => {
+    it('US-021-AC-3: should extract Visualforce page references', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <layoutSections>
@@ -121,7 +121,7 @@ describe('Layout Parser', () => {
       expect(result.dependencies.visualforcePages).to.deep.equal(result.visualforcePages);
     });
 
-    it('should extract Visualforce pages from feed layout (AC-3)', async () => {
+    it('US-021-AC-3: should extract Visualforce pages from feed layout', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <feedLayout>
@@ -144,7 +144,7 @@ describe('Layout Parser', () => {
       expect(result.visualforcePages).to.include.members(['LeftSidebar', 'RightPanel']);
     });
 
-    it('should extract field references (AC-4)', async () => {
+    it('US-021-AC-4: should extract field references', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <layoutSections>
@@ -178,7 +178,7 @@ describe('Layout Parser', () => {
       expect(result.dependencies.fields).to.deep.equal(result.fields);
     });
 
-    it('should extract fields from mini layout (AC-4)', async () => {
+    it('US-021-AC-4: should extract fields from mini layout', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <miniLayout>
@@ -196,7 +196,7 @@ describe('Layout Parser', () => {
       expect(result.fields).to.include.members(['Id', 'Name', 'Owner']);
     });
 
-    it('should extract related list references (AC-5)', async () => {
+    it('US-021-AC-5: should extract related list references', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <relatedLists>
@@ -220,7 +220,7 @@ describe('Layout Parser', () => {
       expect(result.dependencies.relatedLists).to.deep.equal(result.relatedLists);
     });
 
-    it('should extract fields from related lists (AC-5)', async () => {
+    it('US-021-AC-5: should extract fields from related lists', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <relatedLists>
@@ -239,7 +239,7 @@ describe('Layout Parser', () => {
       expect(result.fields).to.include.members(['NAME', 'STAGE_NAME', 'AMOUNT']);
     });
 
-    it('should link to all dependent metadata (AC-6)', async () => {
+    it('US-021-AC-6: should link to all dependent metadata', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <customButtons>Custom_Button</customButtons>
@@ -286,7 +286,7 @@ describe('Layout Parser', () => {
       expect(result.dependencies.customLinks).to.include('CustomLink1');
     });
 
-    it('should handle layout with quick actions from platformActionList (AC-6)', async () => {
+    it('US-021-AC-6: should handle layout with quick actions from platformActionList', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
     <platformActionList>
