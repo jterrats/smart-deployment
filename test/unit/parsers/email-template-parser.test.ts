@@ -19,7 +19,7 @@ describe('Email Template Parser', () => {
       const result = await parseEmailTemplate('SimpleTemplate', content, metadata);
 
       expect(result.name).to.equal('SimpleTemplate');
-      expect(result.templateType).to.equal('text');
+      expect(result.type).to.equal('text');
       expect(result.mergeFields).to.be.empty;
       expect(result.dependencies).to.be.empty;
     });
@@ -130,7 +130,7 @@ describe('Email Template Parser', () => {
 
       const result = await parseEmailTemplate('VFTemplate', content, metadata);
 
-      expect(result.templateType).to.equal('visualforce');
+      expect(result.type).to.equal('visualforce');
       expect(result.visualforcePage).to.equal('MyVFPage');
       expect(result.dependencies.some((d) => d.type === 'visualforce_page')).to.be.true;
     });
@@ -360,7 +360,7 @@ describe('Email Template Parser', () => {
       const result = await parseEmailTemplate('MetadataTest', content, metadata);
 
       expect(result.name).to.equal('MetadataTest');
-      expect(result.templateType).to.equal('html');
+      expect(result.type).to.equal('html');
     });
 
     it('should handle malformed XML gracefully', async () => {
@@ -394,7 +394,7 @@ describe('Email Template Parser', () => {
 
       const result = await parseEmailTemplate('TextTemplate', content, metadata);
 
-      expect(result.templateType).to.equal('text');
+      expect(result.type).to.equal('text');
     });
 
     it('should detect html template type', async () => {
@@ -411,7 +411,7 @@ describe('Email Template Parser', () => {
 
       const result = await parseEmailTemplate('HTMLTemplate', content, metadata);
 
-      expect(result.templateType).to.equal('html');
+      expect(result.type).to.equal('html');
     });
 
     it('should detect visualforce template type', async () => {
@@ -428,7 +428,7 @@ describe('Email Template Parser', () => {
 
       const result = await parseEmailTemplate('VFTemplate', content, metadata);
 
-      expect(result.templateType).to.equal('visualforce');
+      expect(result.type).to.equal('visualforce');
     });
 
     it('should detect custom template type', async () => {
@@ -445,7 +445,7 @@ describe('Email Template Parser', () => {
 
       const result = await parseEmailTemplate('CustomTemplate', content, metadata);
 
-      expect(result.templateType).to.equal('custom');
+      expect(result.type).to.equal('custom');
     });
   });
 
@@ -545,7 +545,7 @@ describe('Email Template Parser', () => {
       const result = await parseEmailTemplate('ComprehensiveEmail', content, metadata);
 
       expect(result.name).to.equal('ComprehensiveEmail');
-      expect(result.templateType).to.equal('html');
+      expect(result.type).to.equal('html');
       expect(result.relatedEntityType).to.equal('Contact');
 
       // Merge fields

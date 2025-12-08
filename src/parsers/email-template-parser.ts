@@ -1,6 +1,7 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
 import { parseXml } from '../utils/xml.js';
+import type { EmailTemplateMetadata, EmailTemplateType } from '../types/salesforce/email.js';
 
 const logger = getLogger('EmailTemplateParser');
 
@@ -37,16 +38,15 @@ export type MergeField = {
 
 /**
  * Result of parsing an email template
+ * Extends EmailTemplateMetadata with parsed dependencies
+ * Overrides attachments to be string[] for easier consumption
  */
-export type EmailTemplateParseResult = {
-  name: string;
-  templateType: 'text' | 'html' | 'custom' | 'visualforce';
-  relatedEntityType?: string;
-  visualforcePage?: string;
+export type EmailTemplateParseResult = Omit<EmailTemplateMetadata, 'attachments'> & {
   mergeFields: MergeField[];
-  attachments: string[];
   customLabels: string[];
   dependencies: EmailTemplateDependency[];
+  visualforcePage?: string;
+  attachments?: string[]; // Override to be string[] instead of Attachment[]
 };
 
 /**
@@ -91,73 +91,6 @@ function extractMergeFields(content: string): MergeField[] {
 }
 
 /**
- * Email template metadata structure
- */
-type EmailTemplateMetadataXml = {
-  type?: string;
-  templateType?: string;
-  visualforcePage?: string;
-  relatedEntityType?: string;
-  subject?: string;
-  attachments?: Array<{ name: string }> | { name: string };
-  attachedContentDocuments?: string[] | string;
-};
-
-/**
- * Extract Visualforce page reference
- *
- * @ac US-019-AC-2: Extract Visualforce page references
- */
-function extractVisualforcePage(metadata: EmailTemplateMetadataXml): string | undefined {
-  // If template type is visualforce, it might reference a VF page
-  if (metadata.type === 'visualforce' || metadata.type === 'custom') {
-    // The page name might be in the content or in a specific field
-    return metadata.visualforcePage;
-  }
-  return undefined;
-}
-
-/**
- * Extract related entity type from metadata
- *
- * @ac US-019-AC-3: Extract relatedEntityType (target SObject)
- */
-function extractRelatedEntityType(metadata: EmailTemplateMetadataXml): string | undefined {
-  return metadata.relatedEntityType;
-}
-
-/**
- * Extract attachments
- *
- * @ac US-019-AC-4: Extract attachment references
- */
-function extractAttachments(metadata: EmailTemplateMetadataXml): string[] {
-  const attachments: string[] = [];
-
-  if (metadata.attachments) {
-    const attachmentList = Array.isArray(metadata.attachments) ? metadata.attachments : [metadata.attachments];
-    for (const attachment of attachmentList) {
-      if (attachment?.name) {
-        attachments.push(attachment.name);
-      }
-    }
-  }
-
-  if (metadata.attachedContentDocuments) {
-    const docList = Array.isArray(metadata.attachedContentDocuments)
-      ? metadata.attachedContentDocuments
-      : [metadata.attachedContentDocuments];
-    for (const doc of docList) {
-      if (doc) {
-        attachments.push(doc);
-      }
-    }
-  }
-
-  return attachments;
-}
-
-/**
  * Extract custom label references
  *
  * @ac US-019-AC-5: Extract custom label references
@@ -186,30 +119,60 @@ function extractCustomLabels(content: string): string[] {
  *
  * @ac US-019-AC-6: Parse template metadata (.email-meta.xml)
  */
-async function parseMetadataXml(metadataContent: string): Promise<EmailTemplateMetadataXml> {
+async function parseMetadataXml(metadataContent: string): Promise<EmailTemplateMetadata> {
   try {
     const parsed = await parseXml(metadataContent);
     const parsedObj = parsed as Record<string, unknown>;
-    return (parsedObj.EmailTemplate as EmailTemplateMetadataXml) || (parsedObj as EmailTemplateMetadataXml);
+    const emailTemplate = (parsedObj.EmailTemplate as Record<string, unknown>) || parsedObj;
+
+    // Normalize arrays (XML parser returns single items as objects, not arrays)
+    const normalizeArray = <T>(value: T | T[] | undefined): T[] | undefined => {
+      if (value === undefined) return undefined;
+      return Array.isArray(value) ? value : [value];
+    };
+
+    // Normalize attachments (XML can have just <name> or full <content><name> structure)
+    let attachments = normalizeArray(emailTemplate.attachments as EmailTemplateMetadata['attachments']);
+    if (attachments) {
+      attachments = attachments.map((att) => {
+        // If attachment is a string, it's just the name
+        if (typeof att === 'string') {
+          return { name: att, content: '' };
+        }
+        // If it has a 'name' key with no content, set content to empty
+        if (typeof att === 'object' && att.name && !att.content) {
+          return { name: String(att.name), content: '' };
+        }
+        return att as { name: string; content: string };
+      });
+    }
+
+    // Map to EmailTemplateMetadata
+    const metadata: EmailTemplateMetadata = {
+      apiVersion: emailTemplate.apiVersion as string | undefined,
+      available: (emailTemplate.available as boolean) ?? false,
+      description: emailTemplate.description as string | undefined,
+      encodingKey: ((emailTemplate.encodingKey as string) ?? 'UTF-8') as EmailTemplateMetadata['encodingKey'],
+      name: (emailTemplate.name as string) ?? '',
+      style: ((emailTemplate.style as string) ?? 'none') as EmailTemplateMetadata['style'],
+      subject: emailTemplate.subject as string | undefined,
+      textOnly: emailTemplate.textOnly as string | undefined,
+      type: ((emailTemplate.type as string) ?? 'text') as EmailTemplateType,
+      uiType: emailTemplate.uiType as EmailTemplateMetadata['uiType'],
+      attachedContentDocuments: normalizeArray(emailTemplate.attachedContentDocuments as string | string[] | undefined),
+      attachments,
+      letterhead: emailTemplate.letterhead as string | undefined,
+      packageVersions: emailTemplate.packageVersions as EmailTemplateMetadata['packageVersions'],
+      relatedEntityType: emailTemplate.relatedEntityType as string | undefined,
+      visualforcePage: emailTemplate.visualforcePage as string | undefined,
+    };
+
+    return metadata;
   } catch (error) {
     throw new ParsingError('Failed to parse email template metadata XML', {
       originalError: error instanceof Error ? error.message : String(error),
     });
   }
-}
-
-/**
- * Determine template type
- *
- * @ac US-019-AC-7: Support all template types (text, html, visualforce, custom)
- */
-function determineTemplateType(metadata: EmailTemplateMetadataXml): 'text' | 'html' | 'custom' | 'visualforce' {
-  const type = metadata.type ?? metadata.templateType;
-  if (type === 'text' || type === 'html' || type === 'custom' || type === 'visualforce') {
-    return type;
-  }
-  // Default to text if unknown
-  return 'text';
 }
 
 /**
@@ -222,6 +185,10 @@ function determineTemplateType(metadata: EmailTemplateMetadataXml): 'text' | 'ht
  *
  * @throws {ParsingError} If the template cannot be parsed
  *
+ * @ac US-019-AC-2: Extract Visualforce page references
+ * @ac US-019-AC-3: Extract relatedEntityType (target SObject)
+ * @ac US-019-AC-4: Extract attachment references
+ * @ac US-019-AC-7: Support all template types (text, html, visualforce, custom)
  * @ac US-019-AC-8: Handle both body and subject merge fields
  *
  * @example
@@ -243,42 +210,32 @@ export async function parseEmailTemplate(
   try {
     logger.debug(`Parsing email template: ${templateName}`);
 
-    // Parse metadata XML
+    // Parse metadata XML using Salesforce types
     const metadata = await parseMetadataXml(metadataContent);
-
-    // Determine template type
-    const templateType = determineTemplateType(metadata);
-
-    // Extract related entity type
-    const relatedEntityType = extractRelatedEntityType(metadata);
-
-    // Extract Visualforce page reference
-    const visualforcePage = extractVisualforcePage(metadata);
 
     // Extract merge fields from content and subject
     const contentMergeFields = extractMergeFields(templateContent);
-    const subjectMergeFields = typeof metadata.subject === 'string' ? extractMergeFields(metadata.subject) : [];
+    const subjectMergeFields = metadata.subject ? extractMergeFields(metadata.subject) : [];
     const mergeFields = [...contentMergeFields, ...subjectMergeFields];
 
     // Extract custom labels
     const customLabels = extractCustomLabels(templateContent);
 
-    // Extract attachments
-    const attachments = extractAttachments(metadata);
-
     // Build dependencies array
     const dependencies: EmailTemplateDependency[] = [];
 
     // Add related entity type as dependency
-    if (relatedEntityType) {
+    if (metadata.relatedEntityType) {
       dependencies.push({
         type: 'related_entity',
-        name: relatedEntityType,
+        name: metadata.relatedEntityType,
       });
     }
 
-    // Add Visualforce page as dependency
-    if (visualforcePage) {
+    // Add Visualforce page as dependency (for visualforce template type)
+    let visualforcePage: string | undefined;
+    if (metadata.type === 'visualforce' && metadata.visualforcePage) {
+      visualforcePage = metadata.visualforcePage;
       dependencies.push({
         type: 'visualforce_page',
         name: visualforcePage,
@@ -304,30 +261,43 @@ export async function parseEmailTemplate(
     }
 
     // Add attachments as dependencies
-    for (const attachment of attachments) {
-      dependencies.push({
-        type: 'attachment',
-        name: attachment,
-      });
+    if (metadata.attachments) {
+      for (const attachment of metadata.attachments) {
+        dependencies.push({
+          type: 'attachment',
+          name: attachment.name,
+        });
+      }
     }
 
+    if (metadata.attachedContentDocuments) {
+      for (const doc of metadata.attachedContentDocuments) {
+        dependencies.push({
+          type: 'attachment',
+          name: doc,
+        });
+      }
+    }
+
+    // Map attachments to string array (just names) and include attachedContentDocuments
+    const attachmentNames = metadata.attachments?.map((att) => att.name) ?? [];
+    const allAttachments = [...attachmentNames, ...(metadata.attachedContentDocuments ?? [])];
+
     const result: EmailTemplateParseResult = {
-      name: templateName,
-      templateType,
-      relatedEntityType,
-      visualforcePage,
+      ...metadata,
+      attachments: allAttachments.length > 0 ? allAttachments : undefined,
       mergeFields,
-      attachments,
       customLabels,
       dependencies,
+      visualforcePage,
     };
 
     logger.debug(`Parsed email template: ${templateName}`, {
-      templateType,
-      relatedEntityType: !!relatedEntityType,
+      templateType: metadata.type,
+      relatedEntityType: !!metadata.relatedEntityType,
       mergeFieldsCount: mergeFields.length,
       customLabelsCount: customLabels.length,
-      attachmentsCount: attachments.length,
+      attachmentsCount: (metadata.attachments?.length ?? 0) + (metadata.attachedContentDocuments?.length ?? 0),
       dependenciesCount: dependencies.length,
     });
 

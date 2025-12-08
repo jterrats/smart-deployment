@@ -1,19 +1,13 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
+import type { ApexTriggerMetadata, ApexTriggerEvent } from '../types/salesforce/apex.js';
 
 const logger = getLogger('ApexTriggerParser');
 
 /**
- * Apex trigger event types
+ * Re-export ApexTriggerEvent from Salesforce types for backwards compatibility
  */
-export type TriggerEvent =
-  | 'before insert'
-  | 'before update'
-  | 'before delete'
-  | 'after insert'
-  | 'after update'
-  | 'after delete'
-  | 'after undelete';
+export type { ApexTriggerEvent as TriggerEvent } from '../types/salesforce/apex.js';
 
 /**
  * Apex trigger dependency types
@@ -32,13 +26,15 @@ export type TriggerDependency = {
 
 /**
  * Result of parsing an Apex trigger
+ * Optionally includes metadata from .trigger-meta.xml
  */
 export type TriggerParseResult = {
   triggerName: string;
   sobjectType: string;
-  events: TriggerEvent[];
+  events: ApexTriggerEvent[];
   handlers: TriggerDependency[];
   dependencies: TriggerDependency[];
+  metadata?: ApexTriggerMetadata;
 };
 
 /**
@@ -122,7 +118,7 @@ function extractNamespace(className: string): { namespace?: string; cleanName: s
 function extractTriggerDeclaration(
   code: string,
   filePath: string
-): { triggerName: string; sobjectType: string; events: TriggerEvent[] } {
+): { triggerName: string; sobjectType: string; events: ApexTriggerEvent[] } {
   // Pattern: trigger TriggerName on SObjectType (event1, event2, ...)
   const triggerPattern = /trigger\s+([a-zA-Z][a-zA-Z0-9_]*)\s+on\s+([a-zA-Z][a-zA-Z0-9_]*)\s*\(\s*([^)]+)\s*\)/i;
   const match = code.match(triggerPattern);
@@ -142,7 +138,7 @@ function extractTriggerDeclaration(
   const eventsList = eventsStr
     .split(',')
     .map((e) => e.trim().toLowerCase())
-    .filter((e) => e.length > 0) as TriggerEvent[];
+    .filter((e) => e.length > 0) as ApexTriggerEvent[];
 
   return { triggerName, sobjectType, events: eventsList };
 }
