@@ -58,13 +58,12 @@ export type CustomMetadataParseResult = CustomMetadataType & {
  *
  * @ac US-026-AC-1: Extract field definitions
  * @ac US-026-AC-2: Extract relationship references
- * @ac US-026-AC-5: Handle CMT splitting (200 records/wave)
  *
  * @example
  * ```typescript
  * const result = await parseCustomMetadataType('MyConfig__mdt', metadataXml);
  * console.log(result.fields); // [{fullName: 'Value__c', ...}]
- * console.log(result.requiresSplitting); // true if >200 records
+ * console.log(result.dependencies); // [{type: 'relationship_field', ...}]
  * ```
  */
 export async function parseCustomMetadataType(
@@ -242,9 +241,12 @@ export async function parseCustomMetadataRecord(
  * @example
  * ```typescript
  * const typeResult = await parseCustomMetadataType('MyConfig__mdt', typeXml);
- * const records = await Promise.all(recordFiles.map(f => parseCustomMetadataRecord(f.name, f.content)));
+ * const records = await Promise.all(
+ *   recordFiles.map(f => parseCustomMetadataRecord(f.name, f.content))
+ * );
  * const grouped = groupCustomMetadataWithRecords(typeResult, records);
  * console.log(grouped.requiresSplitting); // true if >200 records
+ * console.log(grouped.splitBatches); // number of 200-record batches
  * ```
  */
 export function groupCustomMetadataWithRecords(
