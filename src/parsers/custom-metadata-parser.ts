@@ -1,6 +1,12 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
 import { parseXml } from '../utils/xml.js';
+import type {
+  CustomMetadataType,
+  CustomMetadataField,
+  CustomMetadataRecord as CMDRecord,
+  CustomMetadataFieldType,
+} from '../types/salesforce/custom-metadata.js';
 
 const logger = getLogger('CustomMetadataParser');
 
@@ -20,37 +26,20 @@ export type CustomMetadataDependency = {
 };
 
 /**
- * Custom Metadata Type field
+ * Custom Metadata Record (extended with fullName and simplified values for parsing)
  */
-export type CustomMetadataField = {
+export type CustomMetadataRecord = Omit<CMDRecord, 'values'> & {
   fullName: string;
-  label: string;
-  type: string;
-  required?: boolean;
-  unique?: boolean;
-  description?: string;
-  referenceTo?: string; // For EntityDefinition lookups
-};
-
-/**
- * Custom Metadata Type Record
- */
-export type CustomMetadataRecord = {
-  fullName: string;
-  label: string;
-  protected?: boolean;
-  values: Record<string, unknown>;
+  values: Record<string, unknown>; // Simplified from CustomMetadataRecordValue[] for easier access
 };
 
 /**
  * Result of parsing a Custom Metadata Type
+ * Extends CustomMetadataType with parsing-specific fields
  */
-export type CustomMetadataParseResult = {
+export type CustomMetadataParseResult = CustomMetadataType & {
   typeName: string;
-  label: string;
-  pluralLabel: string;
-  description?: string;
-  fields: CustomMetadataField[];
+  fields: CustomMetadataField[]; // Override to ensure always defined
   records: CustomMetadataRecord[];
   dependencies: CustomMetadataDependency[];
   // CMT-specific splitting info
@@ -100,7 +89,7 @@ export async function parseCustomMetadataType(
     const fields: CustomMetadataField[] = fieldsRaw.map((field) => ({
       fullName: String(field.fullName ?? ''),
       label: String(field.label ?? ''),
-      type: String(field.type ?? 'Text'),
+      type: String(field.type ?? 'Text') as CustomMetadataFieldType,
       required: field.required ? Boolean(field.required) : undefined,
       unique: field.unique ? Boolean(field.unique) : undefined,
       description: field.description ? String(field.description) : undefined,
