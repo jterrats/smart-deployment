@@ -34,6 +34,7 @@ export * from './object.js';
 
 // Custom Metadata Type
 export * from './custom-metadata.js';
+export * from './layout.js';
 
 // Permission Set and Profile Types
 export * from './permission.js';

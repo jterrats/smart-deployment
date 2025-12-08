@@ -300,7 +300,7 @@ describe('Apex Trigger Parser', () => {
     it('should remove multi-line comments', () => {
       const code = `
         trigger AccountTrigger on Account (before insert) {
-          /* 
+          /*
            * FakeHandler.process(Trigger.new);
            * AnotherFakeHandler.handle();
            */
