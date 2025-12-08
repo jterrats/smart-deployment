@@ -32,6 +32,9 @@ export * from './lwc.js';
 // Custom Object and Field Types
 export * from './object.js';
 
+// Custom Metadata Type
+export * from './custom-metadata.js';
+
 // Permission Set and Profile Types
 export * from './permission.js';
 
