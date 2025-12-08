@@ -3,6 +3,8 @@
  * Represents CustomMetadata metadata structures (.md-meta.xml and .md files)
  */
 
+import type { FieldManageability } from './object.js';
+
 /**
  * Custom Metadata Type metadata (.md-meta.xml)
  */
@@ -66,11 +68,6 @@ export type CustomMetadataFieldType =
   | 'TextArea'
   | 'LongTextArea'
   | 'Url';
-
-/**
- * Field Manageability
- */
-export type FieldManageability = 'DeveloperControlled' | 'SubscriberControlled';
 
 /**
  * Custom Metadata Value Set (for picklists)
