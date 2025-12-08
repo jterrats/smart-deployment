@@ -1,0 +1,389 @@
+/**
+ * Unit tests for Layout Parser
+ */
+
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { expect } from 'chai';
+import { describe, it } from 'mocha';
+import { parseLayout } from '../../../src/parsers/layout-parser.js';
+
+describe('Layout Parser', () => {
+  const testDir = join(process.cwd(), '.tmp-test-layout-parser');
+
+  before(async () => {
+    await mkdir(testDir, { recursive: true });
+  });
+
+  after(async () => {
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  describe('parseLayout', () => {
+    it('should extract related object from layout name (AC-1)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <layoutSections>
+        <customLabel>false</customLabel>
+        <detailHeading>true</detailHeading>
+        <editHeading>true</editHeading>
+        <label>Information</label>
+        <layoutColumns>
+            <layoutItems>
+                <field>Name</field>
+            </layoutItems>
+        </layoutColumns>
+        <style>TwoColumnsTopToBottom</style>
+    </layoutSections>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Account Layout.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Account Layout');
+
+      expect(result.object).to.equal('Account');
+      expect(result.name).to.equal('Account-Account Layout');
+      expect(result.dependencies.object).to.equal('Account');
+    });
+
+    it('should extract custom object from layout name (AC-1)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+</Layout>`;
+
+      const filePath = join(testDir, 'CustomObject__c-Custom Layout.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'CustomObject__c-Custom Layout');
+
+      expect(result.object).to.equal('CustomObject__c');
+    });
+
+    it('should extract custom button references (AC-2)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customButtons>New_Custom_Button</customButtons>
+    <customButtons>Edit_Button</customButtons>
+    <customButtons>Delete_Button</customButtons>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-With Buttons.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-With Buttons');
+
+      expect(result.customButtons).to.be.an('array').with.lengthOf(3);
+      expect(result.customButtons).to.include.members(['New_Custom_Button', 'Edit_Button', 'Delete_Button']);
+      expect(result.dependencies.customButtons).to.deep.equal(result.customButtons);
+    });
+
+    it('should extract custom buttons from related lists (AC-2)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <relatedLists>
+        <customButtons>New_Related</customButtons>
+        <relatedList>Opportunities</relatedList>
+    </relatedLists>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Related Buttons.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Related Buttons');
+
+      expect(result.customButtons).to.include('New_Related');
+    });
+
+    it('should extract Visualforce page references (AC-3)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <layoutSections>
+        <layoutColumns>
+            <layoutItems>
+                <page>AccountDashboard</page>
+            </layoutItems>
+            <layoutItems>
+                <page>AccountDetails</page>
+            </layoutItems>
+        </layoutColumns>
+        <style>OneColumn</style>
+    </layoutSections>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-VF Pages.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-VF Pages');
+
+      expect(result.visualforcePages).to.be.an('array').with.lengthOf(2);
+      expect(result.visualforcePages).to.include.members(['AccountDashboard', 'AccountDetails']);
+      expect(result.dependencies.visualforcePages).to.deep.equal(result.visualforcePages);
+    });
+
+    it('should extract Visualforce pages from feed layout (AC-3)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <feedLayout>
+        <leftComponents>
+            <componentType>Visualforce</componentType>
+            <page>LeftSidebar</page>
+        </leftComponents>
+        <rightComponents>
+            <componentType>Visualforce</componentType>
+            <page>RightPanel</page>
+        </rightComponents>
+    </feedLayout>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Feed VF.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Feed VF');
+
+      expect(result.visualforcePages).to.include.members(['LeftSidebar', 'RightPanel']);
+    });
+
+    it('should extract field references (AC-4)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <layoutSections>
+        <layoutColumns>
+            <layoutItems>
+                <field>Name</field>
+            </layoutItems>
+            <layoutItems>
+                <field>Industry</field>
+            </layoutItems>
+        </layoutColumns>
+        <layoutColumns>
+            <layoutItems>
+                <field>Phone</field>
+            </layoutItems>
+            <layoutItems>
+                <field>Website</field>
+            </layoutItems>
+        </layoutColumns>
+        <style>TwoColumnsLeftToRight</style>
+    </layoutSections>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Fields.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Fields');
+
+      expect(result.fields).to.be.an('array').with.lengthOf(4);
+      expect(result.fields).to.include.members(['Name', 'Industry', 'Phone', 'Website']);
+      expect(result.dependencies.fields).to.deep.equal(result.fields);
+    });
+
+    it('should extract fields from mini layout (AC-4)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <miniLayout>
+        <fields>Id</fields>
+        <fields>Name</fields>
+        <fields>Owner</fields>
+    </miniLayout>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Mini.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Mini');
+
+      expect(result.fields).to.include.members(['Id', 'Name', 'Owner']);
+    });
+
+    it('should extract related list references (AC-5)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <relatedLists>
+        <relatedList>Opportunities</relatedList>
+    </relatedLists>
+    <relatedLists>
+        <relatedList>Contacts</relatedList>
+    </relatedLists>
+    <relatedLists>
+        <relatedList>Cases</relatedList>
+    </relatedLists>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Related Lists.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Related Lists');
+
+      expect(result.relatedLists).to.be.an('array').with.lengthOf(3);
+      expect(result.relatedLists).to.include.members(['Opportunities', 'Contacts', 'Cases']);
+      expect(result.dependencies.relatedLists).to.deep.equal(result.relatedLists);
+    });
+
+    it('should extract fields from related lists (AC-5)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <relatedLists>
+        <fields>NAME</fields>
+        <fields>STAGE_NAME</fields>
+        <fields>AMOUNT</fields>
+        <relatedList>Opportunities</relatedList>
+    </relatedLists>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Related List Fields.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Related List Fields');
+
+      expect(result.fields).to.include.members(['NAME', 'STAGE_NAME', 'AMOUNT']);
+    });
+
+    it('should link to all dependent metadata (AC-6)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customButtons>Custom_Button</customButtons>
+    <layoutSections>
+        <layoutColumns>
+            <layoutItems>
+                <field>Name</field>
+            </layoutItems>
+            <layoutItems>
+                <page>VFPage</page>
+            </layoutItems>
+            <layoutItems>
+                <canvas>CanvasApp</canvas>
+            </layoutItems>
+            <layoutItems>
+                <customLink>CustomLink1</customLink>
+            </layoutItems>
+        </layoutColumns>
+        <style>OneColumn</style>
+    </layoutSections>
+    <relatedLists>
+        <relatedList>Opportunities</relatedList>
+    </relatedLists>
+    <quickActionList>
+        <quickActionListItems>
+            <quickActionName>SendEmail</quickActionName>
+        </quickActionListItems>
+    </quickActionList>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-All Dependencies.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-All Dependencies');
+
+      // Verify all dependencies are captured
+      expect(result.dependencies.object).to.equal('Account');
+      expect(result.dependencies.customButtons).to.include('Custom_Button');
+      expect(result.dependencies.visualforcePages).to.include('VFPage');
+      expect(result.dependencies.fields).to.include('Name');
+      expect(result.dependencies.relatedLists).to.include('Opportunities');
+      expect(result.dependencies.quickActions).to.include('SendEmail');
+      expect(result.dependencies.canvasApps).to.include('CanvasApp');
+      expect(result.dependencies.customLinks).to.include('CustomLink1');
+    });
+
+    it('should handle layout with quick actions from platformActionList (AC-6)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <platformActionList>
+        <actionListContext>Record</actionListContext>
+        <platformActionListItems>
+            <actionName>Action1</actionName>
+            <actionType>QuickAction</actionType>
+            <sortOrder>1</sortOrder>
+        </platformActionListItems>
+        <platformActionListItems>
+            <actionName>Action2</actionName>
+            <actionType>QuickAction</actionType>
+            <sortOrder>2</sortOrder>
+        </platformActionListItems>
+    </platformActionList>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Platform Actions.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Platform Actions');
+
+      expect(result.quickActions).to.include.members(['Action1', 'Action2']);
+    });
+
+    it('should handle layout with single item (not array)', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customButtons>SingleButton</customButtons>
+    <layoutSections>
+        <layoutColumns>
+            <layoutItems>
+                <field>Name</field>
+            </layoutItems>
+        </layoutColumns>
+        <style>OneColumn</style>
+    </layoutSections>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Single Items.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Single Items');
+
+      expect(result.customButtons).to.be.an('array').with.lengthOf(1);
+      expect(result.customButtons).to.include('SingleButton');
+      expect(result.fields).to.be.an('array').with.lengthOf(1);
+      expect(result.fields).to.include('Name');
+    });
+
+    it('should handle empty layout', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Empty.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Empty');
+
+      expect(result.customButtons).to.be.an('array').with.lengthOf(0);
+      expect(result.visualforcePages).to.be.an('array').with.lengthOf(0);
+      expect(result.fields).to.be.an('array').with.lengthOf(0);
+      expect(result.relatedLists).to.be.an('array').with.lengthOf(0);
+      expect(result.quickActions).to.be.an('array').with.lengthOf(0);
+    });
+
+    it('should throw error for invalid XML', async () => {
+      const xmlContent = '<InvalidXML>';
+      const filePath = join(testDir, 'Invalid.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      try {
+        await parseLayout(filePath, 'Invalid');
+        expect.fail('Should have thrown an error');
+      } catch (error: unknown) {
+        expect(error).to.exist;
+      }
+    });
+
+    it('should throw error for missing Layout root element', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<SomeOtherRoot>
+    <label>Invalid Structure</label>
+</SomeOtherRoot>`;
+
+      const filePath = join(testDir, 'Invalid_Structure.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      try {
+        await parseLayout(filePath, 'Invalid_Structure');
+        expect.fail('Should have thrown an error');
+      } catch (error: unknown) {
+        expect(error).to.exist;
+        expect((error as Error).message).to.match(/missing Layout root element/);
+      }
+    });
+  });
+});
+
