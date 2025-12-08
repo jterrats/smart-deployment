@@ -62,8 +62,8 @@ function normalizeArray<T>(value: T | T[] | undefined): T[] {
 /**
  * Extract object name from layout filename
  * Examples:
- *   'Account-Account Layout' -> 'Account'
- *   'CustomObject__c-Custom Layout' -> 'CustomObject__c'
+ * 'Account-Account Layout' -> 'Account'
+ * 'CustomObject__c-Custom Layout' -> 'CustomObject__c'
  */
 function extractObjectFromLayoutName(layoutName: string): string {
   const parts = layoutName.split('-');
@@ -76,13 +76,13 @@ function extractObjectFromLayoutName(layoutName: string): string {
 function extractCustomButtons(metadata: LayoutMetadata): string[] {
   const layoutCustomButtons = normalizeArray(metadata.customButtons);
   const relatedListCustomButtons: string[] = [];
-  
+
   const relatedLists = normalizeArray(metadata.relatedLists);
   for (const relatedList of relatedLists) {
     const buttons = normalizeArray(relatedList.customButtons);
     relatedListCustomButtons.push(...buttons);
   }
-  
+
   return [...new Set([...layoutCustomButtons, ...relatedListCustomButtons])];
 }
 
@@ -91,7 +91,7 @@ function extractCustomButtons(metadata: LayoutMetadata): string[] {
  */
 function extractVFPagesFromSections(sections: LayoutSection[]): string[] {
   const pages: string[] = [];
-  
+
   for (const section of sections) {
     const columns = normalizeArray(section.layoutColumns);
     for (const column of columns) {
@@ -103,7 +103,7 @@ function extractVFPagesFromSections(sections: LayoutSection[]): string[] {
       }
     }
   }
-  
+
   return pages;
 }
 
@@ -112,17 +112,17 @@ function extractVFPagesFromSections(sections: LayoutSection[]): string[] {
  */
 function extractVFPagesFromFeedLayout(feedLayout?: FeedLayout): string[] {
   if (!feedLayout) return [];
-  
+
   const pages: string[] = [];
   const leftComponents = normalizeArray(feedLayout.leftComponents);
   const rightComponents = normalizeArray(feedLayout.rightComponents);
-  
+
   for (const component of [...leftComponents, ...rightComponents]) {
     if (component.componentType === 'Visualforce' && component.page) {
       pages.push(component.page);
     }
   }
-  
+
   return pages;
 }
 
@@ -131,7 +131,7 @@ function extractVFPagesFromFeedLayout(feedLayout?: FeedLayout): string[] {
  */
 function extractFieldsFromSections(sections: LayoutSection[]): string[] {
   const fields: string[] = [];
-  
+
   for (const section of sections) {
     const columns = normalizeArray(section.layoutColumns);
     for (const column of columns) {
@@ -143,7 +143,7 @@ function extractFieldsFromSections(sections: LayoutSection[]): string[] {
       }
     }
   }
-  
+
   return fields;
 }
 
@@ -152,23 +152,23 @@ function extractFieldsFromSections(sections: LayoutSection[]): string[] {
  */
 function extractFields(metadata: LayoutMetadata, layoutSections: LayoutSection[]): string[] {
   const fields: string[] = [];
-  
+
   // From sections
   fields.push(...extractFieldsFromSections(layoutSections));
-  
+
   // From related lists
   const relatedLists = normalizeArray(metadata.relatedLists);
   for (const relatedList of relatedLists) {
     const listFields = normalizeArray(relatedList.fields);
     fields.push(...listFields);
   }
-  
+
   // From mini layout
   if (metadata.miniLayout) {
     const miniFields = normalizeArray(metadata.miniLayout.fields);
     fields.push(...miniFields);
   }
-  
+
   // From summary layout
   if (metadata.summaryLayout) {
     const summaryItems = normalizeArray(metadata.summaryLayout.summaryLayoutItems);
@@ -178,7 +178,7 @@ function extractFields(metadata: LayoutMetadata, layoutSections: LayoutSection[]
       }
     }
   }
-  
+
   return [...new Set(fields)];
 }
 
@@ -187,12 +187,12 @@ function extractFields(metadata: LayoutMetadata, layoutSections: LayoutSection[]
  */
 function extractQuickActions(metadata: LayoutMetadata): string[] {
   const quickActions: string[] = [];
-  
+
   if (metadata.quickActionList) {
     const quickActionItems = normalizeArray(metadata.quickActionList.quickActionListItems);
     quickActions.push(...quickActionItems.map((item) => item.quickActionName));
   }
-  
+
   if (metadata.platformActionList) {
     const actionItems = normalizeArray(metadata.platformActionList.platformActionListItems);
     for (const item of actionItems) {
@@ -201,7 +201,7 @@ function extractQuickActions(metadata: LayoutMetadata): string[] {
       }
     }
   }
-  
+
   return [...new Set(quickActions)];
 }
 
@@ -210,7 +210,7 @@ function extractQuickActions(metadata: LayoutMetadata): string[] {
  */
 function extractCanvasApps(sections: LayoutSection[]): string[] {
   const apps: string[] = [];
-  
+
   for (const section of sections) {
     const columns = normalizeArray(section.layoutColumns);
     for (const column of columns) {
@@ -222,7 +222,7 @@ function extractCanvasApps(sections: LayoutSection[]): string[] {
       }
     }
   }
-  
+
   return [...new Set(apps)];
 }
 
@@ -231,7 +231,7 @@ function extractCanvasApps(sections: LayoutSection[]): string[] {
  */
 function extractCustomLinks(metadata: LayoutMetadata, layoutSections: LayoutSection[]): string[] {
   const links: string[] = [];
-  
+
   // From layout sections
   for (const section of layoutSections) {
     const columns = normalizeArray(section.layoutColumns);
@@ -244,7 +244,7 @@ function extractCustomLinks(metadata: LayoutMetadata, layoutSections: LayoutSect
       }
     }
   }
-  
+
   // From summary layout
   if (metadata.summaryLayout) {
     const summaryItems = normalizeArray(metadata.summaryLayout.summaryLayoutItems);
@@ -254,7 +254,7 @@ function extractCustomLinks(metadata: LayoutMetadata, layoutSections: LayoutSect
       }
     }
   }
-  
+
   return [...new Set(links)];
 }
 
@@ -309,7 +309,7 @@ export async function parseLayout(
   // Extract dependencies using helper functions
   const layoutSections = normalizeArray(metadata.layoutSections);
   const relatedLists = normalizeArray(metadata.relatedLists);
-  
+
   const customButtons = extractCustomButtons(metadata);
   const vfPagesFromSections = extractVFPagesFromSections(layoutSections);
   const vfPagesFromFeed = extractVFPagesFromFeedLayout(metadata.feedLayout);

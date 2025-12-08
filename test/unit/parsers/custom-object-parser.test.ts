@@ -50,10 +50,10 @@ describe('Custom Object Parser', () => {
       const result = await parseCustomObject('Account', metadata);
 
       expect(result.fields).to.have.lengthOf(2);
-      expect(result.fields![0].fullName).to.equal('CustomField__c');
-      expect(result.fields![0].type).to.equal('Text');
-      expect(result.fields![1].fullName).to.equal('AnotherField__c');
-      expect(result.fields![1].type).to.equal('Number');
+      expect(result.fields[0].fullName).to.equal('CustomField__c');
+      expect(result.fields[0].type).to.equal('Text');
+      expect(result.fields[1].fullName).to.equal('AnotherField__c');
+      expect(result.fields[1].type).to.equal('Number');
     });
 
     it('should extract field metadata', async () => {
@@ -75,7 +75,7 @@ describe('Custom Object Parser', () => {
 
       const result = await parseCustomObject('Test__c', metadata);
 
-      const field = result.fields![0];
+      const field = result.fields[0];
       expect(field.required).to.be.true;
       expect(field.unique).to.be.true;
       expect(field.externalId).to.be.true;
@@ -104,9 +104,9 @@ describe('Custom Object Parser', () => {
       const result = await parseCustomObject('Test__c', metadata);
 
       expect(result.validationRules).to.have.lengthOf(1);
-      expect(result.validationRules![0].fullName).to.equal('Check_Status');
-      expect(result.validationRules![0].active).to.be.true;
-      expect(result.validationRules![0].errorConditionFormula).to.include('Status__c');
+      expect(result.validationRules[0].fullName).to.equal('Check_Status');
+      expect(result.validationRules[0].active).to.be.true;
+      expect(result.validationRules[0].errorConditionFormula).to.include('Status__c');
     });
 
     it('should extract validation rule dependencies', async () => {
@@ -344,9 +344,9 @@ describe('Custom Object Parser', () => {
       const result = await parseCustomObject('Test__c', metadata);
 
       expect(result.recordTypes).to.have.lengthOf(2);
-      expect(result.recordTypes![0].fullName).to.equal('Standard');
-      expect(result.recordTypes![1].fullName).to.equal('Premium');
-      expect(result.recordTypes![1].description).to.equal('For premium customers');
+      expect(result.recordTypes[0].fullName).to.equal('Standard');
+      expect(result.recordTypes[1].fullName).to.equal('Premium');
+      expect(result.recordTypes[1].description).to.equal('For premium customers');
     });
 
     it('should create record type dependencies', async () => {
@@ -474,8 +474,8 @@ describe('Custom Object Parser', () => {
       const result = await parseCustomObject('Test__c', metadata);
 
       expect(result.listViews).to.have.lengthOf(2);
-      expect(result.listViews![0].fullName).to.equal('All_Records');
-      expect(result.listViews![1].fullName).to.equal('Active_Only');
+      expect(result.listViews[0].fullName).to.equal('All_Records');
+      expect(result.listViews[1].fullName).to.equal('Active_Only');
     });
   });
 
