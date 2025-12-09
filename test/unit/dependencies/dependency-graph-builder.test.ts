@@ -106,7 +106,7 @@ describe('DependencyGraphBuilder', () => {
 
       const result = builder.build();
       const deps = result.graph.get('ApexClass:AccountService');
-
+      
       expect(deps).to.exist;
       expect(deps!.has('ApexClass:Logger')).to.be.true;
     });

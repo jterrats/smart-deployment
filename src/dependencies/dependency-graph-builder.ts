@@ -1,14 +1,14 @@
 /**
  * Dependency Graph Builder
  * Builds a dependency graph from parsed metadata components
- *
+ * 
  * @ac US-028-AC-1: Add nodes for each component
  * @ac US-028-AC-2: Add edges for each dependency
  * @ac US-028-AC-3: Handle bidirectional dependencies
  * @ac US-028-AC-4: Track dependency types (hard, soft)
  * @ac US-028-AC-5: Support incremental graph building
  * @ac US-028-AC-6: Validate graph structure
- *
+ * 
  * @issue #28
  */
 
@@ -57,12 +57,12 @@ export interface GraphBuilderOptions {
 
 /**
  * Dependency Graph Builder
- *
+ * 
  * Performance optimized for 10,000+ nodes:
  * - Uses Map/Set for O(1) lookups
  * - Lazy validation
  * - Incremental building support
- *
+ * 
  * @example
  * const builder = new DependencyGraphBuilder();
  * builder.addComponent(apexClassComponent);
@@ -117,7 +117,7 @@ export class DependencyGraphBuilder {
   // Public methods
   /**
    * Add a metadata component to the graph
-   *
+   * 
    * @ac US-028-AC-1: Add nodes for each component
    * @ac US-028-AC-5: Support incremental graph building
    */
@@ -156,12 +156,12 @@ export class DependencyGraphBuilder {
 
   /**
    * Add multiple components at once
-   *
+   * 
    * @ac US-028-AC-5: Support incremental graph building
    */
   public addComponents(components: MetadataComponent[]): void {
     const startTime = Date.now();
-
+    
     for (const component of components) {
       this.addComponent(component);
     }
@@ -176,7 +176,7 @@ export class DependencyGraphBuilder {
 
   /**
    * Add a dependency edge between two nodes
-   *
+   * 
    * @ac US-028-AC-2: Add edges for each dependency
    * @ac US-028-AC-3: Handle bidirectional dependencies
    * @ac US-028-AC-4: Track dependency types
@@ -264,7 +264,7 @@ export class DependencyGraphBuilder {
 
   /**
    * Build the final dependency analysis result
-   *
+   * 
    * @ac US-028-AC-6: Validate graph structure
    */
   public build(): DependencyAnalysisResult {
@@ -322,7 +322,7 @@ export class DependencyGraphBuilder {
   // Private methods
   /**
    * Validate graph structure
-   *
+   * 
    * @ac US-028-AC-6: Validate graph structure
    */
   private validate(): void {

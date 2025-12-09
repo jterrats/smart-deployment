@@ -359,14 +359,14 @@ describe('HeuristicInference', () => {
     it('US-029-AC-6: should penalize many existing dependencies', () => {
       const withFewDeps = HeuristicInference.calculateConfidence('handler-service', 1, 0.8);
       const withManyDeps = HeuristicInference.calculateConfidence('handler-service', 10, 0.8);
-      
+
       expect(withFewDeps.score).to.be.greaterThan(withManyDeps.score);
     });
 
     it('US-029-AC-6: should boost score with name similarity', () => {
       const lowSimilarity = HeuristicInference.calculateConfidence('handler-service', 0, 0.3);
       const highSimilarity = HeuristicInference.calculateConfidence('handler-service', 0, 0.9);
-      
+
       expect(highSimilarity.score).to.be.greaterThan(lowSimilarity.score);
     });
   });

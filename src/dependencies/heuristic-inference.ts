@@ -1,14 +1,14 @@
 /**
  * Heuristic Dependency Inference
  * Infers non-obvious dependencies using intelligent heuristics
- * 
+ *
  * @ac US-029-AC-1: Test class → Production class inference
  * @ac US-029-AC-2: Handler → Service pattern detection
  * @ac US-029-AC-3: Trigger → Handler pattern detection
  * @ac US-029-AC-4: Controller → Service pattern detection
  * @ac US-029-AC-5: Naming convention analysis
  * @ac US-029-AC-6: Confidence scoring for inferences
- * 
+ *
  * @issue #29
  */
 
@@ -64,14 +64,14 @@ export interface HeuristicInferenceOptions {
 
 /**
  * Heuristic Dependency Inference
- * 
+ *
  * Uses intelligent heuristics to infer dependencies that are not explicit in code:
  * - Test classes typically depend on the production class they test
  * - Handlers typically call service classes
  * - Triggers typically call handler classes
  * - Controllers typically call service classes
  * - Naming conventions reveal architectural patterns
- * 
+ *
  * @example
  * const inferencer = new HeuristicInference();
  * const inferred = inferencer.inferDependencies(components);
@@ -101,7 +101,7 @@ export class HeuristicInference {
 
   /**
    * @ac US-029-AC-6: Confidence scoring
-   * 
+   *
    * Calculate confidence score for an inferred dependency
    */
   public static calculateConfidence(
@@ -150,7 +150,7 @@ export class HeuristicInference {
 
   /**
    * @ac US-029-AC-1: Test class → Production class inference
-   * 
+   *
    * Infers that test classes depend on the production classes they test.
    * Patterns:
    * - AccountServiceTest → AccountService
@@ -172,7 +172,7 @@ export class HeuristicInference {
     if (className.endsWith('Test')) {
       const productionClassName = className.slice(0, -4);
       const prodNodeId = `ApexClass:${productionClassName}`;
-      
+
       if (components.has(prodNodeId)) {
         inferred.push({
           from: `ApexClass:${className}`,
@@ -189,7 +189,7 @@ export class HeuristicInference {
     if (className.startsWith('Test_')) {
       const productionClassName = className.slice(5);
       const prodNodeId = `ApexClass:${productionClassName}`;
-      
+
       if (components.has(prodNodeId)) {
         inferred.push({
           from: `ApexClass:${className}`,
@@ -206,7 +206,7 @@ export class HeuristicInference {
     if (className.endsWith('_Test')) {
       const productionClassName = className.slice(0, -5);
       const prodNodeId = `ApexClass:${productionClassName}`;
-      
+
       if (components.has(prodNodeId)) {
         inferred.push({
           from: `ApexClass:${className}`,
@@ -224,7 +224,7 @@ export class HeuristicInference {
 
   /**
    * @ac US-029-AC-2: Handler → Service pattern detection
-   * 
+   *
    * Infers that handler classes depend on service classes.
    * Patterns:
    * - AccountHandler → AccountService
@@ -293,7 +293,7 @@ export class HeuristicInference {
 
   /**
    * @ac US-029-AC-3: Trigger → Handler pattern detection
-   * 
+   *
    * Infers that triggers depend on handler classes.
    * Patterns:
    * - AccountTrigger → AccountTriggerHandler
@@ -337,7 +337,7 @@ export class HeuristicInference {
 
   /**
    * @ac US-029-AC-4: Controller → Service pattern detection
-   * 
+   *
    * Infers that controller classes depend on service classes.
    * Patterns:
    * - AccountController → AccountService
@@ -388,7 +388,7 @@ export class HeuristicInference {
 
   /**
    * @ac US-029-AC-5: Naming convention analysis
-   * 
+   *
    * Infers dependencies based on common naming conventions.
    * Patterns:
    * - *Selector → *Service
@@ -411,7 +411,7 @@ export class HeuristicInference {
     if (className.endsWith('Selector')) {
       const baseName = className.slice(0, -8);
       const serviceNodeId = `ApexClass:${baseName}Service`;
-      
+
       if (components.has(serviceNodeId)) {
         inferred.push({
           from: `ApexClass:${className}`,
@@ -428,7 +428,7 @@ export class HeuristicInference {
     if (className.endsWith('Batch')) {
       const baseName = className.slice(0, -5);
       const serviceNames = [`${baseName}Service`, `${baseName}`];
-      
+
       for (const serviceName of serviceNames) {
         const serviceNodeId = `ApexClass:${serviceName}`;
         if (components.has(serviceNodeId)) {
@@ -449,7 +449,7 @@ export class HeuristicInference {
     if (className.endsWith('Queueable') || className.includes('Queueable')) {
       const baseName = className.replace(/Queueable$/, '').replace(/_Queueable/, '');
       const serviceNodeId = `ApexClass:${baseName}Service`;
-      
+
       if (components.has(serviceNodeId)) {
         inferred.push({
           from: `ApexClass:${className}`,
@@ -468,7 +468,7 @@ export class HeuristicInference {
         .replace(/Integration$/, '')
         .replace(/_Integration/, '')
         .replace(/^Integration/, '');
-      
+
       if (baseName) {
         const serviceNodeId = `ApexClass:${baseName}Service`;
         if (components.has(serviceNodeId)) {
