@@ -402,7 +402,7 @@ describe('CircularDependencyDetector', () => {
       ]);
 
       const detector = new CircularDependencyDetector(graph);
-
+      
       // Adding C→A would create cycle
       const wouldCreate = detector.wouldCreateCycle('ApexClass:C', 'ApexClass:A');
       expect(wouldCreate).to.be.true;
@@ -415,7 +415,7 @@ describe('CircularDependencyDetector', () => {
       ]);
 
       const detector = new CircularDependencyDetector(graph);
-
+      
       // Adding C→D would not create cycle
       const wouldCreate = detector.wouldCreateCycle('ApexClass:C', 'ApexClass:D');
       expect(wouldCreate).to.be.false;
@@ -500,7 +500,7 @@ describe('CircularDependencyDetector', () => {
       ]);
 
       const detector = new CircularDependencyDetector(graph);
-
+      
       // Run detection multiple times
       const cycles1 = detector.detectCycles();
       const cycles2 = detector.detectCycles();
