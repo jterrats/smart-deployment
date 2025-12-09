@@ -36,6 +36,7 @@ export * from './object.js';
 export * from './custom-metadata.js';
 export * from './layout.js';
 export * from './flexipage.js';
+export * from './bot.js';
 
 // Permission Set and Profile Types
 export * from './permission.js';
