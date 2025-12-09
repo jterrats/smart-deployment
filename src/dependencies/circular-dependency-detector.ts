@@ -354,7 +354,7 @@ export class CircularDependencyDetector {
 
     // Generate break suggestions if enabled
     if (this.options.generateSuggestions) {
-      detected.breakSuggestions = this.generateBreakSuggestions(cycle, closingNode);
+      detected.breakSuggestions = CircularDependencyDetector.generateBreakSuggestions(cycle, closingNode);
     }
 
     return detected;
@@ -369,7 +369,7 @@ export class CircularDependencyDetector {
    * - Utility classes (medium priority)
    * - Core business logic (low priority)
    */
-  private generateBreakSuggestions(cycle: NodeId[], closingNode: NodeId): CycleBreakSuggestion[] {
+  private static generateBreakSuggestions(cycle: NodeId[], closingNode: NodeId): CycleBreakSuggestion[] {
     const suggestions: CycleBreakSuggestion[] = [];
 
     // Add closing edge
