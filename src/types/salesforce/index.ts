@@ -44,3 +44,12 @@ export * from './resource.js';
 
 // Visualforce Types
 export * from './visualforce.js';
+
+// FlexiPage Types
+export * from './flexipage.js';
+
+// Bot Types
+export * from './bot.js';
+
+// GenAI Types
+export * from './genai.js';
