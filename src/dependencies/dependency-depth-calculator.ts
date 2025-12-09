@@ -415,6 +415,14 @@ export class DependencyDepthCalculator {
   }
 
   /**
+   * Get depth for a specific component
+   */
+  public getDepth(nodeId: NodeId): ComponentDepth | undefined {
+    const depths = this.calculate();
+    return depths.depths.get(nodeId);
+  }
+
+  /**
    * @ac US-031-AC-3: Generate depth distribution report
    */
   private static generateDistribution(depths: Map<NodeId, ComponentDepth>): DepthDistribution[] {
