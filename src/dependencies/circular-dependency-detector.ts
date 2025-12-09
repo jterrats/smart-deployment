@@ -1,14 +1,14 @@
 /**
  * Circular Dependency Detector
  * Detects and reports circular dependencies in the dependency graph
- * 
+ *
  * @ac US-030-AC-1: Detect simple cycles (A→B→A)
  * @ac US-030-AC-2: Detect complex cycles (A→B→C→A)
  * @ac US-030-AC-3: Report all nodes in cycle
  * @ac US-030-AC-4: Suggest where to break cycle
  * @ac US-030-AC-5: Support user-defined cycle breaks
  * @ac US-030-AC-6: Handle multiple separate cycles
- * 
+ *
  * @issue #30
  */
 
@@ -49,12 +49,12 @@ export interface CycleDetectionOptions {
 
 /**
  * Circular Dependency Detector
- * 
+ *
  * Uses depth-first search (DFS) to detect cycles in the dependency graph.
  * Supports both simple (A→B→A) and complex (A→B→C→A) cycles.
- * 
+ *
  * Performance: O(V + E) where V = vertices, E = edges
- * 
+ *
  * @example
  * const detector = new CircularDependencyDetector(graph);
  * const cycles = detector.detectCycles();
@@ -191,7 +191,7 @@ export class CircularDependencyDetector {
   // Public methods
   /**
    * Detect all circular dependencies in the graph
-   * 
+   *
    * @ac US-030-AC-1: Detect simple cycles (A→B→A)
    * @ac US-030-AC-2: Detect complex cycles (A→B→C→A)
    * @ac US-030-AC-6: Handle multiple separate cycles
@@ -215,7 +215,7 @@ export class CircularDependencyDetector {
       currentPath.push(nodeId);
 
       const dependencies = this.graph.get(nodeId) ?? new Set();
-      
+
       for (const depId of dependencies) {
         // Skip ignored edges
         if (this.isEdgeIgnored(nodeId, depId)) {
@@ -229,7 +229,7 @@ export class CircularDependencyDetector {
           // Found a cycle!
           const cycleStartIndex = currentPath.indexOf(depId);
           const cycle = currentPath.slice(cycleStartIndex);
-          
+
           // Check if we've already found this cycle
           if (!CircularDependencyDetector.isDuplicateCycle(cycle, allCycles)) {
             allCycles.push(this.createDetectedCycle(cycle, depId));
@@ -275,7 +275,7 @@ export class CircularDependencyDetector {
       currentPath.push(nodeId);
 
       const dependencies = this.graph.get(nodeId) ?? new Set();
-      
+
       for (const depId of dependencies) {
         if (this.isEdgeIgnored(nodeId, depId)) {
           continue;
@@ -284,7 +284,7 @@ export class CircularDependencyDetector {
         if (recursionStack.has(depId)) {
           const cycleStartIndex = currentPath.indexOf(depId);
           const cycle = currentPath.slice(cycleStartIndex);
-          
+
           if (!CircularDependencyDetector.isDuplicateCycle(cycle, cycles)) {
             cycles.push(this.createDetectedCycle(cycle, depId));
           }
@@ -307,13 +307,13 @@ export class CircularDependencyDetector {
   public wouldCreateCycle(from: NodeId, to: NodeId): boolean {
     // Check if adding edge from->to would create a cycle
     // This means: can we reach 'from' starting from 'to'?
-    
+
     const visited = new Set<NodeId>();
     const queue: NodeId[] = [to];
 
     while (queue.length > 0) {
       const current = queue.shift()!;
-      
+
       if (current === from) {
         return true; // Found a path back to 'from'
       }
@@ -337,13 +337,13 @@ export class CircularDependencyDetector {
 
   /**
    * @ac US-030-AC-3: Report all nodes in cycle
-   * 
+   *
    * Create a detected cycle with full information
    */
   private createDetectedCycle(cycle: NodeId[], closingNode: NodeId): DetectedCycle {
     const cycleId = CircularDependencyDetector.generateCycleId(cycle);
     const message = `Circular dependency: ${cycle.join(' → ')} → ${closingNode}`;
-    
+
     const detected: DetectedCycle = {
       id: cycleId,
       cycle: [...cycle],
@@ -362,7 +362,7 @@ export class CircularDependencyDetector {
 
   /**
    * @ac US-030-AC-4: Suggest where to break cycle
-   * 
+   *
    * Generate suggestions for breaking the cycle
    * Priority based on:
    * - Test classes (high priority to break)
@@ -379,7 +379,7 @@ export class CircularDependencyDetector {
     for (let i = 0; i < fullCycle.length - 1; i++) {
       const from = fullCycle[i];
       const to = fullCycle[i + 1];
-      
+
       const priority = CircularDependencyDetector.calculateBreakPriority(from, to);
       const reason = CircularDependencyDetector.getBreakReason(from, to, priority);
 
@@ -399,7 +399,7 @@ export class CircularDependencyDetector {
 
   /**
    * @ac US-030-AC-5: Support user-defined cycle breaks
-   * 
+   *
    * Check if an edge is in the ignore list
    */
   private isEdgeIgnored(from: NodeId, to: NodeId): boolean {
