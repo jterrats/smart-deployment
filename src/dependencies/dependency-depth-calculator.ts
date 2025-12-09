@@ -111,6 +111,117 @@ export class DependencyDepthCalculator {
     });
   }
 
+  // Private static helper methods (must come before public methods)
+  /**
+   * @ac US-031-AC-4: Highlight critical path components
+   * 
+   * Find the critical path (longest dependency chain)
+   */
+  private static findCriticalPath(depths: Map<NodeId, ComponentDepth>): NodeId[] {
+    let longestPath: NodeId[] = [];
+    let maxDepth = 0;
+
+    for (const depth of depths.values()) {
+      // Skip cyclic nodes
+      if (depth.isInCycle || depth.depth === Number.POSITIVE_INFINITY) {
+        continue;
+      }
+
+      if (depth.depth > maxDepth) {
+        maxDepth = depth.depth;
+        longestPath = depth.pathToLeaf;
+      }
+    }
+
+    // Mark nodes in critical path
+    const criticalPathSet = new Set(longestPath);
+    for (const [nodeId, depth] of depths.entries()) {
+      if (criticalPathSet.has(nodeId)) {
+        depth.isCriticalPath = true;
+      }
+    }
+
+    logger.info('Critical path identified', {
+      length: longestPath.length,
+      depth: maxDepth,
+    });
+
+    return longestPath;
+  }
+
+  /**
+   * @ac US-031-AC-3: Generate depth distribution report
+   */
+  private static generateDistribution(depths: Map<NodeId, ComponentDepth>): DepthDistribution[] {
+    const ranges: Array<{ range: string; min: number; max: number }> = [
+      { range: '0-5', min: 0, max: 5 },
+      { range: '6-10', min: 6, max: 10 },
+      { range: '11-20', min: 11, max: 20 },
+      { range: '21-50', min: 21, max: 50 },
+      { range: '>50', min: 51, max: Number.POSITIVE_INFINITY },
+    ];
+
+    const distribution: DepthDistribution[] = [];
+    const total = depths.size;
+
+    for (const { range, min, max } of ranges) {
+      const components: NodeId[] = [];
+
+      for (const depth of depths.values()) {
+        // Handle infinite depth (cycles)
+        if (depth.depth === Number.POSITIVE_INFINITY && max === Number.POSITIVE_INFINITY) {
+          components.push(depth.nodeId);
+        } else if (depth.depth >= min && depth.depth <= max) {
+          components.push(depth.nodeId);
+        }
+      }
+
+      if (components.length > 0) {
+        distribution.push({
+          depthRange: range,
+          count: components.length,
+          percentage: (components.length / total) * 100,
+          components,
+        });
+      }
+    }
+
+    return distribution;
+  }
+
+  /**
+   * Calculate maximum depth
+   */
+  private static calculateMaxDepth(depths: Map<NodeId, ComponentDepth>): number {
+    let maxDepth = 0;
+
+    for (const depth of depths.values()) {
+      if (depth.depth !== Number.POSITIVE_INFINITY) {
+        maxDepth = Math.max(maxDepth, depth.depth);
+      }
+    }
+
+    return maxDepth;
+  }
+
+  /**
+   * Calculate average depth (excluding cyclic nodes)
+   */
+  private static calculateAverageDepth(depths: Map<NodeId, ComponentDepth>): number {
+    let sum = 0;
+    let count = 0;
+
+    for (const depth of depths.values()) {
+      if (depth.depth !== Number.POSITIVE_INFINITY) {
+        sum += depth.depth;
+        count++;
+      }
+    }
+
+    return count > 0 ? sum / count : 0;
+  }
+
+  // Public methods
   /**
    * Calculate depths for all components
    *
@@ -375,115 +486,6 @@ export class DependencyDepthCalculator {
   public getDepth(nodeId: NodeId): ComponentDepth | undefined {
     const depths = this.calculate();
     return depths.depths.get(nodeId);
-  }
-
-  /**
-   * @ac US-031-AC-4: Highlight critical path components
-   * 
-   * Find the critical path (longest dependency chain)
-   */
-  private static findCriticalPath(depths: Map<NodeId, ComponentDepth>): NodeId[] {
-    let longestPath: NodeId[] = [];
-    let maxDepth = 0;
-
-    for (const depth of depths.values()) {
-      // Skip cyclic nodes
-      if (depth.isInCycle || depth.depth === Number.POSITIVE_INFINITY) {
-        continue;
-      }
-
-      if (depth.depth > maxDepth) {
-        maxDepth = depth.depth;
-        longestPath = depth.pathToLeaf;
-      }
-    }
-
-    // Mark nodes in critical path
-    const criticalPathSet = new Set(longestPath);
-    for (const [nodeId, depth] of depths.entries()) {
-      if (criticalPathSet.has(nodeId)) {
-        depth.isCriticalPath = true;
-      }
-    }
-
-    logger.info('Critical path identified', {
-      length: longestPath.length,
-      depth: maxDepth,
-    });
-
-    return longestPath;
-  }
-
-  /**
-   * @ac US-031-AC-3: Generate depth distribution report
-   */
-  private static generateDistribution(depths: Map<NodeId, ComponentDepth>): DepthDistribution[] {
-    const ranges: Array<{ range: string; min: number; max: number }> = [
-      { range: '0-5', min: 0, max: 5 },
-      { range: '6-10', min: 6, max: 10 },
-      { range: '11-20', min: 11, max: 20 },
-      { range: '21-50', min: 21, max: 50 },
-      { range: '>50', min: 51, max: Number.POSITIVE_INFINITY },
-    ];
-
-    const distribution: DepthDistribution[] = [];
-    const total = depths.size;
-
-    for (const { range, min, max } of ranges) {
-      const components: NodeId[] = [];
-
-      for (const depth of depths.values()) {
-        // Handle infinite depth (cycles)
-        if (depth.depth === Number.POSITIVE_INFINITY && max === Number.POSITIVE_INFINITY) {
-          components.push(depth.nodeId);
-        } else if (depth.depth >= min && depth.depth <= max) {
-          components.push(depth.nodeId);
-        }
-      }
-
-      if (components.length > 0) {
-        distribution.push({
-          depthRange: range,
-          count: components.length,
-          percentage: (components.length / total) * 100,
-          components,
-        });
-      }
-    }
-
-    return distribution;
-  }
-
-  /**
-   * Calculate maximum depth
-   */
-  private static calculateMaxDepth(depths: Map<NodeId, ComponentDepth>): number {
-    let maxDepth = 0;
-
-    for (const depth of depths.values()) {
-      if (depth.depth !== Number.POSITIVE_INFINITY) {
-        maxDepth = Math.max(maxDepth, depth.depth);
-      }
-    }
-
-    return maxDepth;
-  }
-
-  /**
-   * Calculate average depth (excluding cyclic nodes)
-   */
-  private static calculateAverageDepth(depths: Map<NodeId, ComponentDepth>): number {
-    let sum = 0;
-    let count = 0;
-
-    for (const depth of depths.values()) {
-      if (depth.depth !== Number.POSITIVE_INFINITY) {
-        sum += depth.depth;
-        count++;
-      }
-    }
-
-    return count > 0 ? sum / count : 0;
   }
 }
 
