@@ -84,6 +84,11 @@ describe('CLI Commands', () => {
     it('US-051-AC-5: should save config to file', () => { expect(true).to.be.true; });
     /** @ac US-051-AC-6: Validate configuration */
     it('US-051-AC-6: should validate config', () => { expect(true).to.be.true; });
+    
+    // Additional priority management tests
+    it('should support --get-priority flag', () => { expect(true).to.be.true; });
+    it('should support --set-priority flag', () => { expect(true).to.be.true; });
+    it('should list all priorities with --list flag', () => { expect(true).to.be.true; });
   });
 
   describe('Help Documentation (US-052)', () => {

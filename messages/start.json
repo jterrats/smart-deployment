@@ -1,0 +1,15 @@
+{
+  "summary": "Deploy Salesforce metadata intelligently with automatic wave generation",
+  "description": "Analyzes your Salesforce metadata, generates deployment waves based on dependencies, and executes the deployment sequentially. This command orchestrates the entire smart deployment workflow.",
+  "examples": [
+    "<%= config.bin %> <%= command.id %> --target-org myorg",
+    "<%= config.bin %> <%= command.id %> --target-org myorg --dry-run",
+    "<%= config.bin %> <%= command.id %> --target-org myorg --validate-only",
+    "<%= config.bin %> <%= command.id %> --target-org myorg --skip-tests"
+  ],
+  "flags.target-org.summary": "Target Salesforce org for deployment",
+  "flags.dry-run.summary": "Preview deployment without executing",
+  "flags.validate-only.summary": "Validate deployment without committing changes",
+  "flags.skip-tests.summary": "Skip running tests during deployment"
+}
+
