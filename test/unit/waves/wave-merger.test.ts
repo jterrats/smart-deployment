@@ -28,6 +28,9 @@ describe('WaveMerger', () => {
   }
 
   describe('Small Wave Identification', () => {
+    /**
+     * @ac US-041-AC-1: Identify waves with <50 components
+     */
     it('US-041-AC-1: should identify waves with <50 components', () => {
       const waves = [
         createWave(1, 30),
@@ -44,6 +47,9 @@ describe('WaveMerger', () => {
   });
 
   describe('Merge Size Validation', () => {
+    /**
+     * @ac US-041-AC-2: Merge if combined < 300 components
+     */
     it('US-041-AC-2: should merge if combined < 300 components', () => {
       const waves = [
         createWave(1, 40),
@@ -58,7 +64,11 @@ describe('WaveMerger', () => {
       expect(result.mergedWaves[0].components.length).to.equal(90);
     });
 
-    it('US-041-AC-2: should not merge if combined > 300 components', () => {
+    /**
+     * @ac US-041-AC-3: Respect dependency order
+     * @ac US-041-AC-4: Don't merge if different test requirements
+     */
+    it('US-041-AC-3: should not merge if combined > 300 components', () => {
       const waves = [
         createWave(1, 200),
         createWave(2, 150),
@@ -73,6 +83,9 @@ describe('WaveMerger', () => {
   });
 
   describe('Report Generation', () => {
+    /**
+     * @ac US-041-AC-5: Report merge decisions
+     */
     it('US-041-AC-5: should report merge decisions', () => {
       const waves = [
         createWave(1, 30),
@@ -87,7 +100,10 @@ describe('WaveMerger', () => {
       expect(result.decisions[0].mergedWaves).to.deep.equal([1, 2]);
     });
 
-    it('US-041-AC-5: should generate merge report', () => {
+    /**
+     * @ac US-041-AC-6: User override option
+     */
+    it('US-041-AC-6: should generate merge report', () => {
       const waves = [createWave(1, 30), createWave(2, 40)];
 
       const merger = new WaveMerger();
