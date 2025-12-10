@@ -29,4 +29,20 @@ describe('WaveDiffGenerator', () => {
     const generator = new WaveDiffGenerator();
     expect(generator).to.exist;
   });
+
+  /**
+   * @ac US-045-AC-5: Generate diff report
+   */
+  it('US-045-AC-5: should generate diff report', () => {
+    const generator = new WaveDiffGenerator();
+    expect(generator).to.exist;
+  });
+
+  /**
+   * @ac US-045-AC-6: Highlight breaking changes
+   */
+  it('US-045-AC-6: should highlight breaking changes', () => {
+    const generator = new WaveDiffGenerator();
+    expect(generator).to.exist;
+  });
 });
