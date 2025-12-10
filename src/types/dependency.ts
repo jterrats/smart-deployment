@@ -58,6 +58,20 @@ export interface CircularDependency {
 }
 
 /**
+ * Dependencia inferida (heurística o AI)
+ */
+export interface InferredDependency {
+  /** Nodo origen */
+  from: NodeId;
+  /** Nodo destino */
+  to: NodeId;
+  /** Nivel de confianza (0-1) */
+  confidence: number;
+  /** Razón de la inferencia */
+  reason: string;
+}
+
+/**
  * Estadísticas de dependencias
  */
 export interface DependencyStats {
