@@ -1,13 +1,13 @@
 /**
  * Dependency Impact Analyzer
  * Analyzes the impact of changes to components in the dependency graph
- * 
+ *
  * @ac US-032-AC-1: Given a component, find all dependents
  * @ac US-032-AC-2: Calculate impact radius
  * @ac US-032-AC-3: Identify critical components
  * @ac US-032-AC-4: Generate impact report
  * @ac US-032-AC-5: Suggest test scope based on impact
- * 
+ *
  * @issue #32
  */
 
@@ -71,15 +71,15 @@ export type ImpactAnalysisOptions = {
 
 /**
  * Dependency Impact Analyzer
- * 
+ *
  * Analyzes the impact of changes to determine:
  * - Which components are affected
  * - Impact radius and severity
  * - Critical components
  * - Test scope recommendations
- * 
+ *
  * Performance: O(V + E) using BFS
- * 
+ *
  * @example
  * const analyzer = new DependencyImpactAnalyzer(graph, reverseGraph);
  * const result = analyzer.analyze(['ApexClass:AccountService']);
@@ -113,7 +113,7 @@ export class DependencyImpactAnalyzer {
 
   /**
    * Analyze impact of changes to one or more components
-   * 
+   *
    * @ac US-032-AC-1: Given a component, find all dependents
    * @ac US-032-AC-2: Calculate impact radius
    * @ac US-032-AC-4: Generate impact report
@@ -210,7 +210,7 @@ export class DependencyImpactAnalyzer {
         if (!this.options.includeTests && this.isTestClass(dependent)) {
           continue;
         }
-        
+
         if (!visited.has(dependent)) {
           queue.push({ nodeId: dependent, depth: depth + 1 });
         }
@@ -259,7 +259,7 @@ export class DependencyImpactAnalyzer {
     // Risk factors:
     // - Direct dependents (40% weight)
     // - Total affected (60% weight)
-    
+
     const directScore = Math.min((directDependents / this.options.criticalThreshold) * 40, 40);
     const totalScore = Math.min((totalAffected / (this.options.criticalThreshold * 3)) * 60, 60);
 
@@ -279,7 +279,7 @@ export class DependencyImpactAnalyzer {
 
   /**
    * @ac US-032-AC-3: Identify critical components
-   * 
+   *
    * Find components with many dependents
    */
   private identifyCriticalComponents(): NodeId[] {
@@ -321,7 +321,7 @@ export class DependencyImpactAnalyzer {
 
   /**
    * @ac US-032-AC-5: Suggest test scope based on impact
-   * 
+   *
    * Generate test scope recommendations
    */
   private generateTestScope(affectedComponents: NodeId[], impacts: Map<NodeId, ComponentImpact>): TestScope {
@@ -364,7 +364,7 @@ export class DependencyImpactAnalyzer {
     // Determine priority
     let priority: 'low' | 'medium' | 'high' = 'low';
     const totalTests = requiredTests.length + recommendedTests.length;
-    
+
     if (requiredTests.length >= 1 && affectedComponents.length > 15) {
       priority = 'high';
     } else if (requiredTests.length > 10 || impacts.size > 5) {
