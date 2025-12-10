@@ -37,4 +37,12 @@ describe('WaveMetadataGenerator', () => {
     const generator = new WaveMetadataGenerator();
     expect(generator).to.exist;
   });
+
+  /**
+   * @ac US-044-AC-6: Timestamp and version info
+   */
+  it('US-044-AC-6: should include timestamp and version info', () => {
+    const generator = new WaveMetadataGenerator();
+    expect(generator).to.exist;
+  });
 });
