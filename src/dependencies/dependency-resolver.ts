@@ -1,14 +1,14 @@
 /**
  * Dependency Resolver
  * Resolves component dependencies and generates deployment order
- * 
+ *
  * @ac US-033-AC-1: Resolve direct dependencies
  * @ac US-033-AC-2: Resolve transitive dependencies
  * @ac US-033-AC-3: Handle optional dependencies
  * @ac US-033-AC-4: Skip managed package dependencies
  * @ac US-033-AC-5: Report unresolved dependencies
  * @ac US-033-AC-6: Generate dependency report
- * 
+ *
  * @issue #33
  */
 
@@ -76,12 +76,12 @@ export type ResolverOptions = {
 
 /**
  * Dependency Resolver
- * 
+ *
  * Resolves dependencies and generates deployment order using topological sort.
  * Handles circular dependencies, optional dependencies, and managed packages.
- * 
+ *
  * Performance: O(V + E) using Kahn's algorithm
- * 
+ *
  * @example
  * const resolver = new DependencyResolver(graph, components);
  * const result = resolver.resolve();
@@ -117,7 +117,7 @@ export class DependencyResolver {
 
   /**
    * Resolve all dependencies and generate deployment order
-   * 
+   *
    * @ac US-033-AC-1: Resolve direct dependencies
    * @ac US-033-AC-2: Resolve transitive dependencies
    * @ac US-033-AC-6: Generate dependency report
@@ -203,7 +203,7 @@ export class DependencyResolver {
 
   /**
    * Apply manual ordering constraints to the graph
-   * 
+   *
    * @ac US-033-AC-5: Support manual ordering constraints
    */
   private applyOrderingConstraints(graph: DependencyGraph): void {
