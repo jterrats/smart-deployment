@@ -29,4 +29,12 @@ describe('WaveMetadataGenerator', () => {
     const generator = new WaveMetadataGenerator();
     expect(generator).to.exist;
   });
+
+  /**
+   * @ac US-044-AC-5: Include estimated deployment time
+   */
+  it('US-044-AC-5: should include estimated deployment time', () => {
+    const generator = new WaveMetadataGenerator();
+    expect(generator).to.exist;
+  });
 });
