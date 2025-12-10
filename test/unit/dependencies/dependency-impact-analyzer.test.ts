@@ -137,7 +137,7 @@ describe('DependencyImpactAnalyzer', () => {
      */
     it('US-032-AC-3: should identify critical components', () => {
       const edges: Array<[string, string]> = [];
-
+      
       // Create a component with 15 dependents
       for (let i = 0; i < 15; i++) {
         edges.push([`ApexClass:Dependent${i}`, 'ApexClass:Core']);
@@ -155,7 +155,7 @@ describe('DependencyImpactAnalyzer', () => {
 
     it('US-032-AC-3: should mark components as critical in impact', () => {
       const edges: Array<[string, string]> = [];
-
+      
       for (let i = 0; i < 12; i++) {
         edges.push([`ApexClass:User${i}`, 'ApexClass:Service']);
       }
@@ -172,12 +172,12 @@ describe('DependencyImpactAnalyzer', () => {
 
     it('US-032-AC-3: should sort critical components by dependent count', () => {
       const edges: Array<[string, string]> = [];
-
+      
       // Component A: 15 dependents
       for (let i = 0; i < 15; i++) {
         edges.push([`ApexClass:UserA${i}`, 'ApexClass:ServiceA']);
       }
-
+      
       // Component B: 20 dependents
       for (let i = 0; i < 20; i++) {
         edges.push([`ApexClass:UserB${i}`, 'ApexClass:ServiceB']);
@@ -218,7 +218,7 @@ describe('DependencyImpactAnalyzer', () => {
 
     it('US-032-AC-4: should calculate overall impact level', () => {
       const edges: Array<[string, string]> = [];
-
+      
       // Create high-impact scenario
       for (let i = 0; i < 30; i++) {
         edges.push([`ApexClass:User${i}`, 'ApexClass:Core']);
@@ -268,7 +268,7 @@ describe('DependencyImpactAnalyzer', () => {
 
     it('US-032-AC-5: should prioritize tests based on impact', () => {
       const edges: Array<[string, string]> = [];
-
+      
       // High-impact component
       for (let i = 0; i < 20; i++) {
         edges.push([`ApexClass:User${i}`, 'ApexClass:Core']);
@@ -320,7 +320,7 @@ describe('DependencyImpactAnalyzer', () => {
   describe('Risk Score', () => {
     it('should calculate risk score', () => {
       const edges: Array<[string, string]> = [];
-
+      
       for (let i = 0; i < 5; i++) {
         edges.push([`ApexClass:User${i}`, 'ApexClass:Service']);
       }
@@ -376,7 +376,7 @@ describe('DependencyImpactAnalyzer', () => {
       ]);
 
       const analyzer = new DependencyImpactAnalyzer(graph, reverseGraph);
-
+      
       // Should not hang or throw
       expect(() => analyzer.analyze(['ApexClass:A'])).to.not.throw();
     });
@@ -384,7 +384,7 @@ describe('DependencyImpactAnalyzer', () => {
     it('should handle isolated components', () => {
       const graph: DependencyGraph = new Map();
       const reverseGraph: DependencyGraph = new Map();
-
+      
       graph.set('ApexClass:Isolated', new Set());
       reverseGraph.set('ApexClass:Isolated', new Set());
 
@@ -401,7 +401,7 @@ describe('DependencyImpactAnalyzer', () => {
       this.timeout(5000);
 
       const edges: Array<[string, string]> = [];
-
+      
       // Create a large graph
       for (let i = 0; i < 500; i++) {
         edges.push([`ApexClass:Node${i}`, `ApexClass:Node${i + 1}`]);
