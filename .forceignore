@@ -1,0 +1,37 @@
+# .forceignore - Exclude files from deployment
+#
+# Standard exclusions for smart-deployment project
+
+# Package directories
+**/.forceignore
+**/.gitignore
+**/.DS_Store
+**/.hg
+**/.svn
+**/.git
+**/node_modules/**
+**/.cache
+
+# LWC and Aura (not in this project)
+**/*.spec.js
+**/*.test.js
+**/__tests__/**
+
+# Source maps
+**/*.map
+
+# Build output
+**/dist/**
+**/lib/**
+**/.github/**
+
+# Development files
+**/coverage/**
+**/test/**
+**/.tmp/**
+**/*.log
+
+# IDE files
+**/.vscode/**
+**/.idea/**
+
