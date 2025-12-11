@@ -87,10 +87,7 @@ describe('DependencyInferenceService', () => {
 
     /** @ac US-055-AC-5: Fallback to static analysis if AI fails */
     it('US-055-AC-5: should fallback when AI disabled', async () => {
-      const disabledService = new DependencyInferenceService(
-        new AgentforceService({ enabled: false }),
-        0.7
-      );
+      const disabledService = new DependencyInferenceService(new AgentforceService({ enabled: false }), 0.7);
 
       const components = [createMockComponent('TestClass', 'ApexClass')];
       const result = await disabledService.inferDependencies(components);
@@ -154,4 +151,3 @@ describe('DependencyInferenceService', () => {
     });
   });
 });
-

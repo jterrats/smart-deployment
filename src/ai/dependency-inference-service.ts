@@ -263,4 +263,3 @@ Only include dependencies with confidence > 0.5. Be conservative - it's better t
     return this.confidenceThreshold;
   }
 }
-

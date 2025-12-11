@@ -15,6 +15,7 @@ sf smart-deployment start --use-ai --target-org prod
 ```
 
 **Behavior:**
+
 - ✅ AI analyzes and generates recommendations
 - ⚠️ Recommendations are **NOT** applied automatically
 - 💡 Use for: Development, first-time analysis
@@ -27,6 +28,7 @@ sf smart-deployment start --use-ai --ai-auto --target-org prod
 ```
 
 **Behavior:**
+
 - ✅ AI analyzes and generates recommendations
 - ✅ Recommendations with **confidence > 80%** are applied automatically
 - ⏭️ Low confidence recommendations are skipped
@@ -43,6 +45,7 @@ sf smart-deployment start \
 ```
 
 **Behavior:**
+
 - ✅ Only applies recommendations with confidence > 90%
 - 🔐 More conservative for production
 - 💡 Use for: High-stakes production deployments
@@ -51,12 +54,12 @@ sf smart-deployment start \
 
 ## 📊 Confidence Threshold
 
-| Threshold | Behavior | Use Case |
-|-----------|----------|----------|
-| **0.7 (70%)** | Aggressive | Development/testing |
-| **0.8 (80%)** | Balanced (default) | Staging, QA |
-| **0.9 (90%)** | Conservative | Production |
-| **0.95 (95%)** | Very conservative | Critical systems |
+| Threshold      | Behavior           | Use Case            |
+| -------------- | ------------------ | ------------------- |
+| **0.7 (70%)**  | Aggressive         | Development/testing |
+| **0.8 (80%)**  | Balanced (default) | Staging, QA         |
+| **0.9 (90%)**  | Conservative       | Production          |
+| **0.95 (95%)** | Very conservative  | Critical systems    |
 
 ---
 
@@ -235,6 +238,7 @@ sf smart-deployment start --use-ai --ai-auto
 ```
 
 **Output:**
+
 ```
 [DEBUG] Applied AI priority (auto): ApexClass:PaymentHandler
         priority: 95, confidence: 0.92, reason: Critical payment processing
@@ -328,13 +332,13 @@ Track AI auto-apply effectiveness:
 
 ## 🎯 Decision Matrix
 
-| Scenario | Flag Combination | Behavior |
-|----------|-----------------|----------|
-| **Development** | `--use-ai` | Manual review |
-| **QA/Staging** | `--use-ai --ai-auto` | Auto-apply (80%) |
-| **Production** | `--use-plan --strict` | No AI (deterministic) |
+| Scenario                     | Flag Combination                                    | Behavior                       |
+| ---------------------------- | --------------------------------------------------- | ------------------------------ |
+| **Development**              | `--use-ai`                                          | Manual review                  |
+| **QA/Staging**               | `--use-ai --ai-auto`                                | Auto-apply (80%)               |
+| **Production**               | `--use-plan --strict`                               | No AI (deterministic)          |
 | **Production (alternative)** | `--use-ai --ai-auto --ai-confidence-threshold 0.95` | Auto-apply (95%, conservative) |
-| **Unknown types** | `--use-ai` (auto-enabled) | Always analyzed |
+| **Unknown types**            | `--use-ai` (auto-enabled)                           | Always analyzed                |
 
 ---
 
@@ -367,4 +371,3 @@ sf smart-deployment start --use-plan plan.json --strict
 - [AI Priority Weighting](./AGENTFORCE_INTEGRATION.md)
 - [CI/CD Deployment](./CI_CD_DEPLOYMENT.md)
 - [Configuration](./CONFIGURATION.md)
-
