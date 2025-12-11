@@ -20,6 +20,7 @@ import { Flags } from '@oclif/core';
 import { SfCommand } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import { getLogger } from '../utils/logger.js';
+import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('smart-deployment', 'start');
@@ -89,6 +90,25 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
 
     try {
       logger.info('Starting smart deployment', { flags });
+
+      // Check for strict mode (CI/CD safety)
+      if (flags.strict && !flags['use-plan']) {
+        this.error('❌ Strict mode requires --use-plan\n💡 Run: sf smart-deployment analyze --save-plan');
+      }
+
+      // Load deployment plan if specified
+      if (flags['use-plan']) {
+        this.log('📋 Loading deployment plan...');
+        const plan = await DeploymentPlanManager.loadPlan(flags['use-plan']);
+        this.log(`✅ Using approved plan (version ${plan.metadata.version})`);
+        this.log(`   Generated: ${new Date(plan.metadata.generatedAt).toLocaleString()}`);
+        this.log(`   Components: ${plan.metadata.totalComponents}`);
+        this.log(`   Waves: ${plan.metadata.totalWaves}`);
+        if (plan.metadata.aiEnabled) {
+          this.log(`   AI-enhanced: Yes`);
+        }
+        this.log('');
+      }
 
       // AC-1: Analyze metadata
       this.log('📊 Analyzing metadata...');

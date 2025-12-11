@@ -1,7 +1,7 @@
 /**
  * AI-Enhanced Priority Wave Generator - US-042 + US-057
  * Extends priority wave generation with Agentforce AI
- * 
+ *
  * @ac US-042-AC-1: Use deployment order constants
  * @ac US-042-AC-2: Objects before classes before triggers
  * @ac US-042-AC-3: Break ties using priorities
@@ -10,7 +10,7 @@
  * @ac US-042-AC-6: Validate no dependency violations
  * @ac US-057-AC-5: Merge with static priorities
  * @ac US-057-AC-6: Report AI decisions
- * 
+ *
  * @issue #42, #57
  */
 
@@ -33,10 +33,10 @@ export interface AIEnhancedOptions extends PriorityOptions {
 
 /**
  * AI-Enhanced Priority Wave Generator
- * 
+ *
  * Combines static priority rules with AI-powered recommendations
  * for intelligent deployment ordering.
- * 
+ *
  * @example
  * const aiService = new AgentforcePriorityService({ apiKey: 'xxx' });
  * const generator = new AIEnhancedPriorityWaveGenerator({
@@ -44,7 +44,7 @@ export interface AIEnhancedOptions extends PriorityOptions {
  *   orgType: 'Production',
  *   industry: 'Fintech'
  * });
- * 
+ *
  * const waves = await generator.applyPriorityWavesAsync(baseWaves, components);
  */
 export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
@@ -94,7 +94,7 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
     // Get AI recommendations if available
     if (this.agentforceService) {
       const componentList = Array.from(components.values());
-      
+
       // Prioritize unknown types in AI analysis
       const componentsToAnalyze = this.autoAIForUnknown && unknownComponents.length > 0
         ? unknownComponents // Focus on unknowns first

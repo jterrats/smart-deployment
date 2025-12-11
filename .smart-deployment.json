@@ -1,0 +1,43 @@
+{
+  "$schema": "./schemas/config.schema.json",
+  "version": "1.0",
+  
+  "ai": {
+    "enabled": false,
+    "confidenceThreshold": 0.9,
+    "maxDiffFromPlan": 0.1,
+    "timeout": 10000,
+    "fallbackToStaticOnError": true,
+    "model": "claude-sonnet"
+  },
+  
+  "cicd": {
+    "requireApprovedPlan": true,
+    "planPath": ".smart-deployment/deployment-plan.json",
+    "strictMode": true,
+    "maxDiffPercentage": 20,
+    "validateBeforeDeploy": true
+  },
+  
+  "deployment": {
+    "targetOrg": "${TARGET_ORG}",
+    "dryRun": false,
+    "validateOnly": false,
+    "skipTests": false,
+    "testLevel": "RunLocalTests",
+    "maxComponentsPerWave": 300,
+    "maxCmtRecordsPerWave": 200
+  },
+  
+  "priorities": {
+    "CustomObject:Payment__c": 100,
+    "ApexClass:PaymentHandler": 95
+  },
+  
+  "logging": {
+    "level": "info",
+    "file": ".smart-deployment/logs/deployment.log",
+    "console": true
+  }
+}
+
