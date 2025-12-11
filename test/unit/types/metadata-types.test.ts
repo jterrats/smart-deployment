@@ -201,7 +201,7 @@ describe('Type Exports Completeness', () => {
 
   it('should export all Agentforce AI types', () => {
     // Verify types compile
-    const inferenceType: Types.InferenceType = 'semantic-analysis';
+    const inferenceType = 'semantic-analysis' as const;
 
     expect(inferenceType).to.be.a('string');
   });

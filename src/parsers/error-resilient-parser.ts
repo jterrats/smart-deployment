@@ -13,7 +13,6 @@
 
 import { getLogger } from '../utils/logger.js';
 import { getErrorAggregator } from '../utils/error-aggregator.js';
-import type { MetadataComponent } from '../types/metadata.js';
 
 const logger = getLogger('ErrorResilientParser');
 const errorAggregator = getErrorAggregator();
@@ -346,4 +345,3 @@ export class ErrorResilientParser {
     return results.filter((r) => !r.success && r.error !== undefined).map((r) => r.error!);
   }
 }
-

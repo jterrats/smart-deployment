@@ -21,4 +21,4 @@ export * from './graph.js';
 export * from './project.js';
 
 // Agentforce AI integration types
-export * from './agentforce.js';
+export type { PriorityRecommendation, AgentforceConfig } from '../ai/agentforce-priority-service.js';

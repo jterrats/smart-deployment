@@ -16,11 +16,6 @@ describe('ErrorResilientParser', () => {
   });
 
   // Mock parser functions
-  const successParser = async (filePath: string) => ({
-    name: filePath,
-    content: 'parsed content',
-  });
-
   const failingParser = async (filePath: string) => {
     throw new Error(`Syntax error in ${filePath}:42:15: Unexpected token`);
   };
@@ -235,13 +230,7 @@ describe('ErrorResilientParser', () => {
 
   describe('Real-world Scenarios', () => {
     it('should handle mixed success/failure in batch', async () => {
-      const files = [
-        'good1.cls',
-        'bad1.cls',
-        'good2.cls',
-        'bad2.cls',
-        'good3.cls',
-      ];
+      const files = ['good1.cls', 'bad1.cls', 'good2.cls', 'bad2.cls', 'good3.cls'];
 
       const results = await parser.parseFiles(files, mixedParser);
 
@@ -263,4 +252,3 @@ describe('ErrorResilientParser', () => {
     });
   });
 });
-
