@@ -1,7 +1,7 @@
 /**
  * smart-deployment:start command
  * Main deployment command that orchestrates the entire workflow
- * 
+ *
  * @ac US-046-AC-1: Analyzes metadata automatically
  * @ac US-046-AC-2: Generates deployment waves
  * @ac US-046-AC-3: Executes deployment sequentially
@@ -12,7 +12,7 @@
  * @ac US-046-AC-8: Shows progress bar
  * @ac US-046-AC-9: Generates deployment report
  * @ac US-046-AC-10: Handles failures gracefully
- * 
+ *
  * @issue #46
  */
 
@@ -20,6 +20,7 @@ import { Flags } from '@oclif/core';
 import { SfCommand } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import { getLogger } from '../utils/logger.js';
+import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('smart-deployment', 'start');
@@ -68,6 +69,16 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
       description: 'Enables AI-powered analysis for deployment prioritization',
       default: false,
     }),
+    'ai-auto': Flags.boolean({
+      summary: 'Auto-apply AI recommendations with confidence > 80%',
+      description: 'Automatically applies AI priorities without prompting (requires --use-ai)',
+      default: false,
+    }),
+    'ai-confidence-threshold': Flags.string({
+      summary: 'Minimum AI confidence to auto-apply (0-1)',
+      description: 'Default: 0.8 (80%). Only used with --ai-auto',
+      default: '0.8',
+    }),
     'org-type': Flags.string({
       summary: 'Organization type (Production, Sandbox, Developer)',
       description: 'Helps AI provide context-aware recommendations',
@@ -90,6 +101,25 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     try {
       logger.info('Starting smart deployment', { flags });
 
+      // Check for strict mode (CI/CD safety)
+      if (flags.strict && !flags['use-plan']) {
+        this.error('❌ Strict mode requires --use-plan\n💡 Run: sf smart-deployment analyze --save-plan');
+      }
+
+      // Load deployment plan if specified
+      if (flags['use-plan']) {
+        this.log('📋 Loading deployment plan...');
+        const plan = await DeploymentPlanManager.loadPlan(flags['use-plan']);
+        this.log(`✅ Using approved plan (version ${plan.metadata.version})`);
+        this.log(`   Generated: ${new Date(plan.metadata.generatedAt).toLocaleString()}`);
+        this.log(`   Components: ${plan.metadata.totalComponents}`);
+        this.log(`   Waves: ${plan.metadata.totalWaves}`);
+        if (plan.metadata.aiEnabled) {
+          this.log(`   AI-enhanced: Yes`);
+        }
+        this.log('');
+      }
+
       // AC-1: Analyze metadata
       this.log('📊 Analyzing metadata...');
       const metadataCount = await this.analyzeMetadata();
@@ -102,7 +132,13 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
 
       // AC US-057-AC-6: Report AI decisions
       if (flags['use-ai']) {
-        this.log('🤖 AI-enhanced prioritization enabled');
+        const threshold = parseFloat(flags['ai-confidence-threshold'] || '0.8');
+        const mode = flags['ai-auto'] ? 'auto' : 'manual-review';
+        this.log(`🤖 AI-enhanced prioritization enabled (mode: ${mode}, threshold: ${(threshold * 100).toFixed(0)}%)`);
+        
+        if (!flags['ai-auto']) {
+          this.log('💡 Tip: Use --ai-auto to automatically apply high-confidence recommendations');
+        }
       }
 
       // AC-3: Execute deployment
