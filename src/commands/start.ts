@@ -69,6 +69,16 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
       description: 'Enables AI-powered analysis for deployment prioritization',
       default: false,
     }),
+    'ai-auto': Flags.boolean({
+      summary: 'Auto-apply AI recommendations with confidence > 80%',
+      description: 'Automatically applies AI priorities without prompting (requires --use-ai)',
+      default: false,
+    }),
+    'ai-confidence-threshold': Flags.string({
+      summary: 'Minimum AI confidence to auto-apply (0-1)',
+      description: 'Default: 0.8 (80%). Only used with --ai-auto',
+      default: '0.8',
+    }),
     'org-type': Flags.string({
       summary: 'Organization type (Production, Sandbox, Developer)',
       description: 'Helps AI provide context-aware recommendations',
@@ -122,7 +132,13 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
 
       // AC US-057-AC-6: Report AI decisions
       if (flags['use-ai']) {
-        this.log('🤖 AI-enhanced prioritization enabled');
+        const threshold = parseFloat(flags['ai-confidence-threshold'] || '0.8');
+        const mode = flags['ai-auto'] ? 'auto' : 'manual-review';
+        this.log(`🤖 AI-enhanced prioritization enabled (mode: ${mode}, threshold: ${(threshold * 100).toFixed(0)}%)`);
+        
+        if (!flags['ai-auto']) {
+          this.log('💡 Tip: Use --ai-auto to automatically apply high-confidence recommendations');
+        }
       }
 
       // AC-3: Execute deployment

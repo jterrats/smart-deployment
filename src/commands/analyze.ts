@@ -21,7 +21,7 @@ const logger = getLogger('AnalyzeCommand');
 
 export default class Analyze extends SfCommand<{ components: number; dependencies: number; planSaved?: boolean }> {
   public static readonly summary = 'Analyze metadata without deploying';
-  
+
   public static readonly flags = {
     'source-path': Flags.string({
       summary: 'Path to analyze (defaults to current directory)',

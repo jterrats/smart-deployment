@@ -142,28 +142,57 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
    * @ac US-057-AC-5: Merge with static priorities
    */
   private mergeAIPriorities(components: Map<NodeId, MetadataComponent>): void {
-    if (!this.aiAnalysisResult) return;
+    if (!this.aiAnalysisResult || !this.agentforceService) return;
+
+    // Get auto-apply configuration from service
+    const { enabled: autoApply, threshold } = this.agentforceService.getAutoApplyConfig();
+
+    if (!autoApply) {
+      logger.info('AI auto-apply disabled, recommendations available for manual review');
+      return;
+    }
 
     // Access protected options from base class
     const baseOptions = (this as unknown as { options: PriorityOptions }).options;
     const userPriorities = baseOptions.userPriorities ?? new Map();
 
+    let appliedCount = 0;
+    let skippedCount = 0;
+
     for (const rec of this.aiAnalysisResult.recommendations) {
       // Find component by name
       const nodeId = Array.from(components.keys()).find((id) => id.endsWith(`:${rec.componentName}`));
 
-      if (nodeId && rec.confidence > 0.8) {
+      if (!nodeId) continue;
+
+      // Check confidence threshold
+      if (rec.confidence > threshold) {
         // Only apply if no user override exists
         if (!userPriorities.has(nodeId)) {
           userPriorities.set(nodeId, rec.priority);
-          logger.debug('Applied AI priority', {
+          appliedCount++;
+          logger.debug('Applied AI priority (auto)', {
             component: nodeId,
             priority: rec.priority,
+            confidence: rec.confidence,
             reason: rec.reason,
           });
         }
+      } else {
+        skippedCount++;
+        logger.debug('Skipped AI priority (low confidence)', {
+          component: nodeId,
+          confidence: rec.confidence,
+          threshold,
+        });
       }
     }
+
+    logger.info('AI priorities merged', {
+      applied: appliedCount,
+      skipped: skippedCount,
+      threshold,
+    });
   }
 
   /**

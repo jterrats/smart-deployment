@@ -99,15 +99,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Salesforce CLI
         run: npm install -g @salesforce/cli
-        
+
       - name: Authenticate to Salesforce
         run: |
           echo "${{ secrets.SF_AUTH_URL }}" > auth.txt
           sf org login sfdx-url --sfdx-url-file auth.txt --alias prod
-      
+
       - name: Deploy with approved plan
         run: |
           sf smart-deployment start \
@@ -261,7 +261,7 @@ $ sf smart-deployment start --use-plan plan.json --strict
 ❌ Error: Current state differs from plan by 25% (max: 20%)
    Added components: 15
    Removed components: 5
-   
+
 💡 Plan is outdated. Run 'sf smart-deployment analyze --save-plan' to regenerate
 ```
 
