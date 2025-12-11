@@ -18,7 +18,7 @@ const logger = getLogger('StatusCommand');
 export default class Status extends SfCommand<{ currentWave: number }> {
   public static readonly summary = 'Show deployment status';
   public static readonly flags = {
-    'target-org': Flags.requiredOrg({ summary: 'Target org', char: 'o' }),
+    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
   };
 
   public async run(): Promise<{ currentWave: number }> {
@@ -28,5 +28,3 @@ export default class Status extends SfCommand<{ currentWave: number }> {
     return { currentWave: 1 };
   }
 }
-
-

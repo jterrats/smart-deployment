@@ -5,7 +5,6 @@
 
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { createHash } from 'node:crypto';
 import { getLogger } from './logger.js';
 import type {
   DeploymentPlan,
@@ -152,13 +151,6 @@ export class DeploymentPlanManager {
 
     // Priority differences
     let priorityChanges = 0;
-    let maxDiff = 0;
-    let totalDiff = 0;
-
-    // Simplified priority diff (would need actual priorities to calculate)
-    // This is a placeholder for demonstration
-    const priorityDiffPercentage = 0;
-
     return {
       identical: added.length === 0 && removed.length === 0,
       diffPercentage,
@@ -169,8 +161,8 @@ export class DeploymentPlanManager {
       },
       priorityDiff: {
         changed: priorityChanges,
-        maxDiffPercentage: maxDiff,
-        avgDiffPercentage: totalDiff / (priorityChanges || 1),
+        maxDiffPercentage: 0,
+        avgDiffPercentage: 0,
       },
       waveDiff: {
         planWaves: plan.waves.length,
@@ -230,10 +222,9 @@ export class DeploymentPlanManager {
   }
 
   /**
-   * Calculate file checksum
+   * Calculate file checksum (for future use in plan verification)
    */
-  private static calculateChecksum(content: string): string {
-    return createHash('sha256').update(content).digest('hex');
-  }
+  // private static _calculateChecksum(content: string): string {
+  //   return createHash('sha256').update(content).digest('hex');
+  // }
 }
-

@@ -44,7 +44,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
    * @ac US-057-AC-1: Send component list to Agentforce
    */
   public static readonly flags = {
-    'target-org': Flags.requiredOrg({
+    'target-org': Flags.string({
       summary: messages.getMessage('flags.target-org.summary'),
       char: 'o',
       required: true,
@@ -87,6 +87,13 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     industry: Flags.string({
       summary: 'Industry context for AI analysis (e.g., Fintech, Healthcare)',
       description: 'Provides business context to AI for better prioritization',
+    }),
+    'use-plan': Flags.string({
+      summary: 'Use pre-approved deployment plan',
+    }),
+    strict: Flags.boolean({
+      summary: 'Strict mode for CI/CD',
+      default: false,
     }),
   };
 
@@ -135,7 +142,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
         const threshold = parseFloat(flags['ai-confidence-threshold'] || '0.8');
         const mode = flags['ai-auto'] ? 'auto' : 'manual-review';
         this.log(`🤖 AI-enhanced prioritization enabled (mode: ${mode}, threshold: ${(threshold * 100).toFixed(0)}%)`);
-        
+
         if (!flags['ai-auto']) {
           this.log('💡 Tip: Use --ai-auto to automatically apply high-confidence recommendations');
         }
@@ -185,5 +192,3 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     this.log(`   - Status: Success`);
   }
 }
-
-

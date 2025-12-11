@@ -239,7 +239,10 @@ Respond ONLY with valid JSON (no markdown):
       const content = response.choices?.[0]?.message?.content || '{}';
 
       // Remove markdown code blocks if present
-      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
 
       const parsed = JSON.parse(cleanContent) as { recommendations: PriorityRecommendation[] };
 
@@ -342,7 +345,9 @@ Respond ONLY with valid JSON (no markdown):
         lines.push(`\n✅ Auto-Applied (confidence > ${(this.confidenceThreshold * 100).toFixed(0)}%):`);
         for (const rec of autoAppliedRecs.slice(0, 10)) {
           lines.push(
-            `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(30)} | ${rec.businessCriticality.toUpperCase()} (${(rec.confidence * 100).toFixed(0)}%)`
+            `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(
+              30
+            )} | ${rec.businessCriticality.toUpperCase()} (${(rec.confidence * 100).toFixed(0)}%)`
           );
           lines.push(`      ${rec.reason}`);
         }
@@ -352,7 +357,9 @@ Respond ONLY with valid JSON (no markdown):
         lines.push(`\n⏭️  Skipped (confidence ≤ ${(this.confidenceThreshold * 100).toFixed(0)}%):`);
         for (const rec of skippedRecs.slice(0, 5)) {
           lines.push(
-            `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(30)} | ${rec.businessCriticality.toUpperCase()} (${(rec.confidence * 100).toFixed(0)}%)`
+            `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(
+              30
+            )} | ${rec.businessCriticality.toUpperCase()} (${(rec.confidence * 100).toFixed(0)}%)`
           );
         }
       }
@@ -365,7 +372,7 @@ Respond ONLY with valid JSON (no markdown):
       lines.push('No AI recommendations (using static priorities)');
     }
 
-    if (autoApplied && autoAppliedRecs.length > 0) {
+    if (autoApplied && result.recommendations.length > 0) {
       lines.push('\n💡 All high-confidence recommendations were applied automatically');
     } else if (!autoApplied) {
       lines.push('\n💡 Use --ai-auto to automatically apply high-confidence recommendations');
@@ -396,4 +403,3 @@ interface AgentforceResponse {
     total_tokens?: number;
   };
 }
-
