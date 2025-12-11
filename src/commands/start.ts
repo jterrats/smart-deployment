@@ -135,7 +135,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
         const threshold = parseFloat(flags['ai-confidence-threshold'] || '0.8');
         const mode = flags['ai-auto'] ? 'auto' : 'manual-review';
         this.log(`🤖 AI-enhanced prioritization enabled (mode: ${mode}, threshold: ${(threshold * 100).toFixed(0)}%)`);
-
+        
         if (!flags['ai-auto']) {
           this.log('💡 Tip: Use --ai-auto to automatically apply high-confidence recommendations');
         }

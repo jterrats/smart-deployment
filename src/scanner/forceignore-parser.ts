@@ -187,7 +187,7 @@ export class ForceIgnoreParser {
   private getRelativePath(filePath: string): string {
     const absolutePath = resolve(filePath);
     const projectRoot = resolve(this.projectRoot);
-    
+
     let relativePath = relative(projectRoot, absolutePath);
 
     // Normalize path separators to forward slashes

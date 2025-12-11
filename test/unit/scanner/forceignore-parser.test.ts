@@ -38,7 +38,7 @@ describe('ForceIgnoreParser', () => {
 
       const rules = parser.getRules();
       expect(rules).to.be.an('array');
-      
+
       // Verify each rule has expected structure
       if (rules.length > 0) {
         expect(rules[0]).to.have.property('pattern');
@@ -54,7 +54,7 @@ describe('ForceIgnoreParser', () => {
 
       // Should have parsed comments
       expect(result.commentLines).to.be.greaterThan(0);
-      
+
       // Comments shouldn't become rules
       const commentRules = result.rules.filter((r) => r.pattern.startsWith('#'));
       expect(commentRules).to.be.empty;
