@@ -119,8 +119,7 @@ export class MetadataFormatScanner {
       return result;
     } catch (error) {
       this.errorAggregator.addError({
-        severity: 'error',
-        category: 'scanning',
+        severity: 'HIGH',
         message: 'Failed to scan Metadata API format',
         context: { error: error instanceof Error ? error.message : String(error) },
       });
@@ -298,30 +297,23 @@ export class MetadataFormatScanner {
     const mappings: Record<string, MetadataType> = {
       classes: 'ApexClass',
       triggers: 'ApexTrigger',
-      pages: 'ApexPage',
-      components: 'ApexComponent',
+      pages: 'VisualforcePage',
+      components: 'VisualforceComponent',
       objects: 'CustomObject',
       layouts: 'Layout',
       profiles: 'Profile',
       permissionsets: 'PermissionSet',
       flows: 'Flow',
-      workflows: 'Workflow',
       documents: 'Document',
       email: 'EmailTemplate',
-      reports: 'Report',
-      dashboards: 'Dashboard',
       staticresources: 'StaticResource',
-      tabs: 'CustomTab',
-      applications: 'CustomApplication',
       labels: 'CustomLabels',
-      homePageLayouts: 'HomePageLayout',
-      homePageComponents: 'HomePageComponent',
       quickActions: 'QuickAction',
       flexipages: 'FlexiPage',
       aura: 'AuraDefinitionBundle',
       lwc: 'LightningComponentBundle',
-      sites: 'DigitalExperienceBundle',
-      experiences: 'DigitalExperienceBundle',
+      sites: 'DigitalExperience',
+      experiences: 'DigitalExperience',
     };
 
     return mappings[dirName] || null;
@@ -342,8 +334,7 @@ export class MetadataFormatScanner {
    * Get error report
    */
   public getErrorReport(): string {
-    const report = this.errorAggregator.generateReport();
-    return report.formatted;
+    return this.errorAggregator.generateFormattedReport();
   }
 }
 
