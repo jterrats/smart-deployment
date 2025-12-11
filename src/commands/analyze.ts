@@ -33,3 +33,4 @@ export default class Analyze extends SfCommand<{ success: boolean }> {
   }
 }
 
+

@@ -1,7 +1,5 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
-// TODO: Import and use VisualforcePageMetadata, VisualforceComponentMetadata when implementing metadata parsing
-// import type { VisualforcePageMetadata, VisualforceComponentMetadata } from '../types/salesforce/visualforce.js';
 
 const logger = getLogger('VisualforceParser');
 

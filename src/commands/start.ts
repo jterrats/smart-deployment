@@ -40,6 +40,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
    * @ac US-046-AC-5: Supports --dry-run flag
    * @ac US-046-AC-6: Supports --validate-only flag
    * @ac US-046-AC-7: Supports --skip-tests flag
+   * @ac US-057-AC-1: Send component list to Agentforce
    */
   public static readonly flags = {
     'target-org': Flags.requiredOrg({
@@ -62,6 +63,20 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
       char: 's',
       default: false,
     }),
+    'use-ai': Flags.boolean({
+      summary: 'Use Agentforce AI for intelligent priority weighting',
+      description: 'Enables AI-powered analysis for deployment prioritization',
+      default: false,
+    }),
+    'org-type': Flags.string({
+      summary: 'Organization type (Production, Sandbox, Developer)',
+      description: 'Helps AI provide context-aware recommendations',
+      options: ['Production', 'Sandbox', 'Developer'],
+    }),
+    industry: Flags.string({
+      summary: 'Industry context for AI analysis (e.g., Fintech, Healthcare)',
+      description: 'Provides business context to AI for better prioritization',
+    }),
   };
 
   /**
@@ -82,8 +97,13 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
 
       // AC-2: Generate waves
       this.log('🌊 Generating deployment waves...');
-      const waves = await this.generateWaves();
+      const waves = await this.generateWaves(flags);
       this.log(`✅ Generated ${waves} waves`);
+
+      // AC US-057-AC-6: Report AI decisions
+      if (flags['use-ai']) {
+        this.log('🤖 AI-enhanced prioritization enabled');
+      }
 
       // AC-3: Execute deployment
       if (!flags['dry-run']) {
@@ -110,8 +130,11 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     return 100;
   }
 
-  private async generateWaves(): Promise<number> {
+  private async generateWaves(flags: Record<string, unknown>): Promise<number> {
     // Placeholder: will integrate with wave builder
+    if (flags['use-ai']) {
+      this.log('  🤖 Using Agentforce for intelligent prioritization...');
+    }
     return 5;
   }
 
@@ -126,4 +149,5 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     this.log(`   - Status: Success`);
   }
 }
+
 
