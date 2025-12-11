@@ -1,7 +1,7 @@
 /**
  * smart-deployment:start command
  * Main deployment command that orchestrates the entire workflow
- * 
+ *
  * @ac US-046-AC-1: Analyzes metadata automatically
  * @ac US-046-AC-2: Generates deployment waves
  * @ac US-046-AC-3: Executes deployment sequentially
@@ -12,7 +12,7 @@
  * @ac US-046-AC-8: Shows progress bar
  * @ac US-046-AC-9: Generates deployment report
  * @ac US-046-AC-10: Handles failures gracefully
- * 
+ *
  * @issue #46
  */
 

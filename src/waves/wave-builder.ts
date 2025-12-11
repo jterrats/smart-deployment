@@ -1,14 +1,14 @@
 /**
  * Wave Builder
  * Generates deployment waves using topological sort
- * 
+ *
  * @ac US-038-AC-1: Generate waves from dependency graph
  * @ac US-038-AC-2: Each wave contains independent components
  * @ac US-038-AC-3: Components in wave N don't depend on wave N+1
  * @ac US-038-AC-4: Handle components with no dependencies (wave 1)
  * @ac US-038-AC-5: Handle isolated components
  * @ac US-038-AC-6: Generate wave metadata
- * 
+ *
  * @issue #38
  */
 
@@ -113,24 +113,24 @@ const TYPE_DEPLOYMENT_ORDER: MetadataType[] = [
 
 /**
  * Wave Builder
- * 
+ *
  * Generates deployment waves using topological sort algorithm.
  * Each wave contains components that can be deployed in parallel.
- * 
+ *
  * Algorithm:
  * 1. Calculate in-degree for all nodes
  * 2. Add nodes with in-degree 0 to first wave
  * 3. Remove those nodes and update in-degrees
  * 4. Repeat until all nodes are placed
- * 
+ *
  * Performance: O(V + E)
- * 
+ *
  * @example
  * const builder = new WaveBuilder({
  *   maxComponentsPerWave: 10000,
  *   respectTypeOrder: true
  * });
- * 
+ *
  * const result = builder.generateWaves(graph);
  * console.log(`Generated ${result.waves.length} waves`);
  */
@@ -240,7 +240,7 @@ export class WaveBuilder {
       // Update in-degrees: reduce count for nodes that depended on current wave nodes
       for (const [nodeId, deps] of graph.entries()) {
         if (processed.has(nodeId)) continue;
-        
+
         // Count how many of its dependencies were in the current wave
         let removedDeps = 0;
         for (const dep of deps) {
@@ -248,7 +248,7 @@ export class WaveBuilder {
             removedDeps++;
           }
         }
-        
+
         if (removedDeps > 0) {
           inDegree.set(nodeId, (inDegree.get(nodeId) ?? 0) - removedDeps);
         }
