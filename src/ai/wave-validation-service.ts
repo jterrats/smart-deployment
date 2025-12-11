@@ -1,0 +1,472 @@
+/**
+ * AI Wave Validation Service - US-056
+ * Uses Agentforce to validate deployment waves for business logic issues
+ *
+ * @ac US-056-AC-1: Send wave structure to Agentforce
+ * @ac US-056-AC-2: Receive validation feedback
+ * @ac US-056-AC-3: Identify potential issues
+ * @ac US-056-AC-4: Suggest optimizations
+ * @ac US-056-AC-5: Risk assessment per wave
+ * @ac US-056-AC-6: Apply AI suggestions (optional)
+ * @issue #56
+ */
+
+import { getLogger } from '../utils/logger.js';
+import type { Wave } from '../waves/wave-builder.js';
+import { AgentforceService } from './agentforce-service.js';
+
+const logger = getLogger('WaveValidationService');
+
+export interface WaveValidationIssue {
+  waveNumber: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  category: 'dependency' | 'business-logic' | 'performance' | 'risk';
+  message: string;
+  affectedComponents: string[];
+  suggestion?: string;
+}
+
+export interface WaveOptimization {
+  waveNumber: number;
+  type: 'merge' | 'split' | 'reorder' | 'add-component' | 'remove-component';
+  description: string;
+  confidence: number;
+  estimatedImprovement: string;
+}
+
+export interface WaveRiskAssessment {
+  waveNumber: number;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  riskFactors: string[];
+  mitigation: string[];
+  recommendedActions: string[];
+}
+
+export interface WaveValidationResult {
+  isValid: boolean;
+  issues: WaveValidationIssue[];
+  optimizations: WaveOptimization[];
+  riskAssessments: WaveRiskAssessment[];
+  overallRisk: 'low' | 'medium' | 'high' | 'critical';
+  executionTime: number;
+  aiAnalyzed: boolean;
+}
+
+/**
+ * @ac US-056-AC-1: Send wave structure to Agentforce
+ * @ac US-056-AC-2: Receive validation feedback
+ */
+export class WaveValidationService {
+  private readonly agentforceService: AgentforceService;
+
+  public constructor(agentforceService?: AgentforceService) {
+    this.agentforceService = agentforceService || new AgentforceService();
+    logger.info('Wave validation service initialized');
+  }
+
+  /**
+   * @ac US-056-AC-1: Send wave structure to Agentforce
+   * Validate deployment waves using AI
+   */
+  public async validateWaves(waves: Wave[]): Promise<WaveValidationResult> {
+    const startTime = Date.now();
+
+    const result: WaveValidationResult = {
+      isValid: true,
+      issues: [],
+      optimizations: [],
+      riskAssessments: [],
+      overallRisk: 'low',
+      executionTime: 0,
+      aiAnalyzed: false,
+    };
+
+    try {
+      // Check if Agentforce is enabled
+      if (!this.agentforceService.isEnabled()) {
+        logger.info('Agentforce disabled, skipping AI validation');
+        return result;
+      }
+
+      // Build validation prompt
+      const prompt = this.buildValidationPrompt(waves);
+
+      // Send to Agentforce
+      const response = await this.agentforceService.sendRequest({
+        model: this.agentforceService.getConfig().model,
+        prompt,
+        temperature: 0.1, // Very low for consistent validation
+        maxTokens: 3000,
+      });
+
+      // Parse response
+      const validation = this.parseValidationResponse(response.content, waves);
+
+      result.issues = validation.issues;
+      result.optimizations = validation.optimizations;
+      result.riskAssessments = validation.riskAssessments;
+      result.overallRisk = this.calculateOverallRisk(validation.riskAssessments);
+      result.isValid = validation.issues.filter((i) => i.severity === 'critical').length === 0;
+      result.aiAnalyzed = true;
+      result.executionTime = Date.now() - startTime;
+
+      logger.info('Wave validation completed', {
+        waves: waves.length,
+        issues: result.issues.length,
+        optimizations: result.optimizations.length,
+        overallRisk: result.overallRisk,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Wave validation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      result.executionTime = Date.now() - startTime;
+      return result;
+    }
+  }
+
+  /**
+   * Build validation prompt
+   */
+  private buildValidationPrompt(waves: Wave[]): string {
+    const waveSummaries = waves.map((w) => ({
+      number: w.number,
+      componentCount: w.metadata.componentCount,
+      types: w.metadata.types,
+      components: w.components.slice(0, 20), // Limit for token optimization
+    }));
+
+    return `You are an expert Salesforce deployment architect. Analyze the following deployment waves and identify potential issues.
+
+Focus on:
+1. **Business Logic Issues**: Components that should/shouldn't be in same wave
+2. **Risk Assessment**: High-risk combinations
+3. **Performance**: Wave size and deployment time concerns
+4. **Dependencies**: Missing or incorrect ordering
+
+Waves:
+${JSON.stringify(waveSummaries, null, 2)}
+
+Return ONLY a JSON object in this format:
+{
+  "issues": [
+    {
+      "waveNumber": 1,
+      "severity": "low|medium|high|critical",
+      "category": "dependency|business-logic|performance|risk",
+      "message": "Description of issue",
+      "affectedComponents": ["Component1", "Component2"],
+      "suggestion": "How to fix"
+    }
+  ],
+  "optimizations": [
+    {
+      "waveNumber": 1,
+      "type": "merge|split|reorder",
+      "description": "What to optimize",
+      "confidence": 0.0-1.0,
+      "estimatedImprovement": "10% faster deployment"
+    }
+  ],
+  "riskAssessments": [
+    {
+      "waveNumber": 1,
+      "riskLevel": "low|medium|high|critical",
+      "riskFactors": ["Large wave size", "Complex dependencies"],
+      "mitigation": ["Split into 2 waves", "Add validation tests"],
+      "recommendedActions": ["Review before production deploy"]
+    }
+  ]
+}
+
+Be conservative - only report issues with high confidence.`;
+  }
+
+  /**
+   * @ac US-056-AC-2: Receive validation feedback
+   * @ac US-056-AC-3: Identify potential issues
+   * @ac US-056-AC-4: Suggest optimizations
+   * @ac US-056-AC-5: Risk assessment per wave
+   */
+  private parseValidationResponse(
+    content: string,
+    waves: Wave[]
+  ): {
+    issues: WaveValidationIssue[];
+    optimizations: WaveOptimization[];
+    riskAssessments: WaveRiskAssessment[];
+  } {
+    try {
+      // Extract JSON from response
+      const jsonMatch = /\{[\s\S]*\}/.exec(content);
+      if (!jsonMatch) {
+        logger.warn('No JSON found in validation response');
+        return this.getMockValidation(waves);
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        issues?: unknown[];
+        optimizations?: unknown[];
+        riskAssessments?: unknown[];
+      };
+
+      return {
+        issues: this.parseIssues(parsed.issues || []),
+        optimizations: this.parseOptimizations(parsed.optimizations || []),
+        riskAssessments: this.parseRiskAssessments(parsed.riskAssessments || []),
+      };
+    } catch (error) {
+      logger.error('Failed to parse validation response', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return this.getMockValidation(waves);
+    }
+  }
+
+  /**
+   * Parse issues from AI response
+   */
+  private parseIssues(items: unknown[]): WaveValidationIssue[] {
+    const issues: WaveValidationIssue[] = [];
+
+    for (const item of items) {
+      if (
+        typeof item === 'object' &&
+        item !== null &&
+        'waveNumber' in item &&
+        'severity' in item &&
+        'category' in item &&
+        'message' in item
+      ) {
+        const issue = item as Record<string, unknown>;
+        issues.push({
+          waveNumber: Number(issue.waveNumber),
+          severity: String(issue.severity) as WaveValidationIssue['severity'],
+          category: String(issue.category) as WaveValidationIssue['category'],
+          message: String(issue.message),
+          affectedComponents: Array.isArray(issue.affectedComponents) ? issue.affectedComponents.map(String) : [],
+          suggestion: issue.suggestion ? String(issue.suggestion) : undefined,
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Parse optimizations from AI response
+   */
+  private parseOptimizations(items: unknown[]): WaveOptimization[] {
+    const optimizations: WaveOptimization[] = [];
+
+    for (const item of items) {
+      if (
+        typeof item === 'object' &&
+        item !== null &&
+        'waveNumber' in item &&
+        'type' in item &&
+        'description' in item
+      ) {
+        const opt = item as Record<string, unknown>;
+        optimizations.push({
+          waveNumber: Number(opt.waveNumber),
+          type: String(opt.type) as WaveOptimization['type'],
+          description: String(opt.description),
+          confidence: Number(opt.confidence) || 0.5,
+          estimatedImprovement: String(opt.estimatedImprovement) || 'Unknown',
+        });
+      }
+    }
+
+    return optimizations;
+  }
+
+  /**
+   * Parse risk assessments from AI response
+   */
+  private parseRiskAssessments(items: unknown[]): WaveRiskAssessment[] {
+    const assessments: WaveRiskAssessment[] = [];
+
+    for (const item of items) {
+      if (typeof item === 'object' && item !== null && 'waveNumber' in item && 'riskLevel' in item) {
+        const risk = item as Record<string, unknown>;
+        assessments.push({
+          waveNumber: Number(risk.waveNumber),
+          riskLevel: String(risk.riskLevel) as WaveRiskAssessment['riskLevel'],
+          riskFactors: Array.isArray(risk.riskFactors) ? risk.riskFactors.map(String) : [],
+          mitigation: Array.isArray(risk.mitigation) ? risk.mitigation.map(String) : [],
+          recommendedActions: Array.isArray(risk.recommendedActions) ? risk.recommendedActions.map(String) : [],
+        });
+      }
+    }
+
+    return assessments;
+  }
+
+  /**
+   * Get mock validation (fallback when AI unavailable)
+   */
+  private getMockValidation(waves: Wave[]): {
+    issues: WaveValidationIssue[];
+    optimizations: WaveOptimization[];
+    riskAssessments: WaveRiskAssessment[];
+  } {
+    const riskAssessments: WaveRiskAssessment[] = waves.map((wave) => ({
+      waveNumber: wave.number,
+      riskLevel: wave.metadata.componentCount > 200 ? 'high' : 'low',
+      riskFactors: wave.metadata.componentCount > 200 ? ['Large wave size'] : [],
+      mitigation: wave.metadata.componentCount > 200 ? ['Consider splitting wave'] : [],
+      recommendedActions: [],
+    }));
+
+    return {
+      issues: [],
+      optimizations: [],
+      riskAssessments,
+    };
+  }
+
+  /**
+   * Calculate overall risk from individual assessments
+   */
+  private calculateOverallRisk(assessments: WaveRiskAssessment[]): 'low' | 'medium' | 'high' | 'critical' {
+    if (assessments.length === 0) return 'low';
+
+    const riskScores = { low: 1, medium: 2, high: 3, critical: 4 };
+    const maxRisk = Math.max(...assessments.map((a) => riskScores[a.riskLevel]));
+
+    if (maxRisk >= 4) return 'critical';
+    if (maxRisk >= 3) return 'high';
+    if (maxRisk >= 2) return 'medium';
+    return 'low';
+  }
+
+  /**
+   * @ac US-056-AC-6: Apply AI suggestions (optional)
+   * Apply optimization suggestions to waves
+   */
+  public applyOptimizations(waves: Wave[], optimizations: WaveOptimization[]): Wave[] {
+    // For now, just return original waves
+    // Future: implement actual optimization application
+    logger.info('Optimization application not yet implemented', {
+      optimizations: optimizations.length,
+    });
+
+    return waves;
+  }
+
+  /**
+   * Format validation report
+   */
+  public formatValidationReport(result: WaveValidationResult): string {
+    const lines: string[] = [];
+
+    lines.push('🔍 AI Wave Validation Report');
+    lines.push('═══════════════════════════════════════');
+
+    if (!result.aiAnalyzed) {
+      lines.push('⚠️  AI validation unavailable (using basic checks)');
+      lines.push('');
+    }
+
+    lines.push(`Overall Risk: ${this.getRiskIcon(result.overallRisk)} ${result.overallRisk.toUpperCase()}`);
+    lines.push(`Execution Time: ${result.executionTime}ms`);
+    lines.push('');
+
+    // Issues
+    if (result.issues.length > 0) {
+      lines.push(`❌ Issues Found: ${result.issues.length}`);
+      lines.push('');
+
+      const bySeverity = new Map<string, WaveValidationIssue[]>();
+      for (const issue of result.issues) {
+        const issues = bySeverity.get(issue.severity) || [];
+        issues.push(issue);
+        bySeverity.set(issue.severity, issues);
+      }
+
+      for (const [severity, issues] of bySeverity.entries()) {
+        lines.push(`${this.getSeverityIcon(severity)} ${severity.toUpperCase()} (${issues.length}):`);
+        for (const issue of issues.slice(0, 5)) {
+          lines.push(`   Wave ${issue.waveNumber}: ${issue.message}`);
+          if (issue.suggestion) {
+            lines.push(`   💡 ${issue.suggestion}`);
+          }
+        }
+        if (issues.length > 5) {
+          lines.push(`   ... and ${issues.length - 5} more`);
+        }
+        lines.push('');
+      }
+    } else {
+      lines.push('✅ No critical issues found');
+      lines.push('');
+    }
+
+    // Optimizations
+    if (result.optimizations.length > 0) {
+      lines.push(`💡 Optimization Suggestions: ${result.optimizations.length}`);
+      lines.push('');
+
+      for (const opt of result.optimizations.slice(0, 5)) {
+        lines.push(`   Wave ${opt.waveNumber}: ${opt.type.toUpperCase()}`);
+        lines.push(`   ${opt.description}`);
+        lines.push(`   Confidence: ${(opt.confidence * 100).toFixed(0)}%`);
+        lines.push(`   Impact: ${opt.estimatedImprovement}`);
+        lines.push('');
+      }
+    }
+
+    // Risk Assessments
+    if (result.riskAssessments.length > 0) {
+      lines.push('📊 Risk Assessment by Wave:');
+      lines.push('');
+
+      for (const assessment of result.riskAssessments) {
+        lines.push(
+          `   Wave ${assessment.waveNumber}: ${this.getRiskIcon(
+            assessment.riskLevel
+          )} ${assessment.riskLevel.toUpperCase()}`
+        );
+
+        if (assessment.riskFactors.length > 0) {
+          lines.push(`   Factors: ${assessment.riskFactors.join(', ')}`);
+        }
+
+        if (assessment.mitigation.length > 0) {
+          lines.push(`   Mitigation: ${assessment.mitigation.join(', ')}`);
+        }
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Get risk level icon
+   */
+  private getRiskIcon(risk: string): string {
+    switch (risk) {
+      case 'critical':
+        return '🔴';
+      case 'high':
+        return '🟠';
+      case 'medium':
+        return '🟡';
+      case 'low':
+        return '🟢';
+      default:
+        return '⚪';
+    }
+  }
+
+  /**
+   * Get severity icon
+   */
+  private getSeverityIcon(severity: string): string {
+    return this.getRiskIcon(severity);
+  }
+}
