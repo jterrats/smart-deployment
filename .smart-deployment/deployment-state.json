@@ -1,0 +1,13 @@
+{
+  "deploymentId": "deploy-1765477559754",
+  "targetOrg": "unknown",
+  "timestamp": "2025-12-11T18:25:59.754Z",
+  "totalWaves": 3,
+  "completedWaves": [],
+  "currentWave": 2,
+  "failedWave": {
+    "waveNumber": 2,
+    "error": "UNABLE_TO_LOCK_ROW",
+    "timestamp": "2025-12-11T18:25:59.755Z"
+  }
+}

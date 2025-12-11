@@ -15,13 +15,13 @@ Development → Generate Plan → Review Plan → Commit Plan → CI/CD Deploy
 
 ### Why Pre-Approved Plans?
 
-| Without Plan | With Plan |
-|--------------|-----------|
-| ❌ Non-deterministic | ✅ Deterministic |
-| ❌ AI can change priorities | ✅ Fixed priorities |
-| ❌ No audit trail | ✅ Git history |
-| ❌ No human review | ✅ PR review process |
-| ❌ Rollback complex | ✅ Easy rollback |
+| Without Plan                | With Plan            |
+| --------------------------- | -------------------- |
+| ❌ Non-deterministic        | ✅ Deterministic     |
+| ❌ AI can change priorities | ✅ Fixed priorities  |
+| ❌ No audit trail           | ✅ Git history       |
+| ❌ No human review          | ✅ PR review process |
+| ❌ Rollback complex         | ✅ Easy rollback     |
 
 ---
 
@@ -66,7 +66,9 @@ sf smart-deployment analyze \
       "reason": "Critical payment processing"
     }
   },
-  "waves": [ /* ... */ ]
+  "waves": [
+    /* ... */
+  ]
 }
 ```
 
@@ -135,6 +137,7 @@ sf smart-deployment start \
 ```
 
 **Behavior:**
+
 - ✅ Loads plan from file
 - ✅ Fails if plan not found
 - ✅ Uses exact priorities from plan
@@ -156,6 +159,7 @@ sf smart-deployment start \
 ```
 
 **Behavior:**
+
 1. Runs AI analysis
 2. Compares with approved plan
 3. If diff > threshold → fails with report
@@ -176,6 +180,7 @@ sf smart-deployment start \
 ```
 
 **Behavior:**
+
 - Attempts AI analysis (with timeout)
 - Falls back to plan if:
   - AI timeout
@@ -272,6 +277,7 @@ $ sf smart-deployment start --use-plan plan.json --strict
 ### 1. Plan Validation
 
 Before deploy, validates:
+
 - ✅ Plan version matches
 - ✅ Components match current state
 - ✅ Diff within acceptable range
@@ -282,6 +288,7 @@ Before deploy, validates:
 ```bash
 --strict
 ```
+
 - Requires `--use-plan`
 - Fails if plan not found
 - No AI calls
@@ -292,6 +299,7 @@ Before deploy, validates:
 ```bash
 --max-diff 10%
 ```
+
 - Validates current state vs plan
 - Fails if diff > threshold
 - Prevents deploying stale plans
@@ -357,21 +365,25 @@ done
 ## 📈 Best Practices
 
 1. ✅ **Always commit plans to git**
+
    - Version controlled
    - Reviewable in PRs
    - Easy rollback
 
 2. ✅ **Use AI in development, not production**
+
    - Generate plan with AI locally
    - Review and approve
    - Deploy deterministically
 
 3. ✅ **Set strict mode in production**
+
    - Prevents accidental AI usage
    - Requires approved plan
    - Predictable behavior
 
 4. ✅ **Validate before deploy**
+
    - Use `--validate-only` first
    - Check plan age
    - Review diff if any
@@ -417,4 +429,3 @@ done
 - [AI Priority Weighting](./AGENTFORCE_INTEGRATION.md)
 - [Wave Generation](./ARCHITECTURE.md#wave-generation)
 - [Error Handling](./ERROR_HANDLING.md)
-

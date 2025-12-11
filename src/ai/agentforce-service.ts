@@ -330,4 +330,3 @@ export class AgentforceService {
     this.requestTimestamps = [];
   }
 }
-
