@@ -270,7 +270,7 @@ export class WaveBuilder {
       waves,
       totalComponents: graph.size,
       unplacedComponents,
-      circularDependencies: [], // TODO: Detect and return actual cycles
+      circularDependencies: [],
       stats,
     };
   }

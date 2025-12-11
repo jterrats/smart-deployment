@@ -29,3 +29,4 @@ export default class Validate extends SfCommand<{ success: boolean }> {
   }
 }
 
+

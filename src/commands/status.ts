@@ -29,3 +29,4 @@ export default class Status extends SfCommand<{ currentWave: number }> {
   }
 }
 
+
