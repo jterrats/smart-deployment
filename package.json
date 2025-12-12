@@ -77,7 +77,11 @@
     "test": "wireit",
     "test:nuts": "nyc mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
     "test:only": "wireit",
-    "test:bdd": "NODE_OPTIONS='--loader ts-node/esm --no-warnings=ExperimentalWarning' cucumber-js",
+    "test:bdd": "node --loader ts-node/esm --no-warnings=ExperimentalWarning node_modules/@cucumber/cucumber/bin/cucumber.js",
+    "test:e2e": "mocha test/e2e/**/*.e2e.test.ts",
+    "test:integration": "mocha test/integration/**/*.test.ts",
+    "test:performance": "mocha test/performance/**/*.test.ts",
+    "test:all": "yarn test:only && yarn test:integration && yarn test:e2e && yarn test:performance",
     "version": "oclif readme"
   },
   "publishConfig": {
