@@ -117,10 +117,11 @@ describe('WaveExecutor', () => {
 
       const ordered = getWavesInExecutionOrder(waveResult);
 
+      // Should be sorted but keep original numbers (1, 2, 10)
       expect(ordered.map((w) => w.number)).to.deep.equal([1, 2, 10]);
     });
 
-    it('should renumber waves if not sequential', () => {
+    it('should sort waves even if not sequential', () => {
       const waveResult: WaveResult = {
         waves: [
           { number: 5, components: [], metadata: createMockMetadata() },
@@ -141,8 +142,8 @@ describe('WaveExecutor', () => {
 
       const ordered = getWavesInExecutionOrder(waveResult);
 
-      // Should be renumbered to 1, 2, 3
-      expect(ordered.map((w) => w.number)).to.deep.equal([1, 2, 3]);
+      // Should be sorted but keep original numbers (5, 10, 15)
+      expect(ordered.map((w) => w.number)).to.deep.equal([5, 10, 15]);
     });
   });
 
@@ -154,8 +155,8 @@ describe('WaveExecutor', () => {
     });
 
     it('should handle single digit waves', () => {
-      expect(formatWaveId(1, 5)).to.equal('wave-01');
-      expect(formatWaveId(5, 5)).to.equal('wave-05');
+      expect(formatWaveId(1, 5)).to.equal('wave-001');
+      expect(formatWaveId(5, 5)).to.equal('wave-005');
     });
   });
 

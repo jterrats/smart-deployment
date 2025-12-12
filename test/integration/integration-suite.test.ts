@@ -33,7 +33,7 @@ describe('Integration Tests - US-065', () => {
         try {
           const content = await require('node:fs').promises.readFile(filePath, 'utf-8');
           const parsed = parseApexClass(filePath, content);
-          
+
           // Convert ApexParseResult to MetadataComponent
           const component = {
             name: parsed.className,

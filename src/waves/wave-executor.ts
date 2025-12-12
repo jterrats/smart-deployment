@@ -55,15 +55,10 @@ export function validateWaveOrder(waves: Wave[]): boolean {
 export function getWavesInExecutionOrder(waveResult: WaveResult): Wave[] {
   const sortedWaves = sortWavesByNumber(waveResult);
 
-  if (!validateWaveOrder(sortedWaves)) {
-    logger.warn('Waves are not in sequential order, renumbering...');
-    // Renumber waves to ensure sequential order
-    return sortedWaves.map((wave, index) => ({
-      ...wave,
-      number: index + 1,
-    }));
-  }
-
+  // Note: We don't renumber waves, we just ensure they're sorted
+  // The wave numbers represent their dependency order, which may not be sequential
+  // (e.g., after splitting or merging, waves might be 1, 2, 5, 10)
+  // The important thing is they're executed in sorted order
   return sortedWaves;
 }
 
@@ -76,7 +71,9 @@ export function getWavesInExecutionOrder(waveResult: WaveResult): Wave[] {
  * @returns Zero-padded wave identifier (e.g., "wave-001", "wave-010")
  */
 export function formatWaveId(waveNumber: number, totalWaves: number): string {
-  const padding = Math.ceil(Math.log10(totalWaves + 1));
+  // Calculate padding based on total waves (e.g., 15 waves needs 2 digits, 100 needs 3)
+  // Always use at least 3 digits for consistency
+  const padding = Math.max(3, Math.ceil(Math.log10(totalWaves + 1)));
   return `wave-${String(waveNumber).padStart(padding, '0')}`;
 }
 
