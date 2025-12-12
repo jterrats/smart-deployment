@@ -19,7 +19,8 @@ import { parseLWC } from '../parsers/lwc-parser.js';
 import { parseAura } from '../parsers/aura-parser.js';
 import { parseFlow } from '../parsers/flow-parser.js';
 import { parseCustomObject } from '../parsers/custom-object-parser.js';
-import { parseCustomMetadataType, parseCustomMetadataRecord } from '../parsers/custom-metadata-parser.js';
+import { parseCustomMetadataType } from '../parsers/custom-metadata-parser.js';
+// import { parseCustomMetadataRecord } from '../parsers/custom-metadata-parser.js'; // TODO: Use when implementing CMT record parsing
 import { parseEmailTemplate } from '../parsers/email-template-parser.js';
 import { parseFlexiPage } from '../parsers/flexipage-parser.js';
 import { parseLayout } from '../parsers/layout-parser.js';

@@ -215,7 +215,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     const targetOrg = flags['target-org'] as string;
     const dryRun = flags['dry-run'] as boolean;
     const validateOnly = flags['validate-only'] as boolean;
-    const skipTests = flags['skip-tests'] as boolean;
+    // const skipTests = flags['skip-tests'] as boolean; // TODO: Use when implementing test execution
 
     if (dryRun || validateOnly) {
       this.log('🔍 Dry-run/Validate mode: skipping actual deployment');
@@ -240,7 +240,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     const orderedWaves = getWavesInExecutionOrder(waveResult);
 
     // Initialize deployment services
-    const sfCli = new SfCliIntegration();
+    // const sfCli = new SfCliIntegration(); // TODO: Use when implementing actual deployment
     const stateManager = new StateManager();
     const tracker = new DeploymentTracker();
 
