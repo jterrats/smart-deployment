@@ -505,7 +505,8 @@ export class MetadataScannerService {
 
       try {
         const templateName = path.basename(filePath, '.email-meta.xml');
-        const parsed = await parseEmailTemplate(filePath, templateName);
+        const content = await fs.readFile(filePath, 'utf-8');
+        const parsed = await parseEmailTemplate(templateName, content, content);
 
         const deps = new Set<string>();
         parsed.dependencies.forEach((d) => {
@@ -535,7 +536,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const botName = path.basename(filePath, '.bot-meta.xml');
         const parsed = await parseBot(filePath, botName);
 
@@ -565,7 +565,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const promptName = path.basename(filePath, '.genAiPromptTemplate-meta.xml');
         const parsed = await parseGenAiPrompt(filePath, promptName);
 
