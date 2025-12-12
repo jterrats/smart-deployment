@@ -177,6 +177,16 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
   private async analyzeMetadata(sourcePath?: string): Promise<number> {
     const scanner = new MetadataScannerService();
     const result = await scanner.scan({ sourcePath });
+    
+    if (result.errors.length > 0) {
+      logger.error('Metadata scanning completed with errors', { errors: result.errors });
+      result.errors.forEach((err) => this.warn(err));
+    }
+    if (result.warnings.length > 0) {
+      logger.warn('Metadata scanning completed with warnings', { warnings: result.warnings });
+      result.warnings.forEach((warn) => this.warn(warn));
+    }
+    
     return result.components.length;
   }
 
@@ -215,6 +225,16 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     // Scan and generate waves
     const scanner = new MetadataScannerService();
     const scanResult = await scanner.scan({ sourcePath });
+    
+    if (scanResult.errors.length > 0) {
+      logger.error('Metadata scanning completed with errors', { errors: scanResult.errors });
+      scanResult.errors.forEach((err) => this.warn(err));
+    }
+    if (scanResult.warnings.length > 0) {
+      logger.warn('Metadata scanning completed with warnings', { warnings: scanResult.warnings });
+      scanResult.warnings.forEach((warn) => this.warn(warn));
+    }
+    
     const waveBuilder = new WaveBuilder();
     const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
     const orderedWaves = getWavesInExecutionOrder(waveResult);
