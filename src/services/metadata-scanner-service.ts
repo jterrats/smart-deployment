@@ -569,7 +569,8 @@ export class MetadataScannerService {
         const parsed = await parseGenAiPrompt(filePath, promptName);
 
         const deps = new Set<string>();
-        parsed.relatedObjects.forEach((o) => deps.add(o));
+        parsed.sobjects.forEach((o: string) => deps.add(o));
+        parsed.dependencies.sobjects.forEach((o: string) => deps.add(o));
 
         components.push({
           name: promptName,
@@ -638,10 +639,22 @@ export class MetadataScannerService {
    */
   private async findDirectories(rootPath: string, pattern: string): Promise<string[]> {
     const fullPattern = path.join(rootPath, pattern);
-    const dirs = await globAsync(fullPattern, {
+    const allMatches = await globAsync(fullPattern, {
       ignore: ['**/node_modules/**', '**/.git/**'],
-      onlyDirectories: true,
     });
+    
+    // Filter to only directories
+    const dirs: string[] = [];
+    for (const match of allMatches) {
+      try {
+        const stat = await fs.stat(match);
+        if (stat.isDirectory()) {
+          dirs.push(match);
+        }
+      } catch {
+        // Skip if stat fails (file doesn't exist, etc.)
+      }
+    }
     return dirs;
   }
 

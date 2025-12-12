@@ -16,6 +16,8 @@ import { Flags } from '@oclif/core';
 import { SfCommand } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
+import { MetadataScannerService } from '../services/metadata-scanner-service.js';
+import { WaveBuilder } from '../waves/wave-builder.js';
 
 const logger = getLogger('AnalyzeCommand');
 
@@ -64,35 +66,67 @@ export default class Analyze extends SfCommand<{ components: number; dependencie
 
       this.log('📊 Analyzing metadata...');
 
-      // Placeholder: will integrate with parsers
-      const components = 100;
-      const dependencies = 250;
+      // Scan project and build dependency graph
+      const scanner = new MetadataScannerService();
+      const scanResult = await scanner.scan({
+        sourcePath: flags['source-path'],
+      });
+
+      const components = scanResult.components.length;
+      const dependencies = scanResult.dependencyResult.stats.totalDependencies;
+      const cycles = scanResult.dependencyResult.circularDependencies.length;
 
       this.log(`✅ Found ${components} components with ${dependencies} dependencies`);
+
+      if (cycles > 0) {
+        this.log(`⚠️  Warning: ${cycles} circular dependency cycle(s) detected`);
+      }
+
+      // Generate waves
+      this.log('');
+      this.log('🌊 Generating deployment waves...');
+      const waveBuilder = new WaveBuilder({
+        maxComponentsPerWave: 10000,
+        respectTypeOrder: true,
+        handleCircularDeps: true,
+      });
+
+      const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
+
+      this.log(`✅ Generated ${waveResult.waves.length} deployment wave(s)`);
+      this.log(`   Total components: ${waveResult.totalComponents}`);
+      if (waveResult.unplacedComponents.length > 0) {
+        this.log(`   ⚠️  ${waveResult.unplacedComponents.length} component(s) couldn't be placed (circular deps)`);
+      }
 
       // Generate and save plan if requested
       if (flags['save-plan']) {
         this.log('');
         this.log('📋 Generating deployment plan...');
 
-        // Placeholder waves and priorities
-        const mockWaves = [
-          {
-            number: 1,
-            components: ['CustomObject:Account__c'],
-            metadata: {
-              componentCount: 1,
-              types: ['CustomObject' as const],
-              maxDepth: 0,
-              hasCircularDeps: false,
-              estimatedTime: 60,
-            },
+        // Convert waves to plan format
+        const planWaves = waveResult.waves.map((wave) => ({
+          number: wave.number,
+          components: wave.components,
+          metadata: {
+            componentCount: wave.metadata.componentCount,
+            types: wave.metadata.types,
+            maxDepth: wave.metadata.maxDepth,
+            hasCircularDeps: wave.metadata.hasCircularDeps,
+            estimatedTime: wave.metadata.estimatedTime,
           },
-        ];
+        }));
 
-        const mockPriorities = {};
+        // Extract priorities from components (if any)
+        const priorities: Record<string, number> = {};
+        for (const component of scanResult.components) {
+          if (component.priorityBoost > 0) {
+            const nodeId = `${component.type}:${component.name}`;
+            priorities[nodeId] = component.priorityBoost;
+          }
+        }
 
-        const plan = DeploymentPlanManager.createPlan(mockWaves, mockPriorities, {
+        const plan = DeploymentPlanManager.createPlan(planWaves, priorities, {
           aiEnabled: flags['use-ai'],
           orgType: flags['org-type'],
           industry: flags.industry,
@@ -110,6 +144,12 @@ export default class Analyze extends SfCommand<{ components: number; dependencie
         this.log(`   3. Use it in CI/CD: sf smart-deployment start --use-plan ${planPath}`);
 
         return { components, dependencies, planSaved: true };
+      }
+
+      // Output report if requested
+      if (flags.output) {
+        // TODO: Generate JSON/HTML report
+        this.log(`📄 Report would be saved to: ${flags.output} (format: ${flags.format})`);
       }
 
       return { components, dependencies };
