@@ -4,8 +4,9 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # PR testing is handled by acceptance-criteria-validation.yml to avoid duplicate runs
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 jobs:
