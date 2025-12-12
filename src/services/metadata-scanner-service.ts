@@ -32,7 +32,7 @@ import { parseVisualforce } from '../parsers/visualforce-parser.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { glob as globAsync } from 'glob';
-import type { MetadataComponent, MetadataType } from '../types/metadata.js';
+import type { MetadataComponent } from '../types/metadata.js';
 import type { DependencyAnalysisResult } from '../types/dependency.js';
 
 const logger = getLogger('MetadataScannerService');
@@ -54,13 +54,14 @@ export interface ScanResult {
 
 /**
  * Metadata file pattern matcher
+ * TODO: Use when implementing pattern-based metadata detection
  */
-interface MetadataPattern {
-  type: MetadataType;
-  patterns: string[];
-  isContainer?: boolean; // For LWC, Aura, CustomObject bundles
-  parser?: (filePath: string, content: string, metadataXml?: string) => Promise<MetadataComponent> | MetadataComponent;
-}
+// interface MetadataPattern {
+//   type: MetadataType;
+//   patterns: string[];
+//   isContainer?: boolean; // For LWC, Aura, CustomObject bundles
+//   parser?: (filePath: string, content: string, metadataXml?: string) => Promise<MetadataComponent> | MetadataComponent;
+// }
 
 /**
  * Metadata Scanner Service
@@ -363,8 +364,8 @@ export class MetadataScannerService {
       if (!(await this.fileExists(typeFile))) continue;
 
       try {
-        const content = await fs.readFile(typeFile, 'utf-8');
-        const parsed = await parseCustomMetadataType(typeName, content);
+        await fs.readFile(typeFile, 'utf-8');
+        await parseCustomMetadataType(typeName, await fs.readFile(typeFile, 'utf-8'));
 
         components.push({
           name: typeName,
@@ -387,14 +388,13 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const profileName = path.basename(filePath, '.profile-meta.xml');
         const parsed = await parseProfile(filePath, profileName);
 
         const deps = new Set<string>();
-        parsed.objectPermissions.forEach((op) => deps.add(op.object));
-        parsed.apexClassAccess.forEach((ac) => deps.add(ac.apexClass));
-        parsed.pageLayouts.forEach((pl) => deps.add(pl));
+        parsed.objectPermissions.forEach((op: string) => deps.add(op));
+        parsed.apexClassAccesses.forEach((ac: string) => deps.add(ac));
+        parsed.layoutAssignments.forEach((pl: string) => deps.add(pl));
 
         components.push({
           name: profileName,

@@ -24,7 +24,7 @@ import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
 import { getWavesInExecutionOrder } from '../waves/wave-executor.js';
-import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
+// import { SfCliIntegration } from '../deployment/sf-cli-integration.js'; // TODO: Use when implementing actual deployment
 import { StateManager } from '../deployment/state-manager.js';
 import { DeploymentTracker } from '../deployment/deployment-tracker.js';
 
