@@ -266,6 +266,9 @@ export class WaveBuilder {
       durationMs: duration,
     });
 
+    // Ensure waves are sorted by number before returning
+    waves.sort((a, b) => a.number - b.number);
+
     return {
       waves,
       totalComponents: graph.size,
