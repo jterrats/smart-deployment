@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-  # PR testing is handled by acceptance-criteria-validation.yml to avoid duplicate runs
-  # pull_request:
-  #   types: [opened, synchronize, reopened]
+  # PR testing is handled by acceptance-criteria-validation.yml
   workflow_dispatch:
 
 jobs:
@@ -123,6 +121,7 @@ jobs:
         run: yarn test:only
 
       - name: Check coverage threshold
+        if: ${{ !inputs.skip_coverage_check }}
         run: |
           # Check if coverage meets minimum threshold (90%)
           COVERAGE=$(cat coverage/coverage-summary.json | jq -r '.total.lines.pct')
