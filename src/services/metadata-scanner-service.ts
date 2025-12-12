@@ -446,7 +446,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const flexipageName = path.basename(filePath, '.flexipage-meta.xml');
         const parsed = await parseFlexiPage(filePath, flexipageName);
 
@@ -476,7 +475,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const layoutName = path.basename(filePath, '.layout-meta.xml');
         const parsed = await parseLayout(filePath, layoutName);
 
@@ -506,7 +504,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const templateName = path.basename(filePath, '.email-meta.xml');
         const parsed = await parseEmailTemplate(filePath, templateName);
 
