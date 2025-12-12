@@ -126,7 +126,7 @@ jobs:
           # Check if coverage meets minimum threshold (90%)
           COVERAGE=$(cat coverage/coverage-summary.json | jq -r '.total.lines.pct')
           THRESHOLD=90
-          
+
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "❌ Coverage $COVERAGE% is below threshold $THRESHOLD%"
             exit 1
@@ -141,16 +141,16 @@ jobs:
           script: |
             const fs = require('fs');
             const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
-            
+
             const body = `## 📊 Test Coverage Report
-            
+
             - **Lines**: ${coverage.total.lines.pct.toFixed(2)}%
             - **Statements**: ${coverage.total.statements.pct.toFixed(2)}%
             - **Functions**: ${coverage.total.functions.pct.toFixed(2)}%
             - **Branches**: ${coverage.total.branches.pct.toFixed(2)}%
-            
+
             ${coverage.total.lines.pct >= 90 ? '✅' : '⚠️'} Coverage threshold: 90%`;
-            
+
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

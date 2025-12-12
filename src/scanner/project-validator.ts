@@ -151,14 +151,14 @@ export class ProjectValidator {
     const projectInfo = await SfdxProjectDetector.detect(projectRoot);
 
     for (const packageDir of projectInfo.packageDirectories) {
-      const fullPath = path.join(projectRoot, packageDir.path);
+      const fullPath = path.join(projectRoot, packageDir);
 
       if (!fs.existsSync(fullPath)) {
         report.issues.push({
           severity: 'error',
-          message: `Package directory does not exist: ${packageDir.path}`,
+          message: `Package directory does not exist: ${packageDir}`,
           path: fullPath,
-          suggestion: `Create directory: mkdir -p ${packageDir.path}`,
+          suggestion: `Create directory: mkdir -p ${packageDir}`,
         });
       }
     }
@@ -173,7 +173,7 @@ export class ProjectValidator {
     const projectInfo = await SfdxProjectDetector.detect(projectRoot);
 
     for (const packageDir of projectInfo.packageDirectories) {
-      const packagePath = path.join(projectRoot, packageDir.path);
+      const packagePath = path.join(projectRoot, packageDir);
 
       if (!fs.existsSync(packagePath)) continue;
 
@@ -192,7 +192,7 @@ export class ProjectValidator {
       if (!hasMetadata) {
         report.issues.push({
           severity: 'info',
-          message: `No metadata found in package: ${packageDir.path}`,
+          message: `No metadata found in package: ${packageDir}`,
           path: packagePath,
           suggestion: 'This might be intentional for a new project',
         });
