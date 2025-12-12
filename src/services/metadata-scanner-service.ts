@@ -17,7 +17,7 @@ import { DependencyGraphBuilder } from '../dependencies/dependency-graph-builder
 import { parseApexClass } from '../parsers/apex-class-parser.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { glob } from 'glob';
+import { glob as globAsync } from 'glob';
 import type { MetadataComponent } from '../types/metadata.js';
 import type { DependencyAnalysisResult } from '../types/dependency.js';
 
@@ -151,7 +151,7 @@ export class MetadataScannerService {
    */
   private async findApexFiles(rootPath: string): Promise<string[]> {
     const pattern = path.join(rootPath, '**/*.cls');
-    const files = await glob(pattern, {
+    const files = await globAsync(pattern, {
       ignore: ['**/node_modules/**', '**/.git/**'],
     });
 
