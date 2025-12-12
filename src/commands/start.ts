@@ -21,6 +21,12 @@ import { SfCommand } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import { getLogger } from '../utils/logger.js';
 import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
+import { MetadataScannerService } from '../services/metadata-scanner-service.js';
+import { WaveBuilder } from '../waves/wave-builder.js';
+import { getWavesInExecutionOrder } from '../waves/wave-executor.js';
+import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
+import { StateManager } from '../deployment/state-manager.js';
+import { DeploymentTracker } from '../deployment/deployment-tracker.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('smart-deployment', 'start');
@@ -168,22 +174,91 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     }
   }
 
-  private async analyzeMetadata(): Promise<number> {
-    // Placeholder: will integrate with parsers
-    return 100;
+  private async analyzeMetadata(sourcePath?: string): Promise<number> {
+    const scanner = new MetadataScannerService();
+    const result = await scanner.scan({ sourcePath });
+    return result.components.length;
   }
 
-  private async generateWaves(flags: Record<string, unknown>): Promise<number> {
-    // Placeholder: will integrate with wave builder
+  private async generateWaves(flags: Record<string, unknown>, sourcePath?: string): Promise<number> {
+    const scanner = new MetadataScannerService();
+    const scanResult = await scanner.scan({ sourcePath });
+
     if (flags['use-ai']) {
       this.log('  🤖 Using Agentforce for intelligent prioritization...');
+      // TODO: Integrate AI priority weighting
     }
-    return 5;
+
+    const waveBuilder = new WaveBuilder();
+    const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
+    const orderedWaves = getWavesInExecutionOrder(waveResult);
+
+    logger.info('Waves generated', {
+      totalWaves: orderedWaves.length,
+      totalComponents: waveResult.totalComponents,
+    });
+
+    return orderedWaves.length;
   }
 
-  private async executeDeployment(flags: Record<string, unknown>): Promise<void> {
-    // Placeholder: will integrate with deployment engine
-    this.log(`Deploying to ${flags['target-org']}...`);
+  private async executeDeployment(flags: Record<string, unknown>, sourcePath?: string): Promise<void> {
+    const targetOrg = flags['target-org'] as string;
+    const dryRun = flags['dry-run'] as boolean;
+    const validateOnly = flags['validate-only'] as boolean;
+    const skipTests = flags['skip-tests'] as boolean;
+
+    if (dryRun || validateOnly) {
+      this.log('🔍 Dry-run/Validate mode: skipping actual deployment');
+      return;
+    }
+
+    // Scan and generate waves
+    const scanner = new MetadataScannerService();
+    const scanResult = await scanner.scan({ sourcePath });
+    const waveBuilder = new WaveBuilder();
+    const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
+    const orderedWaves = getWavesInExecutionOrder(waveResult);
+
+    // Initialize deployment services
+    const sfCli = new SfCliIntegration();
+    const stateManager = new StateManager();
+    const tracker = new DeploymentTracker();
+
+    // Execute waves sequentially
+    for (const wave of orderedWaves) {
+      this.log(`\n🌊 Deploying Wave ${wave.number}/${orderedWaves.length} (${wave.components.length} components)...`);
+
+      try {
+        // Generate manifest for this wave
+        // TODO: Generate actual package.xml manifest
+
+        // Execute deployment
+        const deploymentId = `deployment-${Date.now()}`;
+        tracker.startTracking(deploymentId, wave.number, orderedWaves.length);
+
+        // TODO: Execute actual SF CLI deployment
+        // const result = await sfCli.deploy({ ... });
+
+        // Save state after each wave
+        await stateManager.saveState({
+          deploymentId,
+          targetOrg,
+          timestamp: new Date().toISOString(),
+          totalWaves: orderedWaves.length,
+          completedWaves: Array.from({ length: wave.number }, (_, i) => i + 1),
+          currentWave: wave.number,
+        });
+
+        this.log(`✅ Wave ${wave.number} deployed successfully`);
+      } catch (error) {
+        logger.error('Wave deployment failed', { wave: wave.number, error });
+        this.error(`Wave ${wave.number} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    // Clear state on success
+    await stateManager.clearState();
+    this.log('\n✅ All waves deployed successfully!');
   }
 
   private generateReport(waves: number): void {

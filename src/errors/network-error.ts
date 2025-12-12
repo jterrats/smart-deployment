@@ -25,7 +25,7 @@ export class NetworkError extends SmartDeploymentError {
   public readonly url?: string;
   public readonly statusCode?: number;
 
-  public constructor(message: string, options: NetworkErrorOptions = {}) {
+  public constructor(message: string, options: NetworkErrorOptions = {}, code: string = 'NETWORK_ERROR') {
     const context = {
       url: options.url,
       statusCode: options.statusCode,
@@ -35,7 +35,7 @@ export class NetworkError extends SmartDeploymentError {
 
     const suggestions = NetworkError.getSuggestions(options);
 
-    super(message, 'NETWORK_ERROR', context, suggestions);
+    super(message, code, context, suggestions);
 
     this.url = options.url;
     this.statusCode = options.statusCode;
@@ -101,8 +101,7 @@ export class TimeoutError extends NetworkError {
     super(`Request timeout after ${timeout}ms`, {
       url,
       timeout,
-    });
-    this.code = 'NETWORK_TIMEOUT';
+    }, 'NETWORK_TIMEOUT');
   }
 }
 
@@ -114,8 +113,7 @@ export class ConnectionError extends NetworkError {
     super(`Failed to connect to ${url}`, {
       url,
       originalError,
-    });
-    this.code = 'NETWORK_CONNECTION_FAILED';
+    }, 'NETWORK_CONNECTION_FAILED');
   }
 }
 
@@ -127,7 +125,6 @@ export class HttpError extends NetworkError {
     super(`HTTP ${statusCode}${statusText ? ': ' + statusText : ''} at ${url}`, {
       url,
       statusCode,
-    });
-    this.code = 'NETWORK_HTTP_ERROR';
+    }, 'NETWORK_HTTP_ERROR');
   }
 }

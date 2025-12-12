@@ -334,7 +334,7 @@ export class MetadataFormatScanner {
    * Get error report
    */
   public getErrorReport(): string {
-    return this.errorAggregator.generateFormattedReport();
+    return this.errorAggregator.formatReport();
   }
 }
 
