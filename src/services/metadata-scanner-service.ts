@@ -364,8 +364,8 @@ export class MetadataScannerService {
       if (!(await this.fileExists(typeFile))) continue;
 
       try {
-        await fs.readFile(typeFile, 'utf-8');
-        await parseCustomMetadataType(typeName, await fs.readFile(typeFile, 'utf-8'));
+        const content = await fs.readFile(typeFile, 'utf-8');
+        await parseCustomMetadataType(typeName, content);
 
         components.push({
           name: typeName,
@@ -417,14 +417,13 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const permSetName = path.basename(filePath, '.permissionset-meta.xml');
         const parsed = await parsePermissionSet(filePath, permSetName);
 
         const deps = new Set<string>();
-        parsed.objectPermissions.forEach((op) => deps.add(op.object));
-        parsed.apexClassAccess.forEach((ac) => deps.add(ac.apexClass));
-        parsed.customPermissions.forEach((cp) => deps.add(cp));
+        parsed.objectPermissions.forEach((op: string) => deps.add(op));
+        parsed.apexClassAccesses.forEach((ac: string) => deps.add(ac));
+        parsed.customPermissions.forEach((cp: string) => deps.add(cp));
 
         components.push({
           name: permSetName,
