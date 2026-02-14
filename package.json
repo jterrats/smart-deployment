@@ -13,7 +13,7 @@
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
     "@cucumber/cucumber": "^12.3.0",
-    "@oclif/plugin-command-snapshot": "^5.1.9",
+    "@oclif/plugin-command-snapshot": "^5.3.9",
     "@salesforce/cli-plugins-testkit": "^5.3.10",
     "@salesforce/dev-scripts": "^10",
     "@semantic-release/changelog": "^6.0.3",
