@@ -18,7 +18,7 @@ const logger = getLogger('ResumeCommand');
 export default class Resume extends SfCommand<{ success: boolean }> {
   public static readonly summary = 'Resume failed deployment';
   public static readonly flags = {
-    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': Flags.requiredOrg({ summary: 'Target org', char: 'o', required: true }),
   };
 
   public async run(): Promise<{ success: boolean }> {
@@ -28,3 +28,4 @@ export default class Resume extends SfCommand<{ success: boolean }> {
     return { success: true };
   }
 }
+

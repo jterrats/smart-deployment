@@ -18,7 +18,7 @@ const logger = getLogger('ValidateCommand');
 export default class Validate extends SfCommand<{ success: boolean }> {
   public static readonly summary = 'Validate deployment without executing';
   public static readonly flags = {
-    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': Flags.requiredOrg({ summary: 'Target org', char: 'o', required: true }),
   };
 
   public async run(): Promise<{ success: boolean }> {
@@ -28,3 +28,4 @@ export default class Validate extends SfCommand<{ success: boolean }> {
     return { success: true };
   }
 }
+
