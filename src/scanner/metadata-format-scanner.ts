@@ -11,8 +11,8 @@
  * @issue #80
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { getLogger } from '../utils/logger.js';
 import { ErrorAggregator } from '../utils/error-aggregator.js';
 import type { MetadataComponent, MetadataType } from '../types/metadata.js';

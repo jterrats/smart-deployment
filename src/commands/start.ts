@@ -24,7 +24,7 @@ import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
 import { getWavesInExecutionOrder } from '../waves/wave-executor.js';
-import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
+// import { SfCliIntegration } from '../deployment/sf-cli-integration.js'; // TODO: Use when implementing actual deployment
 import { StateManager } from '../deployment/state-manager.js';
 import { DeploymentTracker } from '../deployment/deployment-tracker.js';
 
@@ -135,7 +135,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
   private async analyzeMetadata(sourcePath?: string): Promise<number> {
     const scanner = new MetadataScannerService();
     const result = await scanner.scan({ sourcePath });
-    
+
     if (result.errors.length > 0) {
       logger.error('Metadata scanning completed with errors', { errors: result.errors });
       result.errors.forEach((err) => this.warn(err));
@@ -144,7 +144,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
       logger.warn('Metadata scanning completed with warnings', { warnings: result.warnings });
       result.warnings.forEach((warn) => this.warn(warn));
     }
-    
+
     return result.components.length;
   }
 
@@ -173,7 +173,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     const targetOrg = flags['target-org'] as string;
     const dryRun = flags['dry-run'] as boolean;
     const validateOnly = flags['validate-only'] as boolean;
-    const skipTests = flags['skip-tests'] as boolean;
+    // const skipTests = flags['skip-tests'] as boolean; // TODO: Use when implementing test execution
 
     if (dryRun || validateOnly) {
       this.log('🔍 Dry-run/Validate mode: skipping actual deployment');
@@ -183,7 +183,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
     // Scan and generate waves
     const scanner = new MetadataScannerService();
     const scanResult = await scanner.scan({ sourcePath });
-    
+
     if (scanResult.errors.length > 0) {
       logger.error('Metadata scanning completed with errors', { errors: scanResult.errors });
       scanResult.errors.forEach((err) => this.warn(err));
@@ -192,13 +192,13 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
       logger.warn('Metadata scanning completed with warnings', { warnings: scanResult.warnings });
       scanResult.warnings.forEach((warn) => this.warn(warn));
     }
-    
+
     const waveBuilder = new WaveBuilder();
     const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
     const orderedWaves = getWavesInExecutionOrder(waveResult);
 
     // Initialize deployment services
-    const sfCli = new SfCliIntegration();
+    // const sfCli = new SfCliIntegration(); // TODO: Use when implementing actual deployment
     const stateManager = new StateManager();
     const tracker = new DeploymentTracker();
 

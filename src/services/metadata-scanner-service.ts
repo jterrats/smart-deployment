@@ -19,7 +19,8 @@ import { parseLWC } from '../parsers/lwc-parser.js';
 import { parseAura } from '../parsers/aura-parser.js';
 import { parseFlow } from '../parsers/flow-parser.js';
 import { parseCustomObject } from '../parsers/custom-object-parser.js';
-import { parseCustomMetadataType, parseCustomMetadataRecord } from '../parsers/custom-metadata-parser.js';
+import { parseCustomMetadataType } from '../parsers/custom-metadata-parser.js';
+// import { parseCustomMetadataRecord } from '../parsers/custom-metadata-parser.js'; // TODO: Use when implementing CMT record parsing
 import { parseEmailTemplate } from '../parsers/email-template-parser.js';
 import { parseFlexiPage } from '../parsers/flexipage-parser.js';
 import { parseLayout } from '../parsers/layout-parser.js';
@@ -31,7 +32,7 @@ import { parseVisualforce } from '../parsers/visualforce-parser.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { glob as globAsync } from 'glob';
-import type { MetadataComponent, MetadataType } from '../types/metadata.js';
+import type { MetadataComponent } from '../types/metadata.js';
 import type { DependencyAnalysisResult } from '../types/dependency.js';
 
 const logger = getLogger('MetadataScannerService');
@@ -53,13 +54,14 @@ export interface ScanResult {
 
 /**
  * Metadata file pattern matcher
+ * TODO: Use when implementing pattern-based metadata detection
  */
-interface MetadataPattern {
-  type: MetadataType;
-  patterns: string[];
-  isContainer?: boolean; // For LWC, Aura, CustomObject bundles
-  parser?: (filePath: string, content: string, metadataXml?: string) => Promise<MetadataComponent> | MetadataComponent;
-}
+// interface MetadataPattern {
+//   type: MetadataType;
+//   patterns: string[];
+//   isContainer?: boolean; // For LWC, Aura, CustomObject bundles
+//   parser?: (filePath: string, content: string, metadataXml?: string) => Promise<MetadataComponent> | MetadataComponent;
+// }
 
 /**
  * Metadata Scanner Service
@@ -363,7 +365,7 @@ export class MetadataScannerService {
 
       try {
         const content = await fs.readFile(typeFile, 'utf-8');
-        const parsed = await parseCustomMetadataType(typeName, content);
+        await parseCustomMetadataType(typeName, content);
 
         components.push({
           name: typeName,
@@ -386,14 +388,13 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const profileName = path.basename(filePath, '.profile-meta.xml');
         const parsed = await parseProfile(filePath, profileName);
 
         const deps = new Set<string>();
-        parsed.objectPermissions.forEach((op) => deps.add(op.object));
-        parsed.apexClassAccess.forEach((ac) => deps.add(ac.apexClass));
-        parsed.pageLayouts.forEach((pl) => deps.add(pl));
+        parsed.objectPermissions.forEach((op: string) => deps.add(op));
+        parsed.apexClassAccesses.forEach((ac: string) => deps.add(ac));
+        parsed.layoutAssignments.forEach((pl: string) => deps.add(pl));
 
         components.push({
           name: profileName,
@@ -416,14 +417,13 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const permSetName = path.basename(filePath, '.permissionset-meta.xml');
         const parsed = await parsePermissionSet(filePath, permSetName);
 
         const deps = new Set<string>();
-        parsed.objectPermissions.forEach((op) => deps.add(op.object));
-        parsed.apexClassAccess.forEach((ac) => deps.add(ac.apexClass));
-        parsed.customPermissions.forEach((cp) => deps.add(cp));
+        parsed.objectPermissions.forEach((op: string) => deps.add(op));
+        parsed.apexClassAccesses.forEach((ac: string) => deps.add(ac));
+        parsed.customPermissions.forEach((cp: string) => deps.add(cp));
 
         components.push({
           name: permSetName,
@@ -446,7 +446,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const flexipageName = path.basename(filePath, '.flexipage-meta.xml');
         const parsed = await parseFlexiPage(filePath, flexipageName);
 
@@ -476,7 +475,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const layoutName = path.basename(filePath, '.layout-meta.xml');
         const parsed = await parseLayout(filePath, layoutName);
 
@@ -506,9 +504,9 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const templateName = path.basename(filePath, '.email-meta.xml');
-        const parsed = await parseEmailTemplate(filePath, templateName);
+        const content = await fs.readFile(filePath, 'utf-8');
+        const parsed = await parseEmailTemplate(templateName, content, content);
 
         const deps = new Set<string>();
         parsed.dependencies.forEach((d) => {
@@ -538,7 +536,6 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const botName = path.basename(filePath, '.bot-meta.xml');
         const parsed = await parseBot(filePath, botName);
 
@@ -568,12 +565,12 @@ export class MetadataScannerService {
       if (this.shouldIgnore(filePath)) continue;
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
         const promptName = path.basename(filePath, '.genAiPromptTemplate-meta.xml');
         const parsed = await parseGenAiPrompt(filePath, promptName);
 
         const deps = new Set<string>();
-        parsed.relatedObjects.forEach((o) => deps.add(o));
+        parsed.sobjects.forEach((o: string) => deps.add(o));
+        parsed.dependencies.sobjects.forEach((o: string) => deps.add(o));
 
         components.push({
           name: promptName,
@@ -642,10 +639,22 @@ export class MetadataScannerService {
    */
   private async findDirectories(rootPath: string, pattern: string): Promise<string[]> {
     const fullPattern = path.join(rootPath, pattern);
-    const dirs = await globAsync(fullPattern, {
+    const allMatches = await globAsync(fullPattern, {
       ignore: ['**/node_modules/**', '**/.git/**'],
-      onlyDirectories: true,
     });
+    
+    // Filter to only directories
+    const dirs: string[] = [];
+    for (const match of allMatches) {
+      try {
+        const stat = await fs.stat(match);
+        if (stat.isDirectory()) {
+          dirs.push(match);
+        }
+      } catch {
+        // Skip if stat fails (file doesn't exist, etc.)
+      }
+    }
     return dirs;
   }
 
