@@ -79,11 +79,11 @@ jobs:
       #     yarn test:e2e --json --outputFile=test-results-e2e.json || true
       #   continue-on-error: true
 
-      # - name: Run NUTs (Salesforce integration tests)
-      #   id: nuts
-      #   run: |
-      #     yarn test:nuts --json --reporter json > test-results-nuts.json || true
-      #   continue-on-error: true
+      - name: Run NUTs (Salesforce integration tests)
+        id: nuts
+        run: |
+          yarn test:nuts --json --reporter json > test-results-nuts.json || true
+        continue-on-error: true
 
       - name: Parse test results and validate AC
         if: steps.extract-issue.outputs.has_issue == 'true'
