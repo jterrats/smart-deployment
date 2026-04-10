@@ -1,7 +1,7 @@
 /**
  * AI-Enhanced Priority Wave Generator - US-042 + US-057
  * Extends priority wave generation with Agentforce AI
- *
+ * 
  * @ac US-042-AC-1: Use deployment order constants
  * @ac US-042-AC-2: Objects before classes before triggers
  * @ac US-042-AC-3: Break ties using priorities
@@ -10,7 +10,7 @@
  * @ac US-042-AC-6: Validate no dependency violations
  * @ac US-057-AC-5: Merge with static priorities
  * @ac US-057-AC-6: Report AI decisions
- *
+ * 
  * @issue #42, #57
  */
 
@@ -33,10 +33,10 @@ export interface AIEnhancedOptions extends PriorityOptions {
 
 /**
  * AI-Enhanced Priority Wave Generator
- *
+ * 
  * Combines static priority rules with AI-powered recommendations
  * for intelligent deployment ordering.
- *
+ * 
  * @example
  * const aiService = new AgentforcePriorityService({ apiKey: 'xxx' });
  * const generator = new AIEnhancedPriorityWaveGenerator({
@@ -44,7 +44,7 @@ export interface AIEnhancedOptions extends PriorityOptions {
  *   orgType: 'Production',
  *   industry: 'Fintech'
  * });
- *
+ * 
  * const waves = await generator.applyPriorityWavesAsync(baseWaves, components);
  */
 export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
@@ -94,7 +94,7 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
     // Get AI recommendations if available
     if (this.agentforceService) {
       const componentList = Array.from(components.values());
-
+      
       // Prioritize unknown types in AI analysis
       const componentsToAnalyze = this.autoAIForUnknown && unknownComponents.length > 0
         ? unknownComponents // Focus on unknowns first
@@ -142,57 +142,28 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
    * @ac US-057-AC-5: Merge with static priorities
    */
   private mergeAIPriorities(components: Map<NodeId, MetadataComponent>): void {
-    if (!this.aiAnalysisResult || !this.agentforceService) return;
-
-    // Get auto-apply configuration from service
-    const { enabled: autoApply, threshold } = this.agentforceService.getAutoApplyConfig();
-
-    if (!autoApply) {
-      logger.info('AI auto-apply disabled, recommendations available for manual review');
-      return;
-    }
+    if (!this.aiAnalysisResult) return;
 
     // Access protected options from base class
     const baseOptions = (this as unknown as { options: PriorityOptions }).options;
     const userPriorities = baseOptions.userPriorities ?? new Map();
 
-    let appliedCount = 0;
-    let skippedCount = 0;
-
     for (const rec of this.aiAnalysisResult.recommendations) {
       // Find component by name
       const nodeId = Array.from(components.keys()).find((id) => id.endsWith(`:${rec.componentName}`));
 
-      if (!nodeId) continue;
-
-      // Check confidence threshold
-      if (rec.confidence > threshold) {
+      if (nodeId && rec.confidence > 0.8) {
         // Only apply if no user override exists
         if (!userPriorities.has(nodeId)) {
           userPriorities.set(nodeId, rec.priority);
-          appliedCount++;
-          logger.debug('Applied AI priority (auto)', {
+          logger.debug('Applied AI priority', {
             component: nodeId,
             priority: rec.priority,
-            confidence: rec.confidence,
             reason: rec.reason,
           });
         }
-      } else {
-        skippedCount++;
-        logger.debug('Skipped AI priority (low confidence)', {
-          component: nodeId,
-          confidence: rec.confidence,
-          threshold,
-        });
       }
     }
-
-    logger.info('AI priorities merged', {
-      applied: appliedCount,
-      skipped: skippedCount,
-      threshold,
-    });
   }
 
   /**
