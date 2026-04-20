@@ -62,7 +62,6 @@ export class NetworkHandler {
    * Execute network request with retry
    */
   public async request<T>(options: NetworkRequestOptions): Promise<NetworkResponse<T>> {
-
     return this.retryHandler.executeWithRetry(async () => {
       try {
         const response = await this.executeRequest<T>(options);

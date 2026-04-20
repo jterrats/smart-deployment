@@ -40,7 +40,7 @@ Given('I have {int} components to deploy', function (this: SmartDeploymentWorld,
 
 When('I run the start command', async function (this: SmartDeploymentWorld) {
   try {
-    await this.graphBuilder.addComponent(this.components[0] as never);
+    this.graphBuilder.addComponent(this.components[0] as never);
     this.graphResult = this.graphBuilder.build();
     this.waveResult = this.waveBuilder.generateWaves(this.graphResult.graph);
   } catch (error) {
@@ -73,4 +73,3 @@ Then('deployment should complete successfully', function (this: SmartDeploymentW
   expect(this.error).to.be.undefined;
   expect(this.waveResult).to.exist;
 });
-

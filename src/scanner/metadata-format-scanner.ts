@@ -11,8 +11,8 @@
  * @issue #80
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { getLogger } from '../utils/logger.js';
 import { ErrorAggregator } from '../utils/error-aggregator.js';
 import type { MetadataComponent, MetadataType } from '../types/metadata.js';
@@ -334,23 +334,7 @@ export class MetadataFormatScanner {
    * Get error report
    */
   public getErrorReport(): string {
-    const report = this.errorAggregator.generateReport();
-    // Format report as string
-    const lines: string[] = [];
-    lines.push(`Total Errors: ${report.totalErrors}`);
-    lines.push(`Critical: ${report.criticalCount}, High: ${report.highCount}, Medium: ${report.mediumCount}, Low: ${report.lowCount}`);
-    
-    if (report.errors.length > 0) {
-      lines.push('\nErrors:');
-      report.errors.forEach((error) => {
-        const location = error.filePath
-          ? `${error.filePath}${error.lineNumber ? `:${error.lineNumber}` : ''}`
-          : 'Unknown location';
-        lines.push(`  [${error.severity}] ${error.errorType}: ${error.errorMessage} (${location})`);
-      });
-    }
-    
-    return lines.join('\n');
+    return this.errorAggregator.formatReport();
   }
 }
 

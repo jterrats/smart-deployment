@@ -79,7 +79,7 @@ export class CircuitBreaker {
       logger.warn('Circuit breaker is OPEN, using fallback');
       
       if (fallback) {
-        return await Promise.resolve(fallback());
+        return Promise.resolve(fallback());
       }
       
       throw new Error('Circuit breaker is OPEN and no fallback provided');
@@ -96,7 +96,7 @@ export class CircuitBreaker {
       // Re-check state after onFailure() which may have changed it
       if (this.getState() === 'open' && fallback) {
         logger.info('Circuit opened, using fallback');
-        return await Promise.resolve(fallback());
+        return Promise.resolve(fallback());
       }
       
       throw error;
@@ -340,4 +340,3 @@ export class CircuitBreaker {
     return Math.max(0, this.options.timeout - timeSinceFailure);
   }
 }
-

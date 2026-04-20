@@ -9,8 +9,7 @@
  * @issue #49
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ResumeCommand');
@@ -18,7 +17,7 @@ const logger = getLogger('ResumeCommand');
 export default class Resume extends SfCommand<{ success: boolean }> {
   public static readonly summary = 'Resume failed deployment';
   public static readonly flags = {
-    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': requiredOrgFlagWithDeprecations,
   };
 
   public async run(): Promise<{ success: boolean }> {
@@ -28,3 +27,5 @@ export default class Resume extends SfCommand<{ success: boolean }> {
     return { success: true };
   }
 }
+
+

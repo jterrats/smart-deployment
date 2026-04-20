@@ -13,6 +13,7 @@
 
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
+import { readFile } from 'node:fs/promises';
 import { ProjectFixtures } from '../fixtures/project-fixtures.js';
 import { DependencyGraphBuilder } from '../../src/dependencies/dependency-graph-builder.js';
 import { WaveBuilder } from '../../src/waves/wave-builder.js';
@@ -31,7 +32,7 @@ describe('Integration Tests - US-065', () => {
       const components = [];
       for (const filePath of fixture.metadataFiles.filter((f) => f.endsWith('.cls'))) {
         try {
-          const content = await require('node:fs').promises.readFile(filePath, 'utf-8');
+          const content = await readFile(filePath, 'utf-8');
           const parsed = parseApexClass(filePath, content);
 
           // Convert ApexParseResult to MetadataComponent
@@ -293,4 +294,3 @@ describe('Integration Tests - US-065', () => {
     }
   });
 });
-

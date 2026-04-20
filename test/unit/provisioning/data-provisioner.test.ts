@@ -118,10 +118,7 @@ describe('DataProvisioner', () => {
       ];
 
       const mockOrgApi = {
-        query: async (soql: string) => {
-          // Mock: return empty results (data doesn't exist)
-          return [];
-        },
+        query: async (_soql: string) => [],
       };
 
       const result = await provisioner.validateDataExists(records, mockOrgApi);
@@ -148,9 +145,8 @@ describe('DataProvisioner', () => {
       };
 
       const mockOrgApi = {
-        create: async (type: string, records: unknown[]) => {
-          return records.map(() => ({ id: '001000000000000AAA' }));
-        },
+        create: async (_type: string, records: unknown[]) =>
+          records.map(() => ({ id: '001000000000000AAA' })),
       };
 
       const result = await provisioner.executeProvisioning(wave, mockOrgApi);
@@ -180,4 +176,3 @@ describe('DataProvisioner', () => {
     });
   });
 });
-

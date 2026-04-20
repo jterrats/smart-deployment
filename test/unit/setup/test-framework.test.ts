@@ -12,7 +12,7 @@ describe('US-061: Test Framework Setup', () => {
     // Mocha is configured and running (this test itself proves it)
     // TypeScript support via ts-node in package.json
     const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
 
     const hasTsNode = pkg.dependencies?.['ts-node'] || pkg.devDependencies?.['ts-node'];
     expect(hasTsNode).to.exist;
@@ -25,11 +25,11 @@ describe('US-061: Test Framework Setup', () => {
   /** @ac US-061-AC-2: Test coverage reporting */
   it('US-061-AC-2: should have coverage reporting configured', () => {
     const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
 
     // Check for test script (coverage is configured via nyc or wireit)
     expect(pkg.scripts).to.have.property('test');
-    expect(pkg.scripts.test).to.be.a('string');
+    expect(pkg.scripts?.test).to.be.a('string');
   });
 
   /** @ac US-061-AC-3: Watch mode for TDD */
@@ -37,9 +37,9 @@ describe('US-061: Test Framework Setup', () => {
     // Mocha can run with --watch flag for TDD
     // This is a configuration capability, not requiring a specific script
     const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
 
-    expect(pkg.scripts.test).to.exist;
+    expect(pkg.scripts?.test).to.exist;
   });
 
   /** @ac US-061-AC-4: Parallel test execution */
@@ -62,11 +62,11 @@ describe('US-061: Test Framework Setup', () => {
   it('US-061-AC-6: should have coverage thresholds', () => {
     // Coverage is configured via wireit in package.json
     const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { wireit?: Record<string, unknown> };
 
     // Wireit handles test execution and coverage
     expect(pkg.wireit).to.exist;
-    expect(pkg.wireit.test).to.exist;
+    expect(pkg.wireit?.test).to.exist;
   });
 });
 

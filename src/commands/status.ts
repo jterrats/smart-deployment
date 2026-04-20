@@ -9,8 +9,7 @@
  * @issue #50
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('StatusCommand');
@@ -18,7 +17,7 @@ const logger = getLogger('StatusCommand');
 export default class Status extends SfCommand<{ currentWave: number }> {
   public static readonly summary = 'Show deployment status';
   public static readonly flags = {
-    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': requiredOrgFlagWithDeprecations,
   };
 
   public async run(): Promise<{ currentWave: number }> {
@@ -28,3 +27,5 @@ export default class Status extends SfCommand<{ currentWave: number }> {
     return { currentWave: 1 };
   }
 }
+
+
