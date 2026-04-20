@@ -17,10 +17,9 @@
  */
 
 import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import { getLogger } from '../utils/logger.js';
-import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
 import { getWavesInExecutionOrder } from '../waves/wave-executor.js';
@@ -50,11 +49,7 @@ export default class Start extends SfCommand<{ success: boolean; waves: number }
    * @ac US-057-AC-1: Send component list to Agentforce
    */
   public static readonly flags = {
-    'target-org': Flags.requiredOrg({
-      summary: messages.getMessage('flags.target-org.summary'),
-      char: 'o',
-      required: true,
-    }),
+    'target-org': requiredOrgFlagWithDeprecations,
     'dry-run': Flags.boolean({
       summary: messages.getMessage('flags.dry-run.summary'),
       char: 'd',

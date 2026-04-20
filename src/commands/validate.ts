@@ -9,8 +9,7 @@
  * @issue #48
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ValidateCommand');
@@ -18,7 +17,7 @@ const logger = getLogger('ValidateCommand');
 export default class Validate extends SfCommand<{ success: boolean }> {
   public static readonly summary = 'Validate deployment without executing';
   public static readonly flags = {
-    'target-org': Flags.requiredOrg({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': requiredOrgFlagWithDeprecations,
   };
 
   public async run(): Promise<{ success: boolean }> {

@@ -18,17 +18,40 @@ import { getLogger } from '../utils/logger.js';
 import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
+import type { PriorityOverride } from '../types/deployment-plan.js';
 
 const logger = getLogger('AnalyzeCommand');
 
-export default class Analyze extends SfCommand<{ success: boolean }> {
+interface AnalyzeResult {
+  success: boolean;
+  components: number;
+  dependencies: number;
+  planSaved?: boolean;
+}
+
+export default class Analyze extends SfCommand<AnalyzeResult> {
   public static readonly summary = 'Analyze metadata without deploying';
   public static readonly flags = {
+    'source-path': Flags.string({ summary: 'Source path to analyze' }),
+    'save-plan': Flags.boolean({
+      summary: 'Generate and save deployment plan for CI/CD',
+      default: false,
+    }),
+    'plan-path': Flags.string({ summary: 'Path to save deployment plan' }),
+    'use-ai': Flags.boolean({
+      summary: 'Enable AI metadata prioritization when generating plan',
+      default: false,
+    }),
+    'org-type': Flags.string({
+      summary: 'Organization type context for plan metadata',
+      options: ['Production', 'Sandbox', 'Developer'],
+    }),
+    industry: Flags.string({ summary: 'Industry context for plan metadata' }),
     output: Flags.string({ summary: 'Output file path', char: 'o' }),
     format: Flags.string({ summary: 'Output format (json|html)', char: 'f', default: 'json' }),
   };
 
-  public async run(): Promise<{ success: boolean }> {
+  public async run(): Promise<AnalyzeResult> {
     const { flags } = await this.parse(Analyze);
 
     try {
@@ -92,11 +115,15 @@ export default class Analyze extends SfCommand<{ success: boolean }> {
         }));
 
         // Extract priorities from components (if any)
-        const priorities: Record<string, number> = {};
+        const priorities: Record<string, PriorityOverride> = {};
         for (const component of scanResult.components) {
           if (component.priorityBoost > 0) {
             const nodeId = `${component.type}:${component.name}`;
-            priorities[nodeId] = component.priorityBoost;
+            priorities[nodeId] = {
+              priority: component.priorityBoost,
+              source: 'static',
+              appliedAt: new Date().toISOString(),
+            };
           }
         }
 
@@ -117,7 +144,7 @@ export default class Analyze extends SfCommand<{ success: boolean }> {
         this.log('   2. Commit the plan to your repo');
         this.log(`   3. Use it in CI/CD: sf smart-deployment start --use-plan ${planPath}`);
 
-        return { components, dependencies, planSaved: true };
+        return { success: true, components, dependencies, planSaved: true };
       }
 
       // Output report if requested
@@ -126,7 +153,7 @@ export default class Analyze extends SfCommand<{ success: boolean }> {
         this.log(`📄 Report would be saved to: ${flags.output} (format: ${flags.format})`);
       }
 
-      return { components, dependencies };
+      return { success: true, components, dependencies };
     } catch (error) {
       logger.error('Analysis failed', { error });
       this.error(`Analysis failed: ${error instanceof Error ? error.message : String(error)}`);
