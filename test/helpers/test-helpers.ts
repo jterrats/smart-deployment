@@ -8,6 +8,9 @@
  * @issue #61
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import type { MetadataComponent, MetadataType } from '../../src/types/metadata.js';
 import type { DependencyGraph } from '../../src/types/dependency.js';
 import type { Wave } from '../../src/waves/wave-builder.js';
@@ -196,10 +199,6 @@ export async function measureTime<T>(fn: () => T | Promise<T>): Promise<{ result
  * Create temporary test directory
  */
 export function createTempDir(prefix = 'test-'): string {
-  const fs = require('fs');
-  const path = require('path');
-  const os = require('os');
-
   const tempDir = path.join(os.tmpdir(), `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`);
   fs.mkdirSync(tempDir, { recursive: true });
 
@@ -211,8 +210,6 @@ export function createTempDir(prefix = 'test-'): string {
  * Clean up temporary directory
  */
 export function cleanupTempDir(dir: string): void {
-  const fs = require('fs');
-
   if (fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -225,8 +222,8 @@ export function cleanupTempDir(dir: string): void {
 export function createMockFS(structure: Record<string, string>): Map<string, string> {
   const mockFS = new Map<string, string>();
 
-  for (const [path, content] of Object.entries(structure)) {
-    mockFS.set(path, content);
+  for (const [filePath, content] of Object.entries(structure)) {
+    mockFS.set(filePath, content);
   }
 
   return mockFS;
@@ -256,20 +253,21 @@ export function assertPerformance<T>(
  * Suppress console output during test
  */
 export function suppressConsole<T>(fn: () => T): T {
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-  const originalError = console.error;
+  const runtimeConsole = globalThis['console'];
+  const originalLog = runtimeConsole.log;
+  const originalWarn = runtimeConsole.warn;
+  const originalError = runtimeConsole.error;
 
-  console.log = () => {};
-  console.warn = () => {};
-  console.error = () => {};
+  runtimeConsole.log = () => {};
+  runtimeConsole.warn = () => {};
+  runtimeConsole.error = () => {};
 
   try {
     return fn();
   } finally {
-    console.log = originalLog;
-    console.warn = originalWarn;
-    console.error = originalError;
+    runtimeConsole.log = originalLog;
+    runtimeConsole.warn = originalWarn;
+    runtimeConsole.error = originalError;
   }
 }
 
@@ -306,4 +304,3 @@ export function generateRandomComponents(count: number, options?: {
 
   return components;
 }
-

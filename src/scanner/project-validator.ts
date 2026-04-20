@@ -15,6 +15,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getLogger } from '../utils/logger.js';
 import { SfdxProjectDetector } from './sfdx-project-detector.js';
+import type { SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('ProjectValidator');
 
@@ -108,7 +109,7 @@ export class ProjectValidator {
     // Validate JSON structure
     try {
       const content = fs.readFileSync(sfdxProjectPath, 'utf-8');
-      const config = JSON.parse(content);
+      const config = JSON.parse(content) as Partial<SfdxProjectJson>;
 
       report.checkedItems.push('sfdx-project.json valid JSON');
 
@@ -282,4 +283,3 @@ export class ProjectValidator {
     return lines.join('\n');
   }
 }
-

@@ -110,7 +110,9 @@ export default class Config extends SfCommand<{ success: boolean }> {
       // Handle --get
       if (flags.get) {
         const value = (config as Record<string, unknown>)[flags.get];
-        this.log(`${flags.get}: ${value ?? 'not set'}`);
+        const displayValue =
+          value === undefined ? 'not set' : typeof value === 'string' ? value : JSON.stringify(value);
+        this.log(`${flags.get}: ${displayValue}`);
         return { success: true };
       }
 
@@ -181,4 +183,3 @@ export default class Config extends SfCommand<{ success: boolean }> {
     }
   }
 }
-

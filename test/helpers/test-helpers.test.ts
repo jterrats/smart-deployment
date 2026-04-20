@@ -100,9 +100,7 @@ describe('Test Helpers', () => {
 
     /** @ac US-061-AC-4: Performance measurement */
     it('US-061-AC-4: should measure execution time', async () => {
-      const { result, duration } = await measureTime(() => {
-        return 42;
-      });
+      const { result, duration } = await measureTime(() => 42);
 
       expect(result).to.equal(42);
       expect(duration).to.be.a('number');
@@ -154,4 +152,3 @@ describe('Test Helpers', () => {
     });
   });
 });
-

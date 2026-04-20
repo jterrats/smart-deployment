@@ -27,7 +27,7 @@ export function getWavesInExecutionOrder(result: WaveResult): Wave[] {
  * @example formatWaveId(1, 15) => "wave-001"
  */
 export function formatWaveId(waveNumber: number, totalWaves: number): string {
-  const padding = Math.max(2, Math.ceil(Math.log10(totalWaves + 1)));
+  const padding = Math.max(3, String(totalWaves).length);
   return `wave-${String(waveNumber).padStart(padding, '0')}`;
 }
 
@@ -35,17 +35,17 @@ export function formatWaveId(waveNumber: number, totalWaves: number): string {
  * Parse wave ID back to number
  * @example parseWaveId("wave-001") => 1
  */
-export function parseWaveId(waveId: string): number {
-  const match = waveId.match(/wave-(\d+)/);
-  return match ? Number.parseInt(match[1], 10) : 0;
+export function parseWaveId(waveId: string): number | undefined {
+  const match = /^wave-(\d+)$/.exec(waveId);
+  return match ? Number.parseInt(match[1], 10) : undefined;
 }
 
 /**
  * Validate wave execution order
  */
 export function validateWaveOrder(waves: Wave[]): boolean {
-  for (let i = 0; i < waves.length - 1; i++) {
-    if (waves[i].number >= waves[i + 1].number) {
+  for (let i = 0; i < waves.length; i++) {
+    if (waves[i].number !== i + 1) {
       return false;
     }
   }
