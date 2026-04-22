@@ -11,21 +11,61 @@
 
 import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
+import { StateManager } from '../deployment/state-manager.js';
+import { formatDeploymentStatus, summarizeDeploymentState } from '../deployment/deployment-state-summary.js';
 
 const logger = getLogger('StatusCommand');
 
-export default class Status extends SfCommand<{ currentWave: number }> {
+interface StatusResult {
+  currentWave: number;
+  totalWaves: number;
+  completedWaves: number[];
+  remainingWaves: number;
+  status: string;
+  canResume: boolean;
+}
+
+export default class Status extends SfCommand<StatusResult> {
   public static readonly summary = 'Show deployment status';
   public static readonly flags = {
     'target-org': requiredOrgFlagWithDeprecations,
   };
 
-  public async run(): Promise<{ currentWave: number }> {
+  public async run(): Promise<StatusResult> {
     const { flags } = await this.parse(Status);
-    logger.info('Getting status', { flags });
-    this.log('📊 Current wave: 1/5');
-    return { currentWave: 1 };
+
+    try {
+      logger.info('Getting status', { flags });
+
+      const stateManager = new StateManager();
+      const state = await stateManager.loadState();
+
+      if (!state) {
+        this.log('ℹ️ No deployment state found.');
+        return {
+          currentWave: 0,
+          totalWaves: 0,
+          completedWaves: [],
+          remainingWaves: 0,
+          status: 'Not Started',
+          canResume: false,
+        };
+      }
+
+      const summary = summarizeDeploymentState(state);
+      formatDeploymentStatus(summary).forEach((line) => this.log(line));
+
+      return {
+        currentWave: summary.currentWave,
+        totalWaves: summary.totalWaves,
+        completedWaves: summary.completedWaves,
+        remainingWaves: summary.remainingWaves,
+        status: summary.status,
+        canResume: summary.canResume,
+      };
+    } catch (error) {
+      logger.error('Status failed', { error });
+      this.error(`Status failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
-
-

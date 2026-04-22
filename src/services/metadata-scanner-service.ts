@@ -143,7 +143,7 @@ export class MetadataScannerService {
     const components: MetadataComponent[] = [];
 
     for (const packageDir of packageDirs) {
-      const packagePath = path.join(projectRoot, packageDir);
+      const packagePath = path.isAbsolute(packageDir) ? packageDir : path.join(projectRoot, packageDir);
       if (!(await this.fileExists(packagePath))) {
         logger.warn('Package directory not found', { packagePath });
         warnings.push(`Package directory not found: ${packagePath}`);
