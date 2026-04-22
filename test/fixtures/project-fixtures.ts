@@ -217,6 +217,23 @@ export class ProjectFixtures {
     await fs.mkdir(projectPath, { recursive: true });
 
     const metadataFiles: string[] = [];
+
+    const sfdxProject = {
+      packageDirectories: [
+        {
+          path: 'force-app',
+          default: true,
+        },
+      ],
+      sourceApiVersion: '61.0',
+    };
+
+    await fs.writeFile(
+      path.join(projectPath, 'sfdx-project.json'),
+      JSON.stringify(sfdxProject, null, 2),
+      'utf-8'
+    );
+
     const forceAppPath = path.join(projectPath, 'force-app/main/default');
     await fs.mkdir(path.join(forceAppPath, 'classes'), { recursive: true });
 
@@ -398,4 +415,3 @@ export class ProjectFixtures {
     return path.join(this.fixturesDir, fixtureName);
   }
 }
-

@@ -1,78 +1,77 @@
 /**
- * E2E Tests for Status Command - US-067
+ * E2E-style Tests for Status Command - US-067
  * @ac US-067-AC-5: 3 scenarios for status command
  * @issue #67
  */
 
 import { expect } from 'chai';
-import { describe, it, beforeEach } from 'mocha';
-import { DependencyGraphBuilder } from '../../src/dependencies/dependency-graph-builder.js';
-import { WaveBuilder } from '../../src/waves/wave-builder.js';
+import { afterEach, beforeEach, describe, it } from 'mocha';
+import { mkdtemp, rm } from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { DeploymentStatusService } from '../../src/deployment/deployment-status-service.js';
+import { StateManager } from '../../src/deployment/state-manager.js';
 
 describe('E2E: Status Command - US-067', () => {
-  let graphBuilder: DependencyGraphBuilder;
-  let waveBuilder: WaveBuilder;
+  let testDir: string;
+  let stateManager: StateManager;
+  let service: DeploymentStatusService;
 
-  beforeEach(() => {
-    graphBuilder = new DependencyGraphBuilder();
-    waveBuilder = new WaveBuilder();
+  beforeEach(async () => {
+    testDir = await mkdtemp(path.join(os.tmpdir(), 'status-e2e-'));
+    stateManager = new StateManager({ baseDir: testDir });
+    service = new DeploymentStatusService(stateManager);
   });
 
-  it('should show current deployment status', async () => {
-    const component = {
-      name: 'TestClass',
-      type: 'ApexClass' as const,
-      filePath: 'TestClass.cls',
-      dependencies: new Set<string>(),
-      dependents: new Set<string>(),
-      priorityBoost: 0,
-    };
-
-    graphBuilder.addComponent(component);
-    const graphResult = graphBuilder.build();
-    const waveResult = waveBuilder.generateWaves(graphResult.graph);
-
-    expect(waveResult.waves.length).to.be.greaterThan(0);
-    expect(waveResult.stats.totalWaves).to.be.greaterThan(0);
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true });
   });
 
-  it('should show progress percentage', async () => {
-    const components = Array.from({ length: 10 }, (_, i) => ({
-      name: `Class${i}`,
-      type: 'ApexClass' as const,
-      filePath: `Class${i}.cls`,
-      dependencies: new Set<string>(),
-      dependents: new Set<string>(),
-      priorityBoost: 0,
-    }));
+  it('shows current deployment status from state', async () => {
+    await stateManager.saveState({
+      deploymentId: 'deploy-status-1',
+      targetOrg: 'status@example.com',
+      timestamp: '2026-04-20T00:00:00.000Z',
+      totalWaves: 4,
+      completedWaves: [1, 2],
+      currentWave: 3,
+    });
 
-    for (const component of components) {
-      graphBuilder.addComponent(component);
-    }
-    const graphResult = graphBuilder.build();
-    const waveResult = waveBuilder.generateWaves(graphResult.graph);
+    const summary = await service.getStatus();
 
-    const totalWaves = waveResult.stats.totalWaves;
-    expect(totalWaves).to.be.greaterThan(0);
+    expect(summary.status).to.equal('in-progress');
+    expect(summary.currentWave).to.equal(3);
+    expect(summary.totalWaves).to.equal(4);
   });
 
-  it('should show estimated time remaining', async () => {
-    const components = Array.from({ length: 5 }, (_, i) => ({
-      name: `Class${i}`,
-      type: 'ApexClass' as const,
-      filePath: `Class${i}.cls`,
-      dependencies: new Set<string>(),
-      dependents: new Set<string>(),
-      priorityBoost: 0,
-    }));
+  it('shows failed deployment progress and resumable state', async () => {
+    await stateManager.saveState({
+      deploymentId: 'deploy-status-2',
+      targetOrg: 'status@example.com',
+      timestamp: '2026-04-20T00:00:00.000Z',
+      totalWaves: 5,
+      completedWaves: [1, 2, 3],
+      currentWave: 4,
+      failedWave: {
+        waveNumber: 4,
+        error: 'FIELD_INTEGRITY_EXCEPTION',
+        timestamp: '2026-04-20T00:00:15.000Z',
+      },
+    });
 
-    for (const component of components) {
-      graphBuilder.addComponent(component);
-    }
-    const graphResult = graphBuilder.build();
-    const waveResult = waveBuilder.generateWaves(graphResult.graph);
+    const summary = await service.getStatus();
+    const formatted = service.formatStatus(summary);
 
-    expect(waveResult.stats.totalEstimatedTime).to.be.a('number');
+    expect(summary.status).to.equal('failed');
+    expect(summary.resumable).to.equal(true);
+    expect(formatted).to.include('Remaining Waves: 4, 5');
+  });
+
+  it('shows no deployment state when none exists', async () => {
+    const summary = await service.getStatus();
+    const formatted = service.formatStatus(summary);
+
+    expect(summary.hasState).to.equal(false);
+    expect(formatted).to.include('No deployment state found');
   });
 });
-
