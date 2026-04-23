@@ -73,6 +73,7 @@ Run with AI and allow conservative cycle remediation:
 ```bash
 sf smart-deployment start \
   --source-path force-app \
+  --target-org myorg \
   --use-ai \
   --allow-cycle-remediation
 ```

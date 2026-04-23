@@ -51,6 +51,7 @@ Behavior:
 
 Important:
 
+- a real deployment still requires `--target-org`
 - `--allow-cycle-remediation` does not enable arbitrary source rewriting
 - unsupported cycles still fail closed and require manual resolution
 

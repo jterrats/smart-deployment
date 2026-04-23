@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'mocha';
 import Start from '../../../src/commands/start.js';
+import { SfCliIntegration } from '../../../src/deployment/sf-cli-integration.js';
 
 type ParseResult = {
   flags: Record<string, unknown>;
@@ -132,49 +133,68 @@ describe('StartCommand', () => {
     const originalBeta = await readFile(betaPath, 'utf8');
     const command = new Start([], {} as never);
     const logs: string[] = [];
+    const originalDeploy = SfCliIntegration.prototype.deploy;
+    const deployCalls: string[] = [];
 
-    (command as unknown as StartCommandTestDouble).parse = async () => ({
-      flags: {
-        'target-org': 'test-org',
-        'dry-run': false,
-        'validate-only': false,
-        'skip-tests': true,
-        'use-ai': false,
-        'allow-cycle-remediation': true,
-        'source-path': projectRoot,
-      },
-      args: {},
-      argv: [],
-      raw: [],
-      metadata: { flags: {}, args: {} },
-      nonExistentFlags: [],
-      _runtime: {},
-    });
-    (command as unknown as StartCommandTestDouble).log = (message?: string) => {
-      if (message) logs.push(message);
-    };
-    (command as unknown as StartCommandTestDouble).warn = () => undefined;
-    (command as unknown as StartCommandTestDouble).error = (message: string) => {
-      throw new Error(message);
+    SfCliIntegration.prototype.deploy = async function stubDeploy(options) {
+      deployCalls.push(options.manifestPath);
+      return {
+        success: true,
+        deploymentId: `deploy-${deployCalls.length}`,
+        status: 'Succeeded',
+        componentSuccesses: 2,
+        componentFailures: 0,
+        output: '{"result":{"status":"Succeeded"}}',
+      };
     };
 
-    const result = await command.run();
-    const restoredAlpha = await readFile(alphaPath, 'utf8');
-    const restoredBeta = await readFile(betaPath, 'utf8');
-
-    expect(result.success).to.equal(true);
-    expect(restoredAlpha).to.equal(originalAlpha);
-    expect(restoredBeta).to.equal(originalBeta);
-    expect(logs.some((message) => message.includes('Phase 1/2'))).to.equal(true);
-    expect(logs.some((message) => message.includes('Phase 2/2'))).to.equal(true);
-
-    let stateFileExists = true;
     try {
-      await access(path.join(projectRoot, '.smart-deployment/deployment-state.json'), fsConstants.F_OK);
-    } catch {
-      stateFileExists = false;
-    }
+      (command as unknown as StartCommandTestDouble).parse = async () => ({
+        flags: {
+          'target-org': 'test-org',
+          'dry-run': false,
+          'validate-only': false,
+          'skip-tests': true,
+          'use-ai': false,
+          'allow-cycle-remediation': true,
+          'source-path': projectRoot,
+        },
+        args: {},
+        argv: [],
+        raw: [],
+        metadata: { flags: {}, args: {} },
+        nonExistentFlags: [],
+        _runtime: {},
+      });
+      (command as unknown as StartCommandTestDouble).log = (message?: string) => {
+        if (message) logs.push(message);
+      };
+      (command as unknown as StartCommandTestDouble).warn = () => undefined;
+      (command as unknown as StartCommandTestDouble).error = (message: string) => {
+        throw new Error(message);
+      };
 
-    expect(stateFileExists).to.equal(false);
+      const result = await command.run();
+      const restoredAlpha = await readFile(alphaPath, 'utf8');
+      const restoredBeta = await readFile(betaPath, 'utf8');
+
+      expect(result.success).to.equal(true);
+      expect(restoredAlpha).to.equal(originalAlpha);
+      expect(restoredBeta).to.equal(originalBeta);
+      expect(logs.some((message) => message.includes('Phase 1/2'))).to.equal(true);
+      expect(logs.some((message) => message.includes('Phase 2/2'))).to.equal(true);
+      expect(deployCalls).to.have.lengthOf(2);
+
+      let stateFileExists = true;
+      try {
+        await access(path.join(projectRoot, '.smart-deployment/deployment-state.json'), fsConstants.F_OK);
+      } catch {
+        stateFileExists = false;
+      }
+
+      expect(stateFileExists).to.equal(false);
+    } finally {
+      SfCliIntegration.prototype.deploy = originalDeploy;
+    }
   });
 });

@@ -101,19 +101,18 @@ describe('NUT: start command', () => {
     expect(result.shellOutput.stderr).to.include('--allow-cycle-remediation');
   });
 
-  it('completes the conservative remediation path for a simple ApexClass cycle', async () => {
+  it('requires a target org before attempting a real cycle remediation deployment', async () => {
     const { tempDir, homeDir } = await createNutContext();
     tempDirs.push(tempDir);
     const projectRoot = await createCircularProject(tempDir);
     const alphaPath = path.join(projectRoot, 'force-app/main/default/classes/Alpha.cls');
     const originalAlpha = await readFile(alphaPath, 'utf8');
 
-    const result = execNutCommand<{ success: boolean; waves: number }>(
-      `start --source-path ${projectRoot} --allow-cycle-remediation --json`,
-      homeDir
-    );
+    const result = execNutCommand(`start --source-path ${projectRoot} --allow-cycle-remediation`, homeDir, 'nonZero');
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
+    expect(result.shellOutput.stderr).to.include(
+      'The --target-org flag is required for cycle remediation deployments.'
+    );
     expect(await readFile(alphaPath, 'utf8')).to.equal(originalAlpha);
 
     let stateFileExists = true;

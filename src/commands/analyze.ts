@@ -105,6 +105,8 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         this.log(`   ⚠️  ${waveResult.unplacedComponents.length} component(s) couldn't be placed (circular deps)`);
       }
 
+      let planSaved = false;
+
       // Generate and save plan if requested
       if (flags['save-plan']) {
         this.log('');
@@ -148,13 +150,12 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
 
         const planPath = flags['plan-path'] || '.smart-deployment/deployment-plan.json';
         this.log(`✅ Deployment plan saved to: ${planPath}`);
+        planSaved = true;
         this.log('');
         this.log('💡 Next steps:');
         this.log('   1. Review the plan in your PR');
         this.log('   2. Commit the plan to your repo');
-        this.log(`   3. Use it in CI/CD: sf smart-deployment start --use-plan ${planPath}`);
-
-        return { success: true, components, dependencies, planSaved: true, ai: aiContext };
+        this.log(`   3. Use ${planPath} as a reviewed deployment artifact in CI/CD`);
       }
 
       // Output report if requested
@@ -167,7 +168,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         this.log(`📄 Report saved to: ${flags.output} (format: ${format})`);
       }
 
-      return { success: true, components, dependencies, ai: aiContext };
+      return { success: true, components, dependencies, planSaved, ai: aiContext };
     } catch (error) {
       logger.error('Analysis failed', { error });
       this.error(`Analysis failed: ${error instanceof Error ? error.message : String(error)}`);

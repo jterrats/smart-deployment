@@ -70,6 +70,29 @@ describe('NUT: analyze, config, and help coverage', () => {
     expect(savedPlan).to.include('"generatedAt"');
   });
 
+  it('analyze can save a deployment plan and write a report in the same run', async () => {
+    const { tempDir, homeDir } = await createNutContext();
+    tempDirs.push(tempDir);
+    const projectRoot = await createSalesforceProject(tempDir, 'analyze-plan-report-project', {
+      'force-app/main/default/classes/PlannerReport.cls': 'public class PlannerReport {}\n',
+    });
+    const planPath = path.join(projectRoot, 'combined-plan.json');
+    const reportPath = path.join(projectRoot, 'combined-report.json');
+
+    const result = execNutCommand<{ success: boolean; planSaved: boolean }>(
+      `analyze --source-path ${projectRoot} --save-plan --plan-path ${planPath} --output ${reportPath} --format json --json`,
+      homeDir
+    );
+
+    const savedPlan = await readFile(planPath, 'utf8');
+    const savedReport = await readFile(reportPath, 'utf8');
+
+    expect(result.shellOutput.stdout).to.include('"success": true');
+    expect(result.shellOutput.stdout).to.include('"planSaved": true');
+    expect(savedPlan).to.include('"waves"');
+    expect(savedReport).to.include('"summary"');
+  });
+
   it('analyze persists AI priority overrides in the saved plan when AI is enabled', async () => {
     const { tempDir, homeDir } = await createNutContext();
     tempDirs.push(tempDir);
