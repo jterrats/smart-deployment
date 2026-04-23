@@ -1,0 +1,29 @@
+title: Smart Deployment
+description: Salesforce CLI plugin for dependency-aware metadata analysis, staged deployment waves, and AI-assisted deployment planning.
+author: Jaime Terrats
+url: https://jterrats.github.io
+baseurl: /smart-deployment
+repository: jterrats/smart-deployment
+github_username: jterrats
+license: MIT
+
+markdown: kramdown
+theme: null
+plugins: []
+permalink: pretty
+
+exclude:
+  - node_modules/
+  - vendor/
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - package.json
+  - package-lock.json
+  - yarn.lock
+
+defaults:
+  - scope:
+      path: ''
+    values:
+      layout: default

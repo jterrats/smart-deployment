@@ -1,5 +1,11 @@
 # Smart Deployment
 
+[![CI](https://img.shields.io/github/actions/workflow/status/jterrats/smart-deployment/test.yml?branch=main&label=CI&logo=github)](https://github.com/jterrats/smart-deployment/actions/workflows/test.yml)
+[![License](https://img.shields.io/github/license/jterrats/smart-deployment)](https://github.com/jterrats/smart-deployment/blob/main/LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/jterrats/smart-deployment?display_name=tag&label=latest%20release)](https://github.com/jterrats/smart-deployment/releases)
+[![Node Version](https://img.shields.io/node/v/smart-deployment?logo=node.js)](https://www.npmjs.com/package/smart-deployment)
+[![npm](https://img.shields.io/npm/v/smart-deployment?logo=npm&label=npm)](https://www.npmjs.com/package/smart-deployment)
+
 Smart Deployment is a Salesforce CLI plugin that analyzes metadata, builds deployment waves, validates project state, and executes staged deployments with optional AI assistance.
 
 The current codebase supports:
