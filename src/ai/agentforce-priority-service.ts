@@ -31,8 +31,6 @@ export interface AgentforceConfig {
   model?: string;
   timeout?: number;
   enabled?: boolean;
-  autoApply?: boolean; // Auto-apply recommendations with high confidence
-  confidenceThreshold?: number; // Minimum confidence to auto-apply (default: 0.8)
 }
 
 export interface PriorityAnalysisResult {
@@ -52,16 +50,12 @@ export class AgentforcePriorityService {
   private readonly model: string;
   private readonly timeout: number;
   private readonly enabled: boolean;
-  private readonly autoApply: boolean;
-  private readonly confidenceThreshold: number;
 
   constructor(private config: AgentforceConfig = {}) {
     this.endpoint = config.endpoint || 'https://api.salesforce.com/services/einstein/llm/v1';
     this.model = config.model || 'claude-sonnet';
     this.timeout = config.timeout || 30000;
     this.enabled = config.enabled ?? true;
-    this.autoApply = config.autoApply ?? false;
-    this.confidenceThreshold = config.confidenceThreshold ?? 0.8;
   }
 
   /**
@@ -239,10 +233,7 @@ Respond ONLY with valid JSON (no markdown):
       const content = response.choices?.[0]?.message?.content || '{}';
 
       // Remove markdown code blocks if present
-      const cleanContent = content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
+      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
       const parsed = JSON.parse(cleanContent) as { recommendations: PriorityRecommendation[] };
 
@@ -316,15 +307,11 @@ Respond ONLY with valid JSON (no markdown):
   /**
    * @ac US-057-AC-6: Report AI decisions
    */
-  public formatDecisionReport(result: PriorityAnalysisResult, autoApplied = false): string {
+  public formatDecisionReport(result: PriorityAnalysisResult): string {
     const lines: string[] = [];
 
     lines.push('🤖 AI Priority Analysis Report');
     lines.push('═══════════════════════════════════════');
-    lines.push(`Mode: ${autoApplied ? 'Auto-Apply' : 'Manual Review'}`);
-    if (autoApplied) {
-      lines.push(`Confidence Threshold: ${(this.confidenceThreshold * 100).toFixed(0)}%`);
-    }
     lines.push(`Total Components: ${result.totalComponents}`);
     lines.push(`AI Adjustments: ${result.aiAdjustments}`);
     lines.push(`Execution Time: ${result.executionTime}ms`);
@@ -337,58 +324,22 @@ Respond ONLY with valid JSON (no markdown):
       lines.push('Priority Recommendations:');
       const sorted = result.recommendations.sort((a, b) => b.priority - a.priority);
 
-      // Separate by confidence
-      const autoAppliedRecs = sorted.filter((r) => r.confidence > this.confidenceThreshold);
-      const skippedRecs = sorted.filter((r) => r.confidence <= this.confidenceThreshold);
-
-      if (autoApplied && autoAppliedRecs.length > 0) {
-        lines.push(`\n✅ Auto-Applied (confidence > ${(this.confidenceThreshold * 100).toFixed(0)}%):`);
-        for (const rec of autoAppliedRecs.slice(0, 10)) {
-          lines.push(
-            `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(
-              30
-            )} | ${rec.businessCriticality.toUpperCase()} (${(rec.confidence * 100).toFixed(0)}%)`
-          );
-          lines.push(`      ${rec.reason}`);
-        }
+      for (const rec of sorted.slice(0, 10)) {
+        // Top 10
+        lines.push(
+          `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(30)} | ${rec.businessCriticality.toUpperCase()}`
+        );
+        lines.push(`      ${rec.reason}`);
       }
 
-      if (skippedRecs.length > 0) {
-        lines.push(`\n⏭️  Skipped (confidence ≤ ${(this.confidenceThreshold * 100).toFixed(0)}%):`);
-        for (const rec of skippedRecs.slice(0, 5)) {
-          lines.push(
-            `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(
-              30
-            )} | ${rec.businessCriticality.toUpperCase()} (${(rec.confidence * 100).toFixed(0)}%)`
-          );
-        }
-      }
-
-      const totalShown = Math.min(10, autoAppliedRecs.length) + Math.min(5, skippedRecs.length);
-      if (result.recommendations.length > totalShown) {
-        lines.push(`\n  ... and ${result.recommendations.length - totalShown} more`);
+      if (result.recommendations.length > 10) {
+        lines.push(`  ... and ${result.recommendations.length - 10} more`);
       }
     } else {
       lines.push('No AI recommendations (using static priorities)');
     }
 
-    if (autoApplied && result.recommendations.length > 0) {
-      lines.push('\n💡 All high-confidence recommendations were applied automatically');
-    } else if (!autoApplied) {
-      lines.push('\n💡 Use --ai-auto to automatically apply high-confidence recommendations');
-    }
-
     return lines.join('\n');
-  }
-
-  /**
-   * Get auto-apply configuration
-   */
-  public getAutoApplyConfig(): { enabled: boolean; threshold: number } {
-    return {
-      enabled: this.autoApply,
-      threshold: this.confidenceThreshold,
-    };
   }
 }
 
@@ -403,3 +354,4 @@ interface AgentforceResponse {
     total_tokens?: number;
   };
 }
+

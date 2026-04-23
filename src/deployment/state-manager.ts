@@ -32,14 +32,24 @@ export interface DeploymentState {
   metadata?: Record<string, unknown>;
 }
 
+export interface StateManagerOptions {
+  baseDir?: string;
+}
+
 /**
  * @ac US-089-AC-1: Save state after each wave
  * @ac US-089-AC-2: Include completed waves
  * @ac US-089-AC-3: Include failed wave details
  */
 export class StateManager {
-  private readonly stateDir = path.join(process.cwd(), '.smart-deployment');
-  private readonly stateFile = path.join(this.stateDir, 'deployment-state.json');
+  private readonly stateDir: string;
+  private readonly stateFile: string;
+
+  public constructor(options: StateManagerOptions = {}) {
+    const baseDir = options.baseDir ?? process.cwd();
+    this.stateDir = path.join(baseDir, '.smart-deployment');
+    this.stateFile = path.join(this.stateDir, 'deployment-state.json');
+  }
 
   public async saveState(state: DeploymentState): Promise<void> {
     logger.info('Saving deployment state', { state });
@@ -79,5 +89,8 @@ export class StateManager {
     const state = await this.loadState();
     return state?.failedWave !== undefined;
   }
-}
 
+  public getStateFilePath(): string {
+    return this.stateFile;
+  }
+}

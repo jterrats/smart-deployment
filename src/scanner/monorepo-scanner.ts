@@ -14,6 +14,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { getLogger } from '../utils/logger.js';
+import { type SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('MonorepoScanner');
 
@@ -76,10 +77,10 @@ export class MonorepoScanner {
         const sfdxProjectPath = path.join(dir, 'sfdx-project.json');
         try {
           const content = await fs.readFile(sfdxProjectPath, 'utf-8');
-          const config = JSON.parse(content);
+          const config = JSON.parse(content) as SfdxProjectJson & { name?: string };
 
           const packageDirs = config.packageDirectories
-            ? config.packageDirectories.map((p: { path: string }) => p.path)
+            ? config.packageDirectories.map((p) => p.path)
             : [];
 
           projects.push({
@@ -124,10 +125,11 @@ export class MonorepoScanner {
     for (const project of projects) {
       try {
         const content = await fs.readFile(project.sfdxProjectPath, 'utf-8');
-        const config = JSON.parse(content);
+        const config = JSON.parse(content) as SfdxProjectJson & { packageAliases?: Record<string, unknown> };
 
         if (config.plugins) {
-          for (const plugin of config.plugins) {
+          const plugins = config.plugins as Record<string, unknown>;
+          for (const plugin of Object.keys(plugins)) {
             sharedDeps.add(plugin);
           }
         }

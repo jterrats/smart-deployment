@@ -1,5 +1,6 @@
 /**
  * smart-deployment:validate command - US-048
+ *
  * @ac US-048-AC-1: Performs check-only deployment
  * @ac US-048-AC-2: Validates each wave
  * @ac US-048-AC-3: Reports validation errors
@@ -9,22 +10,45 @@
  * @issue #48
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
+import { DeploymentValidationService } from '../deployment/deployment-validation-service.js';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ValidateCommand');
 
-export default class Validate extends SfCommand<{ success: boolean }> {
+interface ValidateResult {
+  success: boolean;
+  components: number;
+  waves: number;
+  issueCount: number;
+}
+
+export default class Validate extends SfCommand<ValidateResult> {
   public static readonly summary = 'Validate deployment without executing';
   public static readonly flags = {
-    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': requiredOrgFlagWithDeprecations,
   };
 
-  public async run(): Promise<{ success: boolean }> {
+  public async run(): Promise<ValidateResult> {
     const { flags } = await this.parse(Validate);
+    const validationService = new DeploymentValidationService();
+
     logger.info('Validating deployment', { flags });
-    this.log('✅ Validation complete');
-    return { success: true };
+
+    const summary = await validationService.validateProject();
+    this.log(validationService.formatSummary(summary));
+
+    if (!summary.valid) {
+      this.warn(`Validation found ${summary.issues.length} issue(s). No deployment was executed.`);
+    } else {
+      this.log('Validation completed successfully. No deployment was executed.');
+    }
+
+    return {
+      success: summary.valid,
+      components: summary.components,
+      waves: summary.totalWaves,
+      issueCount: summary.issues.length,
+    };
   }
 }

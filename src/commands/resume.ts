@@ -10,21 +10,67 @@
  */
 
 import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
+import { StateManager } from '../deployment/state-manager.js';
+import { createResumedState, summarizeDeploymentState } from '../deployment/deployment-state-summary.js';
 
 const logger = getLogger('ResumeCommand');
 
-export default class Resume extends SfCommand<{ success: boolean }> {
+interface ResumeResult {
+  success: boolean;
+  resumedFromWave: number;
+  remainingWaves: number;
+  deploymentId: string;
+}
+
+export default class Resume extends SfCommand<ResumeResult> {
   public static readonly summary = 'Resume failed deployment';
   public static readonly flags = {
-    'target-org': Flags.string({ summary: 'Target org', char: 'o', required: true }),
+    'target-org': requiredOrgFlagWithDeprecations,
+    'retry-strategy': Flags.string({
+      summary: 'Retry strategy to use when resuming the deployment',
+      options: ['standard', 'quick', 'validate-only'],
+      default: 'standard',
+    }),
   };
 
-  public async run(): Promise<{ success: boolean }> {
+  public async run(): Promise<ResumeResult> {
     const { flags } = await this.parse(Resume);
-    logger.info('Resuming deployment', { flags });
-    this.log('🔄 Deployment resumed');
-    return { success: true };
+
+    try {
+      logger.info('Resuming deployment', { flags });
+
+      const stateManager = new StateManager();
+      const state = await stateManager.loadState();
+
+      if (!state?.failedWave) {
+        this.error('No failed deployment state found to resume');
+      }
+
+      const summary = summarizeDeploymentState(state);
+      const retryStrategy = flags['retry-strategy'] as 'standard' | 'quick' | 'validate-only';
+      const resumedState = createResumedState(state, retryStrategy);
+
+      await stateManager.saveState(resumedState);
+
+      this.log(`🔄 Resume prepared for deployment ${summary.deploymentId}`);
+      this.log(`Retry strategy: ${retryStrategy}`);
+      this.log(`Resuming from wave ${summary.currentWave}/${summary.totalWaves}`);
+      this.log(`Remaining waves: ${summary.remainingWaves}`);
+      if (summary.failureReason) {
+        this.log(`Previous failure: ${summary.failureReason}`);
+      }
+
+      return {
+        success: true,
+        resumedFromWave: summary.currentWave,
+        remainingWaves: summary.remainingWaves,
+        deploymentId: summary.deploymentId,
+      };
+    } catch (error) {
+      logger.error('Resume failed', { error });
+      this.error(`Resume failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

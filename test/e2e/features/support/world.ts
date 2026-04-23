@@ -7,10 +7,11 @@
  */
 
 import { setWorldConstructor, World } from '@cucumber/cucumber';
-import { DependencyGraphBuilder } from '../../../src/dependencies/dependency-graph-builder.js';
-import { WaveBuilder } from '../../../src/waves/wave-builder.js';
-import type { WaveResult } from '../../../src/waves/wave-builder.js';
-import type { DependencyAnalysisResult } from '../../../src/types/dependency.js';
+import type { IWorldOptions } from '@cucumber/cucumber';
+import { DependencyGraphBuilder } from '../../../../src/dependencies/dependency-graph-builder.js';
+import { WaveBuilder } from '../../../../src/waves/wave-builder.js';
+import type { WaveResult } from '../../../../src/waves/wave-builder.js';
+import type { DependencyAnalysisResult } from '../../../../src/types/dependency.js';
 
 export class SmartDeploymentWorld extends World {
   public graphBuilder: DependencyGraphBuilder;
@@ -27,7 +28,7 @@ export class SmartDeploymentWorld extends World {
     priorityBoost: number;
   }> = [];
 
-  public constructor(options: { attach: unknown; log: unknown; parameters: unknown }) {
+  public constructor(options: IWorldOptions) {
     super(options);
     this.graphBuilder = new DependencyGraphBuilder();
     this.waveBuilder = new WaveBuilder();
@@ -45,7 +46,7 @@ export class SmartDeploymentWorld extends World {
   public async run(): Promise<void> {
     try {
       for (const component of this.components) {
-        await this.graphBuilder.addComponent(component as never);
+        this.graphBuilder.addComponent(component as never);
       }
       this.graphResult = this.graphBuilder.build();
       if (this.graphResult) {
@@ -55,11 +56,6 @@ export class SmartDeploymentWorld extends World {
       this.error = error instanceof Error ? error : new Error(String(error));
     }
   }
-
-  public log(message: string): void {
-    // Placeholder for logging
-  }
 }
 
 setWorldConstructor(SmartDeploymentWorld);
-

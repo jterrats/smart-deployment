@@ -1,16 +1,10 @@
-/**
- * E2E-style Tests for Validate Command - US-067
- * @ac US-067-AC-3: 5 scenarios for validate command
- * @issue #67
- */
-
 import { expect } from 'chai';
-import { afterEach, describe, it } from 'mocha';
+import { describe, it, afterEach } from 'mocha';
 import { rm } from 'node:fs/promises';
-import { ProjectFixtures } from '../fixtures/project-fixtures.js';
-import { DeploymentValidationService } from '../../src/deployment/deployment-validation-service.js';
+import { ProjectFixtures } from '../../fixtures/project-fixtures.js';
+import { DeploymentValidationService } from '../../../src/deployment/deployment-validation-service.js';
 
-describe('E2E: Validate Command - US-067', () => {
+describe('DeploymentValidationService', () => {
   const fixtures = new ProjectFixtures();
   const createdRoots = new Set<string>();
 
@@ -23,37 +17,43 @@ describe('E2E: Validate Command - US-067', () => {
     createdRoots.clear();
   });
 
-  it('validates deployment without executing it', async () => {
-    const fixture = await fixtures.createStandardProject('validate-e2e-valid');
+  it('validates a healthy project without executing deployment', async () => {
+    const fixture = await fixtures.createStandardProject('validation-service-valid');
     createdRoots.add(fixture.structure.root);
 
     const service = new DeploymentValidationService();
     const summary = await service.validateProject(fixture.structure.root);
 
     expect(summary.valid).to.equal(true);
+    expect(summary.components).to.equal(1);
     expect(summary.totalWaves).to.be.greaterThan(0);
+    expect(summary.xmlFilesValidated).to.be.greaterThan(0);
+    expect(summary.issues.filter((issue) => issue.severity === 'error')).to.deep.equal([]);
   });
 
-  it('detects validation errors from corrupted metadata', async () => {
-    const fixture = await fixtures.createCorruptedProject('validate-e2e-corrupt');
+  it('reports XML validation issues for corrupted metadata', async () => {
+    const fixture = await fixtures.createCorruptedProject('validation-service-corrupt');
     createdRoots.add(fixture.structure.root);
 
     const service = new DeploymentValidationService();
     const summary = await service.validateProject(fixture.structure.root);
 
     expect(summary.valid).to.equal(false);
+    expect(summary.xmlFilesValidated).to.be.greaterThan(0);
     expect(summary.issues.some((issue) => issue.severity === 'error')).to.equal(true);
   });
 
-  it('reports wave and XML validation details', async () => {
-    const fixture = await fixtures.createStandardProject('validate-e2e-report');
+  it('formats a readable validation summary', async () => {
+    const fixture = await fixtures.createStandardProject('validation-service-format');
     createdRoots.add(fixture.structure.root);
 
     const service = new DeploymentValidationService();
     const summary = await service.validateProject(fixture.structure.root);
     const formatted = service.formatSummary(summary);
 
+    expect(formatted).to.include('Validation: PASSED');
     expect(formatted).to.include('Components: 1');
+    expect(formatted).to.include('Waves:');
     expect(formatted).to.include('XML Files Validated:');
   });
 });

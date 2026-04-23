@@ -14,6 +14,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { getLogger } from '../utils/logger.js';
+import type { SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('StructureValidator');
 
@@ -46,7 +47,7 @@ export class StructureValidator {
 
     try {
       const content = await fs.readFile(sfdxProjectPath, 'utf-8');
-      const config = JSON.parse(content);
+      const config = JSON.parse(content) as Partial<SfdxProjectJson>;
 
       // Check required fields
       if (!config.packageDirectories) {
@@ -124,7 +125,7 @@ export class StructureValidator {
     try {
       const sfdxProjectPath = path.join(projectRoot, 'sfdx-project.json');
       const content = await fs.readFile(sfdxProjectPath, 'utf-8');
-      const config = JSON.parse(content);
+      const config = JSON.parse(content) as Partial<SfdxProjectJson>;
 
       if (config.packageDirectories) {
         for (const pkg of config.packageDirectories) {
@@ -337,4 +338,3 @@ export class StructureValidator {
     return lines.join('\n');
   }
 }
-
