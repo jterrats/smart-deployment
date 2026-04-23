@@ -18,6 +18,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
@@ -77,7 +78,7 @@ export default class Start extends SfCommand<StartResult> {
    * @ac US-046-AC-7: Supports --skip-tests flag
    * @ac US-057-AC-1: Send component list to Agentforce
    */
-  public static readonly flags = {
+  public static readonly flags: Interfaces.FlagInput = {
     'target-org': optionalOrgFlagWithDeprecations,
     'dry-run': Flags.boolean({
       summary: messages.getMessage('flags.dry-run.summary'),

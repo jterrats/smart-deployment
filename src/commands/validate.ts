@@ -10,6 +10,7 @@
  * @issue #48
  */
 
+import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { DeploymentValidationService } from '../deployment/deployment-validation-service.js';
@@ -36,7 +37,7 @@ type ValidateResult = {
 export default class Validate extends SfCommand<ValidateResult> {
   public static readonly summary = messages.getMessage('summary');
   public static readonly examples = messages.getMessages('examples');
-  public static readonly flags = {
+  public static readonly flags: Interfaces.FlagInput = {
     'target-org': optionalOrgFlagWithDeprecations,
     'source-path': Flags.directory({
       summary: messages.getMessage('flags.source-path.summary'),
