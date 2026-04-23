@@ -1,6 +1,12 @@
 name: Tests
 
 on:
+  workflow_call:
+    inputs:
+      skip_coverage_check:
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -10,10 +16,7 @@ on:
 jobs:
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    uses: salesforcecli/github-workflows/.github/workflows/unitTest.yml@main
 
   nuts:
     needs: unit-tests
