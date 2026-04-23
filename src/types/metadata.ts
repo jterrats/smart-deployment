@@ -104,7 +104,7 @@ export type MetadataType =
 /**
  * Base interface for all metadata components
  */
-export interface MetadataComponent {
+export type MetadataComponent = {
   /** Component name (e.g., "SC_Account_Service") */
   name: string;
   /** Metadata type */
@@ -117,63 +117,63 @@ export interface MetadataComponent {
   dependents: Set<string>;
   /** Priority boost for heuristics (negative = deploy earlier) */
   priorityBoost: number;
-}
+};
 
 /**
  * Specialized metadata types
  */
 
-export interface ApexClass extends MetadataComponent {
+export type ApexClass = MetadataComponent & {
   type: 'ApexClass';
   isTest: boolean;
   isUtility: boolean;
   isHandler: boolean;
   isService: boolean;
   isIntegration: boolean;
-}
+};
 
-export interface ApexTrigger extends MetadataComponent {
+export type ApexTrigger = MetadataComponent & {
   type: 'ApexTrigger';
   sobject: string;
   handlerClass?: string;
-}
+};
 
-export interface Flow extends MetadataComponent {
+export type Flow = MetadataComponent & {
   type: 'Flow';
   referencedApexClasses: string[];
   referencedPromptTemplates: string[];
   referencedFlows: string[];
-}
+};
 
-export interface LightningComponentBundle extends MetadataComponent {
+export type LightningComponentBundle = MetadataComponent & {
   type: 'LightningComponentBundle';
   referencedApexClasses: string[];
   referencedLwcs: string[];
   referencedSobjects: string[];
-}
+};
 
-export interface PermissionSet extends MetadataComponent {
+export type PermissionSet = MetadataComponent & {
   type: 'PermissionSet';
   apexClasses: string[];
   flows: string[];
   customObjects: string[];
   customPermissions: string[];
-}
+};
 
-export interface CustomObject extends MetadataComponent {
+export type CustomObject = MetadataComponent & {
   type: 'CustomObject';
   isCustomMetadataType: boolean;
-}
+};
 
-export interface CustomMetadataRecord extends MetadataComponent {
+export type CustomMetadataRecord = MetadataComponent & {
   type: 'CustomMetadataRecord';
   metadataTypeName: string;
-}
+};
 
 /**
  * Archivo de metadata físico en el proyecto
  */
-export interface ComponentFile {
+export type ComponentFile = {
   /** Path absoluto al archivo */
   path: string;
   /** Nombre del archivo */
@@ -182,22 +182,22 @@ export interface ComponentFile {
   metadataType: MetadataType;
   /** Contenido del archivo (puede ser lazy-loaded) */
   content?: string;
-}
+};
 
 /**
  * Resultado del parsing de un componente
  */
-export interface ParseResult<T extends MetadataComponent> {
+export type ParseResult<T extends MetadataComponent> = {
   component: T;
   errors: ParseError[];
-}
+};
 
 /**
  * Error durante el parsing
  */
-export interface ParseError {
+export type ParseError = {
   file: string;
   message: string;
   severity: 'warning' | 'error';
   line?: number;
-}
+};

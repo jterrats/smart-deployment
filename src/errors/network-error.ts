@@ -9,13 +9,13 @@
 
 import { SmartDeploymentError } from './base-error.js';
 
-export interface NetworkErrorOptions {
+export type NetworkErrorOptions = {
   url?: string;
   statusCode?: number;
   timeout?: number;
   retryCount?: number;
   originalError?: Error;
-}
+};
 
 /**
  * @ac US-072-AC-1: Detect network errors
@@ -98,10 +98,14 @@ export class NetworkError extends SmartDeploymentError {
  */
 export class TimeoutError extends NetworkError {
   public constructor(url: string, timeout: number) {
-    super(`Request timeout after ${timeout}ms`, {
-      url,
-      timeout,
-    }, 'NETWORK_TIMEOUT');
+    super(
+      `Request timeout after ${timeout}ms`,
+      {
+        url,
+        timeout,
+      },
+      'NETWORK_TIMEOUT'
+    );
   }
 }
 
@@ -110,10 +114,14 @@ export class TimeoutError extends NetworkError {
  */
 export class ConnectionError extends NetworkError {
   public constructor(url: string, originalError?: Error) {
-    super(`Failed to connect to ${url}`, {
-      url,
-      originalError,
-    }, 'NETWORK_CONNECTION_FAILED');
+    super(
+      `Failed to connect to ${url}`,
+      {
+        url,
+        originalError,
+      },
+      'NETWORK_CONNECTION_FAILED'
+    );
   }
 }
 
@@ -122,9 +130,13 @@ export class ConnectionError extends NetworkError {
  */
 export class HttpError extends NetworkError {
   public constructor(url: string, statusCode: number, statusText?: string) {
-    super(`HTTP ${statusCode}${statusText ? ': ' + statusText : ''} at ${url}`, {
-      url,
-      statusCode,
-    }, 'NETWORK_HTTP_ERROR');
+    super(
+      `HTTP ${statusCode}${statusText ? ': ' + statusText : ''} at ${url}`,
+      {
+        url,
+        statusCode,
+      },
+      'NETWORK_HTTP_ERROR'
+    );
   }
 }

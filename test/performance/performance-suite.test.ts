@@ -18,7 +18,6 @@ import { DependencyGraphBuilder } from '../../src/dependencies/dependency-graph-
 import { WaveBuilder } from '../../src/waves/wave-builder.js';
 
 describe('Performance Tests - US-069', () => {
-
   describe('US-069: Performance Tests', () => {
     /** @ac US-069-AC-1: Benchmark parsing 1000 files */
     it('US-069-AC-1: should parse 1000 files efficiently', async () => {
@@ -34,7 +33,7 @@ describe('Performance Tests - US-069', () => {
 
       // Should parse 1000 files in < 5 seconds
       expect(executionTime).to.be.below(5000);
-    }).timeout(10000);
+    }).timeout(10_000);
 
     /** @ac US-069-AC-2: Benchmark topological sort 1000 nodes */
     it('US-069-AC-2: should sort 1000 nodes efficiently', async () => {
@@ -64,7 +63,7 @@ describe('Performance Tests - US-069', () => {
       // Should complete in < 3 seconds
       expect(executionTime).to.be.below(3000);
       expect(waveResult.waves.length).to.be.greaterThan(0);
-    }).timeout(10000);
+    }).timeout(10_000);
 
     /** @ac US-069-AC-3: Benchmark wave generation */
     it('US-069-AC-3: should generate waves efficiently', async () => {
@@ -103,7 +102,7 @@ describe('Performance Tests - US-069', () => {
       // Should complete in < 2 seconds
       expect(executionTime).to.be.below(2000);
       expect(waveResult.waves.length).to.be.greaterThan(0);
-    }).timeout(10000);
+    }).timeout(10_000);
 
     /** @ac US-069-AC-4: Benchmark end-to-end deployment */
     it('US-069-AC-4: should process end-to-end deployment efficiently', async () => {
@@ -140,7 +139,7 @@ describe('Performance Tests - US-069', () => {
       // Should complete in < 3 seconds
       expect(executionTime).to.be.below(3000);
       expect(waveResult.waves.length).to.be.greaterThan(0);
-    }).timeout(10000);
+    }).timeout(10_000);
 
     /** @ac US-069-AC-5: Performance regression detection */
     it('US-069-AC-5: should detect performance regressions', async () => {
@@ -173,7 +172,7 @@ describe('Performance Tests - US-069', () => {
       // Current implementation should be similar or better
       expect(baselineTime).to.be.below(1000); // Should be fast
       expect(baselineWaveResult.waves.length).to.be.greaterThan(0);
-    }).timeout(10000);
+    }).timeout(10_000);
 
     /** @ac US-069-AC-6: Report performance metrics */
     it('US-069-AC-6: should report performance metrics', async () => {
@@ -213,7 +212,6 @@ describe('Performance Tests - US-069', () => {
       expect(metrics.waves).to.be.greaterThan(0);
       expect(metrics.executionTimeMs).to.be.a('number');
       expect(metrics.avgTimePerComponent).to.be.a('number');
-    }).timeout(10000);
+    }).timeout(10_000);
   });
 });
-

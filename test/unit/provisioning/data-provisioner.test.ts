@@ -47,9 +47,10 @@ describe('DataProvisioner', () => {
 
       // Create temporary file
       const { promises: fs } = await import('node:fs');
-      const { join } = await import('node:path');
-      const testFile = join(process.cwd(), 'test-temp', 'TestCMT.md-meta.xml');
-      await fs.mkdir(join(process.cwd(), 'test-temp'), { recursive: true });
+      const pathModule = await import('node:path');
+      const testDir = pathModule.join(process.cwd(), 'test-temp');
+      const testFile = pathModule.join(testDir, 'TestCMT.md-meta.xml');
+      await fs.mkdir(testDir, { recursive: true });
       await fs.writeFile(testFile, xmlContent, 'utf-8');
 
       const record = await provisioner.parseCustomMetadataRecord(testFile);
@@ -59,7 +60,7 @@ describe('DataProvisioner', () => {
       expect(record.filePath).to.equal(testFile);
 
       // Cleanup
-      await fs.rm(join(process.cwd(), 'test-temp'), { recursive: true, force: true });
+      await fs.rm(testDir, { recursive: true, force: true });
     });
 
     /** @ac US-107-AC-3: Handle Custom Settings data */
@@ -75,7 +76,7 @@ describe('DataProvisioner', () => {
 
       const data = {
         Name: 'Test Setting',
-        Value__c: 'Test Value',
+        ['Value__c']: 'Test Value',
       };
 
       const record = provisioner.prepareCustomSettingsData(component, data);
@@ -118,7 +119,7 @@ describe('DataProvisioner', () => {
       ];
 
       const mockOrgApi = {
-        query: async (_soql: string) => [],
+        query: async () => [],
       };
 
       const result = await provisioner.validateDataExists(records, mockOrgApi);
@@ -145,8 +146,7 @@ describe('DataProvisioner', () => {
       };
 
       const mockOrgApi = {
-        create: async (_type: string, records: unknown[]) =>
-          records.map(() => ({ id: '001000000000000AAA' })),
+        create: async (_type: string, records: unknown[]) => records.map(() => ({ id: '001000000000000AAA' })),
       };
 
       const result = await provisioner.executeProvisioning(wave, mockOrgApi);

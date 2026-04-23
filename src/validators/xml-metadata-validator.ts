@@ -16,33 +16,33 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('XmlMetadataValidator');
 
-export interface ValidationResult {
+export type ValidationResult = {
   isValid: boolean;
   errors: ValidationError[];
   warnings: ValidationWarning[];
   suggestions: ValidationSuggestion[];
   filePath: string;
-}
+};
 
-export interface ValidationError {
+export type ValidationError = {
   type: 'syntax' | 'schema' | 'reference' | 'version';
   message: string;
   line?: number;
   column?: number;
   severity: 'error' | 'warning';
-}
+};
 
-export interface ValidationWarning {
+export type ValidationWarning = {
   message: string;
   line?: number;
   suggestion?: string;
-}
+};
 
-export interface ValidationSuggestion {
+export type ValidationSuggestion = {
   issue: string;
   fix: string;
   autoFixable: boolean;
-}
+};
 
 /**
  * @ac US-091-AC-1: Validate XML syntax
@@ -71,16 +71,16 @@ export class XmlMetadataValidator {
       const content = await fs.readFile(filePath, 'utf-8');
 
       // 1. Validate XML syntax
-      await this.validateXmlSyntax(content, result);
+      this.validateXmlSyntax(content, result);
 
       // 2. Validate against Salesforce schema
-      await this.validateSchema(content, filePath, result);
+      this.validateSchema(content, filePath, result);
 
       // 3. Check API version
-      await this.validateApiVersion(content, result);
+      this.validateApiVersion(content, result);
 
       // 4. Validate field references
-      await this.validateReferences(content, filePath, result);
+      this.validateReferences(content, filePath, result);
 
       // 5. Generate suggestions
       this.generateSuggestions(result);
@@ -111,10 +111,10 @@ export class XmlMetadataValidator {
    * @ac US-091-AC-1: Validate XML syntax
    * Validate XML is well-formed
    */
-  private async validateXmlSyntax(content: string, result: ValidationResult): Promise<void> {
+  private validateXmlSyntax(content: string, result: ValidationResult): void {
     // Basic XML validation
     const lines = content.split('\n');
-    
+
     // Check for XML declaration
     if (!content.trim().startsWith('<?xml')) {
       result.errors.push({
@@ -170,11 +170,7 @@ export class XmlMetadataValidator {
    * @ac US-091-AC-2: Validate against Salesforce schema
    * Validate metadata structure
    */
-  private async validateSchema(
-    content: string,
-    filePath: string,
-    result: ValidationResult
-  ): Promise<void> {
+  private validateSchema(content: string, filePath: string, result: ValidationResult): void {
     // Get metadata type from file path
     const metadataType = this.getMetadataType(filePath);
 
@@ -192,7 +188,7 @@ export class XmlMetadataValidator {
    * @ac US-091-AC-3: Check API version compatibility
    * Validate API version
    */
-  private async validateApiVersion(content: string, result: ValidationResult): Promise<void> {
+  private validateApiVersion(content: string, result: ValidationResult): void {
     const versionMatch = content.match(/<apiVersion>(\d+(?:\.\d+)?)<\/apiVersion>/);
 
     if (!versionMatch) {
@@ -228,11 +224,7 @@ export class XmlMetadataValidator {
    * @ac US-091-AC-4: Validate field references
    * Validate field and object references
    */
-  private async validateReferences(
-    content: string,
-    filePath: string,
-    result: ValidationResult
-  ): Promise<void> {
+  private validateReferences(content: string, filePath: string, result: ValidationResult): void {
     // Check for common reference patterns
     const patterns = [
       { regex: /<field>([^<]+)<\/field>/g, type: 'field' },
@@ -588,4 +580,3 @@ export class XmlMetadataValidator {
     return results;
   }
 }
-

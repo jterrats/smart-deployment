@@ -1,14 +1,14 @@
 /**
  * Dependency Cache
  * Caches dependency analysis results for faster subsequent runs
- * 
+ *
  * @ac US-036-AC-1: Cache graph structure
  * @ac US-036-AC-2: Invalidate cache on file changes
  * @ac US-036-AC-3: Cache topological sort results
  * @ac US-036-AC-4: Cache cycle detection results
  * @ac US-036-AC-5: Cache heuristic inferences
  * @ac US-036-AC-6: Configurable cache TTL
- * 
+ *
  * @issue #36
  */
 
@@ -29,10 +29,20 @@ export type CacheEntry<T> = {
   fileHashes: Map<string, string>;
 };
 
+type SerializedSet = {
+  kind: 'Set';
+  data: unknown[];
+};
+
+type SerializedMap = {
+  kind: 'Map';
+  data: Array<[unknown, unknown]>;
+};
+
 /**
  * Cache key types
  */
-export type CacheKey = 
+export type CacheKey =
   | 'graph'
   | 'topological-sort'
   | 'circular-dependencies'
@@ -56,15 +66,15 @@ export type CacheOptions = {
 
 /**
  * Dependency Cache
- * 
+ *
  * Caches dependency analysis results to speed up subsequent runs.
  * Automatically invalidates cache when files change.
- * 
+ *
  * Performance: O(1) read/write
- * 
+ *
  * @example
  * const cache = new DependencyCache({ ttl: 3600 });
- * 
+ *
  * // Try to load from cache
  * const graph = await cache.get('graph', filePaths);
  * if (graph) {
@@ -105,7 +115,7 @@ export class DependencyCache {
 
     // Try memory cache first
     const memEntry = this.memoryCache.get(key) as CacheEntry<T> | undefined;
-    if (memEntry && await this.isValid(memEntry, filePaths)) {
+    if (memEntry && (await this.isValid(memEntry, filePaths))) {
       logger.debug('Cache hit (memory)', { key });
       return memEntry.data;
     }
@@ -114,7 +124,7 @@ export class DependencyCache {
     try {
       const cacheFile = this.getCacheFilePath(key);
       const content = await fs.readFile(cacheFile, 'utf-8');
-      const entry: CacheEntry<T> = JSON.parse(content, this.reviver);
+      const entry = JSON.parse(content, (_key, value) => this.reviver(_key, value)) as CacheEntry<T>;
 
       if (await this.isValid(entry, filePaths)) {
         // Store in memory for faster access
@@ -161,7 +171,7 @@ export class DependencyCache {
     try {
       await fs.mkdir(this.options.cacheDir, { recursive: true });
       const cacheFile = this.getCacheFilePath(key);
-      const content = JSON.stringify(entry, this.replacer, 2);
+      const content = JSON.stringify(entry, (_key, value) => this.replacer(_key, value), 2);
       await fs.writeFile(cacheFile, content, 'utf-8');
       logger.debug('Cache stored', { key, files: filePaths.length });
     } catch (error: unknown) {
@@ -182,7 +192,7 @@ export class DependencyCache {
    */
   public async invalidateAll(): Promise<void> {
     this.memoryCache.clear();
-    
+
     try {
       await fs.rm(this.options.cacheDir, { recursive: true, force: true });
       logger.debug('All cache invalidated');
@@ -230,7 +240,7 @@ export class DependencyCache {
 
     // Check file hashes
     const currentHashes = await this.hashFiles(filePaths);
-    
+
     if (currentHashes.size !== entry.fileHashes.size) {
       logger.debug('File count changed', {
         cached: entry.fileHashes.size,
@@ -254,20 +264,22 @@ export class DependencyCache {
    */
   private async hashFiles(filePaths: string[]): Promise<Map<string, string>> {
     const hashes = new Map<string, string>();
+    let chain = Promise.resolve();
 
-    for (const filePath of filePaths) {
-      try {
-        const stat = await fs.stat(filePath);
-        // Simple hash: mtime + size
-        const hash = crypto
-          .createHash('md5')
-          .update(`${stat.mtimeMs}-${stat.size}`)
-          .digest('hex');
-        hashes.set(filePath, hash);
-      } catch (error: unknown) {
-        logger.warn('Failed to hash file', { filePath, error });
-      }
-    }
+    filePaths.forEach((filePath) => {
+      chain = chain.then(async () => {
+        try {
+          const stat = await fs.stat(filePath);
+          // Simple hash: mtime + size
+          const hash = crypto.createHash('md5').update(`${stat.mtimeMs}-${stat.size}`).digest('hex');
+          hashes.set(filePath, hash);
+        } catch (error: unknown) {
+          logger.warn('Failed to hash file', { filePath, error });
+        }
+      });
+    });
+
+    await chain;
 
     return hashes;
   }
@@ -284,16 +296,10 @@ export class DependencyCache {
    */
   private replacer(_key: string, value: unknown): unknown {
     if (value instanceof Set) {
-      return {
-        __type: 'Set',
-        __data: Array.from(value),
-      };
+      return { kind: 'Set', data: Array.from(value) } satisfies SerializedSet;
     }
     if (value instanceof Map) {
-      return {
-        __type: 'Map',
-        __data: Array.from(value.entries()),
-      };
+      return { kind: 'Map', data: Array.from(value.entries()) } satisfies SerializedMap;
     }
     return value;
   }
@@ -303,21 +309,42 @@ export class DependencyCache {
    */
   private reviver(_key: string, value: unknown): unknown {
     if (typeof value === 'object' && value !== null) {
-      const obj = value as { __type?: string; __data?: unknown };
-      if (obj.__type === 'Set' && Array.isArray(obj.__data)) {
-        return new Set(obj.__data);
+      if (this.isSerializedSet(value)) {
+        return new Set(value.data);
       }
-      if (obj.__type === 'Map' && Array.isArray(obj.__data)) {
-        return new Map(obj.__data as Array<[unknown, unknown]>);
+      if (this.isSerializedMap(value)) {
+        return new Map(value.data);
       }
     }
     return value;
   }
 
+  private isSerializedSet(value: unknown): value is SerializedSet {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'kind' in value &&
+      'data' in value &&
+      value.kind === 'Set' &&
+      Array.isArray(value.data)
+    );
+  }
+
+  private isSerializedMap(value: unknown): value is SerializedMap {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'kind' in value &&
+      'data' in value &&
+      value.kind === 'Map' &&
+      Array.isArray(value.data)
+    );
+  }
+
   /**
    * Get cache statistics
    */
-  public getStats(): { 
+  public getStats(): {
     memoryEntries: number;
     enabled: boolean;
     ttl: number;
@@ -357,10 +384,6 @@ export class DependencyCache {
  * Helper: Create a cache key from file paths
  */
 export function createCacheKey(baseKey: CacheKey, filePaths: string[]): string {
-  const hash = crypto
-    .createHash('md5')
-    .update(filePaths.sort().join('|'))
-    .digest('hex');
+  const hash = crypto.createHash('md5').update(filePaths.sort().join('|')).digest('hex');
   return `${baseKey}-${hash.substring(0, 8)}`;
 }
-

@@ -32,8 +32,8 @@ export function createMockComponent(overrides?: Partial<MetadataComponent>): Met
   return {
     ...defaults,
     ...overrides,
-    dependencies: overrides?.dependencies || defaults.dependencies,
-    dependents: overrides?.dependents || defaults.dependents,
+    dependencies: overrides?.dependencies ?? defaults.dependencies,
+    dependents: overrides?.dependents ?? defaults.dependents,
   };
 }
 
@@ -90,9 +90,7 @@ export function assertUnique<T>(items: T[], message?: string): void {
   }
 
   if (duplicates.length > 0) {
-    throw new Error(
-      message || `Expected all items to be unique, but found duplicates: ${JSON.stringify(duplicates)}`
-    );
+    throw new Error(message ?? `Expected all items to be unique, but found duplicates: ${JSON.stringify(duplicates)}`);
   }
 }
 
@@ -107,9 +105,7 @@ export function assertSorted<T>(items: T[], compareFn?: (a: T, b: T) => number, 
     const comparison = compareFn ? compareFn(prev, curr) : (prev as unknown as number) - (curr as unknown as number);
 
     if (comparison > 0) {
-      throw new Error(
-        message || `Expected array to be sorted, but items at index ${i - 1} and ${i} are out of order`
-      );
+      throw new Error(message ?? `Expected array to be sorted, but items at index ${i - 1} and ${i} are out of order`);
     }
   }
 }
@@ -169,17 +165,24 @@ export async function waitFor(
   const timeout = options?.timeout ?? 5000;
   const interval = options?.interval ?? 100;
   const message = options?.message ?? 'Condition not met within timeout';
+  const deadline = Date.now() + timeout;
 
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeout) {
+  const poll = async (): Promise<void> => {
     if (await Promise.resolve(condition())) {
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
-  }
 
-  throw new Error(message);
+    if (Date.now() >= deadline) {
+      throw new Error(message);
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, interval);
+    });
+    await poll();
+  };
+
+  await poll();
 }
 
 /**
@@ -233,16 +236,10 @@ export function createMockFS(structure: Record<string, string>): Map<string, str
  * @ac US-061-AC-3: Assertion helpers
  * Assert that execution time is within bounds
  */
-export function assertPerformance<T>(
-  fn: () => T | Promise<T>,
-  maxDuration: number,
-  message?: string
-): Promise<T> {
+export function assertPerformance<T>(fn: () => T | Promise<T>, maxDuration: number, message?: string): Promise<T> {
   return measureTime(fn).then(({ result, duration }) => {
     if (duration > maxDuration) {
-      throw new Error(
-        message || `Expected execution to take less than ${maxDuration}ms, but took ${duration}ms`
-      );
+      throw new Error(message ?? `Expected execution to take less than ${maxDuration}ms, but took ${duration}ms`);
     }
     return result;
   });
@@ -254,9 +251,9 @@ export function assertPerformance<T>(
  */
 export function suppressConsole<T>(fn: () => T): T {
   const runtimeConsole = globalThis['console'];
-  const originalLog = runtimeConsole.log;
-  const originalWarn = runtimeConsole.warn;
-  const originalError = runtimeConsole.error;
+  const originalLog = runtimeConsole.log.bind(runtimeConsole);
+  const originalWarn = runtimeConsole.warn.bind(runtimeConsole);
+  const originalError = runtimeConsole.error.bind(runtimeConsole);
 
   runtimeConsole.log = () => {};
   runtimeConsole.warn = () => {};
@@ -275,11 +272,14 @@ export function suppressConsole<T>(fn: () => T): T {
  * @ac US-061-AC-2: Mock data generators
  * Generate random metadata components
  */
-export function generateRandomComponents(count: number, options?: {
-  types?: MetadataType[];
-  withDependencies?: boolean;
-}): MetadataComponent[] {
-  const types = options?.types || ['ApexClass' as MetadataType];
+export function generateRandomComponents(
+  count: number,
+  options?: {
+    types?: MetadataType[];
+    withDependencies?: boolean;
+  }
+): MetadataComponent[] {
+  const types = options?.types ?? ['ApexClass' as MetadataType];
   const components: MetadataComponent[] = [];
 
   for (let i = 0; i < count; i++) {

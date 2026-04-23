@@ -1,5 +1,6 @@
 /**
  * E2E Tests for Analyze Command - US-067
+ *
  * @ac US-067-AC-2: 6 scenarios for analyze command
  * @issue #67
  */
@@ -131,4 +132,3 @@ describe('E2E: Analyze Command - US-067', () => {
     expect(endTime - startTime).to.be.below(3000);
   });
 });
-

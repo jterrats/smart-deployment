@@ -10,39 +10,39 @@ import type { MetadataComponent } from '../types/metadata.js';
 
 export type CycleRemediationStrategy = 'comment-reference' | 'manual';
 
-export interface CycleRemediationSourceEdit {
+export type CycleRemediationSourceEdit = {
   nodeId: NodeId;
   targetDependency: NodeId;
   operation: 'comment-reference';
   filePath?: string;
   targetDescription: string;
-}
+};
 
-export interface CycleRemediationDeployPhase {
+export type CycleRemediationDeployPhase = {
   phase: 1 | 2;
   description: string;
   components: NodeId[];
   restoreEdits?: boolean;
-}
+};
 
-export interface RemediationCycle {
+export type RemediationCycle = {
   id: string;
   nodes: NodeId[];
   strategy: CycleRemediationStrategy;
   warnings: string[];
   edits: CycleRemediationSourceEdit[];
   deployPhases: CycleRemediationDeployPhase[];
-}
+};
 
-export interface CycleRemediationPlan {
+export type CycleRemediationPlan = {
   cycles: RemediationCycle[];
   supported: boolean;
   warnings: string[];
-}
+};
 
-export interface CycleRemediationPlannerOptions {
+export type CycleRemediationPlannerOptions = {
   components?: ReadonlyMap<NodeId, MetadataComponent>;
-}
+};
 
 type InternalEdge = {
   from: NodeId;

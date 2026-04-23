@@ -61,7 +61,7 @@ export const MODEL_TOKEN_LIMITS = {
   // OpenAI GPT
   'gpt-4o': 128_000, // Latest GPT-4 Omni
   'gpt-4-turbo': 128_000,
-  'gpt-4': 8_000, // Legacy
+  'gpt-4': 8000, // Legacy
 
   // Google Gemini (HUGE context windows!)
   'gemini-1.5-pro': 2_000_000, // 2M tokens! 🚀
@@ -103,11 +103,11 @@ export const COST_PER_1K_TOKENS = {
 
   // Google Gemini (VERY competitive pricing!)
   'gemini-1.5-pro': {
-    input: 0.00125, // $1.25 per 1M tokens (cheapest!)
+    input: 0.001_25, // $1.25 per 1M tokens (cheapest!)
     output: 0.005, // $5 per 1M tokens
   },
   'gemini-1.5-flash': {
-    input: 0.000075, // $0.075 per 1M tokens (ultra cheap!)
+    input: 0.000_075, // $0.075 per 1M tokens (ultra cheap!)
     output: 0.0003, // $0.30 per 1M tokens
   },
   'gemini-ultra': {

@@ -18,20 +18,20 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ForceIgnoreParser');
 
-export interface ForceIgnoreRule {
+export type ForceIgnoreRule = {
   pattern: string;
   isNegation: boolean;
   lineNumber: number;
-}
+};
 
-export interface ForceIgnoreResult {
+export type ForceIgnoreResult = {
   found: boolean;
   filePath: string;
   rules: ForceIgnoreRule[];
   totalRules: number;
   commentLines: number;
   emptyLines: number;
-}
+};
 
 /**
  * @ac US-083-AC-1: Parse .forceignore syntax
@@ -248,4 +248,3 @@ export class ForceIgnoreParser {
     return lines.join('\n');
   }
 }
-

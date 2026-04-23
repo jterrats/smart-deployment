@@ -17,14 +17,14 @@ import { getErrorAggregator } from '../utils/error-aggregator.js';
 const logger = getLogger('ErrorResilientParser');
 const errorAggregator = getErrorAggregator();
 
-export interface ParseResult<T> {
+export type ParseResult<T> = {
   success: boolean;
   data?: T;
   error?: ParseError;
   filePath: string;
-}
+};
 
-export interface ParseError {
+export type ParseError = {
   filePath: string;
   errorType: string;
   message: string;
@@ -32,16 +32,16 @@ export interface ParseError {
   columnNumber?: number;
   suggestedFix?: string;
   stack?: string;
-}
+};
 
-export interface ParserOptions {
+export type ParserOptions = {
   /** Stop on first error */
   failFast: boolean;
   /** Log errors to aggregator */
   logErrors: boolean;
   /** Attempt to suggest fixes */
   suggestFixes: boolean;
-}
+};
 
 type ParserFunction<T> = (filePath: string) => Promise<T> | T;
 
@@ -68,28 +68,15 @@ export class ErrorResilientParser {
    * @ac US-071-AC-2: Continue with other files
    * Parse multiple files with error resilience
    */
-  public async parseFiles<T>(filePaths: string[], parser: ParserFunction<T>): Promise<ParseResult<T>[]> {
-    const results: ParseResult<T>[] = [];
-
+  public async parseFiles<T>(filePaths: string[], parser: ParserFunction<T>): Promise<Array<ParseResult<T>>> {
     logger.info('Starting resilient parse', {
       fileCount: filePaths.length,
       failFast: this.options.failFast,
     });
 
-    for (const filePath of filePaths) {
-      const result = await this.parseFile(filePath, parser);
-      results.push(result);
-
-      // Stop if fail-fast is enabled and we hit an error
-      if (this.options.failFast && !result.success) {
-        logger.warn('Fail-fast enabled, stopping parse', {
-          filePath,
-          totalProcessed: results.length,
-          totalFiles: filePaths.length,
-        });
-        break;
-      }
-    }
+    const results = this.options.failFast
+      ? await this.parseFilesSequentially(filePaths, parser)
+      : await Promise.all(filePaths.map(async (filePath) => this.parseFile(filePath, parser)));
 
     logger.info('Resilient parse completed', {
       totalFiles: filePaths.length,
@@ -98,6 +85,31 @@ export class ErrorResilientParser {
     });
 
     return results;
+  }
+
+  private async parseFilesSequentially<T>(
+    filePaths: string[],
+    parser: ParserFunction<T>,
+    results: Array<ParseResult<T>> = []
+  ): Promise<Array<ParseResult<T>>> {
+    if (filePaths.length === 0) {
+      return results;
+    }
+
+    const [filePath, ...remaining] = filePaths;
+    const result = await this.parseFile(filePath, parser);
+    results.push(result);
+
+    if (!result.success) {
+      logger.warn('Fail-fast enabled, stopping parse', {
+        filePath,
+        totalProcessed: results.length,
+        totalFiles: results.length + remaining.length,
+      });
+      return results;
+    }
+
+    return this.parseFilesSequentially(remaining, parser, results);
   }
 
   /**
@@ -254,7 +266,7 @@ export class ErrorResilientParser {
     // Group by error type
     const byType = new Map<string, ParseError[]>();
     for (const error of this.errors) {
-      const errors = byType.get(error.errorType) || [];
+      const errors = byType.get(error.errorType) ?? [];
       errors.push(error);
       byType.set(error.errorType, errors);
     }
@@ -320,28 +332,28 @@ export class ErrorResilientParser {
   /**
    * Get successful parse count
    */
-  public static getSuccessCount(results: ParseResult<unknown>[]): number {
+  public static getSuccessCount(results: Array<ParseResult<unknown>>): number {
     return results.filter((r) => r.success).length;
   }
 
   /**
    * Get failed parse count
    */
-  public static getFailureCount(results: ParseResult<unknown>[]): number {
+  public static getFailureCount(results: Array<ParseResult<unknown>>): number {
     return results.filter((r) => !r.success).length;
   }
 
   /**
    * Extract only successful results
    */
-  public static getSuccessfulData<T>(results: ParseResult<T>[]): T[] {
+  public static getSuccessfulData<T>(results: Array<ParseResult<T>>): T[] {
     return results.filter((r) => r.success && r.data !== undefined).map((r) => r.data!);
   }
 
   /**
    * Extract only errors
    */
-  public static getErrors(results: ParseResult<unknown>[]): ParseError[] {
+  public static getErrors(results: Array<ParseResult<unknown>>): ParseError[] {
     return results.filter((r) => !r.success && r.error !== undefined).map((r) => r.error!);
   }
 }

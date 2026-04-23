@@ -1,7 +1,7 @@
-import { expect } from 'chai';
 import { access, readFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { afterEach, describe, it } from 'mocha';
 import {
   cleanupNutContexts,

@@ -1,6 +1,6 @@
-import { expect } from 'chai';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { afterEach, describe, it } from 'mocha';
 import { StateManager } from '../src/deployment/state-manager.js';
 import {

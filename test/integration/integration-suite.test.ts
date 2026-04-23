@@ -11,9 +11,9 @@
  * @issue #65
  */
 
+import { readFile } from 'node:fs/promises';
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
-import { readFile } from 'node:fs/promises';
 import { ProjectFixtures } from '../fixtures/project-fixtures.js';
 import { DependencyGraphBuilder } from '../../src/dependencies/dependency-graph-builder.js';
 import { WaveBuilder } from '../../src/waves/wave-builder.js';
@@ -29,26 +29,40 @@ describe('Integration Tests - US-065', () => {
       const graphBuilder = new DependencyGraphBuilder();
 
       // Parse files
-      const components = [];
-      for (const filePath of fixture.metadataFiles.filter((f) => f.endsWith('.cls'))) {
-        try {
-          const content = await readFile(filePath, 'utf-8');
-          const parsed = parseApexClass(filePath, content);
+      const components = (
+        await Promise.all(
+          fixture.metadataFiles
+            .filter((filePath) => filePath.endsWith('.cls'))
+            .map(async (filePath) => {
+              try {
+                const content = await readFile(filePath, 'utf-8');
+                const parsed = parseApexClass(filePath, content);
 
-          // Convert ApexParseResult to MetadataComponent
-          const component = {
-            name: parsed.className,
-            type: 'ApexClass' as const,
-            filePath,
-            dependencies: new Set<string>(parsed.dependencies.map((d) => d.className)),
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
-          components.push(component);
-        } catch {
-          // Skip errors
-        }
-      }
+                return {
+                  name: parsed.className,
+                  type: 'ApexClass' as const,
+                  filePath,
+                  dependencies: new Set<string>(parsed.dependencies.map((dependency) => dependency.className)),
+                  dependents: new Set<string>(),
+                  priorityBoost: 0,
+                };
+              } catch {
+                return undefined;
+              }
+            })
+        )
+      ).filter(
+        (
+          component
+        ): component is {
+          name: string;
+          type: 'ApexClass';
+          filePath: string;
+          dependencies: Set<string>;
+          dependents: Set<string>;
+          priorityBoost: number;
+        } => component !== undefined
+      );
 
       // If no components from fixture, create a test component
       if (components.length === 0) {
@@ -203,7 +217,7 @@ describe('Integration Tests - US-065', () => {
 
       expect(waveResult.waves.length).to.be.greaterThan(0);
       expect(executionTime).to.be.below(5000); // Should complete in < 5 seconds
-    }).timeout(10000);
+    }).timeout(10_000);
   });
 
   // Additional integration tests

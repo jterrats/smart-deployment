@@ -5,7 +5,7 @@ const logger = getLogger('OpenAIService');
 
 export type OpenAIFetch = typeof fetch;
 
-export interface OpenAIConfig extends LLMProviderConfig {
+export type OpenAIConfig = LLMProviderConfig & {
   provider: 'openai';
   endpoint: string;
   apiKey?: string;
@@ -14,7 +14,7 @@ export interface OpenAIConfig extends LLMProviderConfig {
   enabled: boolean;
   rateLimit: number;
   fetchFn?: OpenAIFetch;
-}
+};
 
 export class OpenAIService implements LLMProvider {
   private readonly config: OpenAIConfig;
@@ -99,7 +99,7 @@ export class OpenAIService implements LLMProvider {
 
       return {
         content,
-        tokensUsed: payload.usage?.total_tokens ?? Math.max(1, Math.ceil(request.prompt.length / 4)),
+        tokensUsed: payload.usage?.['total_tokens'] ?? Math.max(1, Math.ceil(request.prompt.length / 4)),
         model: payload.model ?? request.model,
         executionTime: Date.now() - startTime,
       };

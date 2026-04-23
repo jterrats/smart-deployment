@@ -1,10 +1,10 @@
 /**
  * Tests for Dependency Inference Service - US-055
  */
-import { expect } from 'chai';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { describe, it, beforeEach } from 'mocha';
 import { DependencyInferenceService } from '../../../src/ai/dependency-inference-service.js';
 import { AgentforceService, type AgentforceFetch } from '../../../src/ai/agentforce-service.js';

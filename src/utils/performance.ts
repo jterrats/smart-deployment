@@ -347,10 +347,17 @@ export function Profile(
       operationName ??
       `${(target as { constructor?: { name?: string } })?.constructor?.name ?? 'Unknown'}.${propertyKey}`;
 
-    descriptor.value = function (this: unknown, ...args: unknown[]): unknown {
+    const profiledMethod = function (this: unknown, ...args: unknown[]): unknown {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return performanceMonitor.track(operation, () => originalMethod.apply(this, args));
     };
+
+    Object.defineProperty(descriptor, 'value', {
+      configurable: true,
+      enumerable: descriptor.enumerable ?? false,
+      writable: true,
+      value: profiledMethod,
+    });
   };
 }
 
@@ -368,10 +375,17 @@ export function ProfileAsync(
       operationName ??
       `${(target as { constructor?: { name?: string } })?.constructor?.name ?? 'Unknown'}.${propertyKey}`;
 
-    descriptor.value = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
+    const profiledMethod = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return performanceMonitor.trackAsync(operation, () => originalMethod.apply(this, args));
     };
+
+    Object.defineProperty(descriptor, 'value', {
+      configurable: true,
+      enumerable: descriptor.enumerable ?? false,
+      writable: true,
+      value: profiledMethod,
+    });
   };
 }
 

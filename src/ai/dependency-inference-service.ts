@@ -19,27 +19,27 @@ import { createLLMProvider } from './llm-provider-factory.js';
 
 const logger = getLogger('DependencyInferenceService');
 
-export interface InferredDependency {
+export type InferredDependency = {
   from: string;
   to: string;
   type: 'implicit' | 'dynamic' | 'runtime' | 'business-logic';
   confidence: number;
   reason: string;
   lineNumber?: number;
-}
+};
 
-export interface InferenceResult {
+export type InferenceResult = {
   dependencies: InferredDependency[];
   totalInferred: number;
   highConfidenceCount: number;
   executionTime: number;
   usedCache: boolean;
   fallbackToStatic: boolean;
-}
+};
 
-export interface DependencyInferenceServiceOptions {
+export type DependencyInferenceServiceOptions = {
   baseDir?: string;
-}
+};
 
 /**
  * @ac US-055-AC-1: Send component context to Agentforce

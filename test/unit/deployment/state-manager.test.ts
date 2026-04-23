@@ -1,7 +1,7 @@
-import { expect } from 'chai';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { afterEach, beforeEach, describe, it } from 'mocha';
 import {
   StateManager,

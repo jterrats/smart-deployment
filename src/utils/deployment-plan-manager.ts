@@ -5,7 +5,6 @@
 
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { getLogger } from './logger.js';
 import type {
   DeploymentPlan,
   PlanValidationResult,
@@ -13,6 +12,7 @@ import type {
   PriorityOverride,
 } from '../types/deployment-plan.js';
 import type { Wave } from '../waves/wave-builder.js';
+import { getLogger } from './logger.js';
 
 const logger = getLogger('DeploymentPlanManager');
 
@@ -24,7 +24,7 @@ export class DeploymentPlanManager {
    * Save deployment plan to file
    */
   public static async savePlan(plan: DeploymentPlan, filePath?: string): Promise<void> {
-    const path = resolve(filePath || this.DEFAULT_PLAN_PATH);
+    const path = resolve(filePath ?? this.DEFAULT_PLAN_PATH);
 
     logger.info('Saving deployment plan', { path });
 
@@ -47,7 +47,7 @@ export class DeploymentPlanManager {
    * Load deployment plan from file
    */
   public static async loadPlan(filePath?: string): Promise<DeploymentPlan> {
-    const path = resolve(filePath || this.DEFAULT_PLAN_PATH);
+    const path = resolve(filePath ?? this.DEFAULT_PLAN_PATH);
 
     logger.info('Loading deployment plan', { path });
 
@@ -76,7 +76,7 @@ export class DeploymentPlanManager {
    * Validate plan exists and is readable
    */
   public static async planExists(filePath?: string): Promise<boolean> {
-    const path = resolve(filePath || this.DEFAULT_PLAN_PATH);
+    const path = resolve(filePath ?? this.DEFAULT_PLAN_PATH);
     try {
       await access(path);
       return true;
@@ -129,7 +129,7 @@ export class DeploymentPlanManager {
       },
       priorityOverrides,
       waves,
-      componentsByType: componentsByType as Record<string, string[]>,
+      componentsByType,
     };
   }
 
@@ -150,7 +150,7 @@ export class DeploymentPlanManager {
     const diffPercentage = totalUnique > 0 ? (diffCount / totalUnique) * 100 : 0;
 
     // Priority differences
-    let priorityChanges = 0;
+    const priorityChanges = 0;
     return {
       identical: added.length === 0 && removed.length === 0,
       diffPercentage,

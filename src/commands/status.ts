@@ -1,5 +1,6 @@
 /**
  * smart-deployment:status command - US-050
+ *
  * @ac US-050-AC-1: Shows current wave number
  * @ac US-050-AC-2: Shows completed waves
  * @ac US-050-AC-3: Shows remaining waves
@@ -9,15 +10,17 @@
  * @issue #50
  */
 
-import { SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
-import { Flags } from '@oclif/core';
+import { Messages } from '@salesforce/core';
+import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 import { StateManager } from '../deployment/state-manager.js';
 import { formatDeploymentStatus, summarizeDeploymentState } from '../deployment/deployment-state-summary.js';
 
 const logger = getLogger('StatusCommand');
+Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
+const messages = Messages.loadMessages('smart-deployment', 'status');
 
-interface StatusResult {
+type StatusResult = {
   currentWave: number;
   totalWaves: number;
   completedWaves: number[];
@@ -33,14 +36,15 @@ interface StatusResult {
     inferenceFallback?: boolean;
     inferredDependencies?: number;
   };
-}
+};
 
 export default class Status extends SfCommand<StatusResult> {
-  public static readonly summary = 'Show deployment status';
+  public static readonly summary = messages.getMessage('summary');
+  public static readonly examples = messages.getMessages('examples');
   public static readonly flags = {
     'target-org': optionalOrgFlagWithDeprecations,
     'source-path': Flags.directory({
-      summary: 'Path to the Salesforce project containing deployment state',
+      summary: messages.getMessage('flags.source-path.summary'),
       exists: true,
     }),
   };

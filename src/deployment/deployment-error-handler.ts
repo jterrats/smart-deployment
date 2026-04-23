@@ -16,12 +16,12 @@ import { StateManager } from './state-manager.js';
 
 const logger = getLogger('DeploymentErrorHandler');
 
-export interface DeploymentErrorContext {
+export type DeploymentErrorContext = {
   wave: number;
   components: string[];
   strategy: 'standard' | 'quick' | 'validate-only';
   retryCount: number;
-}
+};
 
 export class DeploymentErrorHandler {
   private readonly stateManager: StateManager;

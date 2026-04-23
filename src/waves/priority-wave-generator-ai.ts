@@ -14,23 +14,23 @@
  * @issue #42, #57
  */
 
-import { getLogger } from '../utils/logger.js';
-import { DEPLOYMENT_ORDER } from '../constants/deployment-order.js';
-import { PriorityWaveGenerator, type PriorityOptions } from './priority-wave-generator.js';
 import type { AgentforcePriorityService, PriorityAnalysisResult } from '../ai/agentforce-priority-service.js';
-import type { PriorityOverride } from '../types/deployment-plan.js';
 import type { NodeId } from '../types/dependency.js';
+import type { PriorityOverride } from '../types/deployment-plan.js';
 import type { MetadataComponent } from '../types/metadata.js';
+import { DEPLOYMENT_ORDER } from '../constants/deployment-order.js';
+import { getLogger } from '../utils/logger.js';
+import { PriorityWaveGenerator, type PriorityOptions } from './priority-wave-generator.js';
 import type { Wave } from './wave-builder.js';
 
 const logger = getLogger('AIEnhancedPriorityWaveGenerator');
 
-export interface AIEnhancedOptions extends PriorityOptions {
+export type AIEnhancedOptions = PriorityOptions & {
   agentforceService?: AgentforcePriorityService;
   orgType?: string;
   industry?: string;
   autoAIForUnknown?: boolean; // Auto-enable AI for unknown types (default: true)
-}
+};
 
 /**
  * AI-Enhanced Priority Wave Generator

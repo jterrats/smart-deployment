@@ -1,6 +1,6 @@
 import type { DeploymentState } from './state-manager.js';
 
-export interface CycleRemediationStatusSummary {
+export type CycleRemediationStatusSummary = {
   cycleId: string;
   strategy: 'comment-reference' | 'manual';
   activePhase: 1 | 2;
@@ -8,9 +8,9 @@ export interface CycleRemediationStatusSummary {
   startedAt: string;
   editCount: number;
   statusText: string;
-}
+};
 
-export interface DeploymentStatusSummary {
+export type DeploymentStatusSummary = {
   deploymentId: string;
   targetOrg: string;
   status: 'Not Started' | 'In Progress' | 'Failed' | 'Completed';
@@ -34,7 +34,7 @@ export interface DeploymentStatusSummary {
     inferenceFallback?: boolean;
     inferredDependencies?: number;
   };
-}
+};
 
 function getMetadataNumber(metadata: Record<string, unknown>, key: string): number | undefined {
   const value = metadata[key];
@@ -70,9 +70,11 @@ function normalizeCompletedWaves(state: DeploymentState): number[] {
     (_, index) => index + 1
   );
 
-  return [
-    ...new Set([...rawCompleted.filter((wave) => wave < state.failedWave!.waveNumber), ...inferredCompleted]),
-  ].sort((a, b) => a - b);
+  const failedWaveNumber = state.failedWave.waveNumber;
+
+  return [...new Set([...rawCompleted.filter((wave) => wave < failedWaveNumber), ...inferredCompleted])].sort(
+    (a, b) => a - b
+  );
 }
 
 function inferCurrentWave(state: DeploymentState, completedWaves: number[]): number {
@@ -94,7 +96,7 @@ function describeCycleRemediationStatus(state: DeploymentState): CycleRemediatio
   }
 
   const { cycleId, strategy, activePhase, completedPhases, startedAt, editRecords } = state.cycleRemediation;
-  const normalizedCompletedPhases = [...new Set(completedPhases)].sort((a, b) => a - b) as Array<1 | 2>;
+  const normalizedCompletedPhases = [...new Set(completedPhases)].sort((a, b) => a - b);
   let statusText: string;
 
   if (strategy === 'manual') {
@@ -116,8 +118,70 @@ function describeCycleRemediationStatus(state: DeploymentState): CycleRemediatio
   };
 }
 
+function calculateEtaSeconds(
+  metadata: Record<string, unknown>,
+  state: DeploymentState,
+  remainingWaves: number,
+  completedWaves: number[],
+  nowTimestamp: number
+): number {
+  const explicitEta = getMetadataNumber(metadata, 'estimatedTimeRemainingSeconds');
+  const totalEstimatedTime = getMetadataNumber(metadata, 'totalEstimatedTimeSeconds');
+  const averageWaveDuration = getMetadataNumber(metadata, 'averageWaveDurationSeconds');
+  const startedAt = Date.parse(state.timestamp);
+
+  if (explicitEta !== undefined) {
+    return explicitEta;
+  }
+
+  if (remainingWaves === 0) {
+    return 0;
+  }
+
+  if (totalEstimatedTime !== undefined && state.totalWaves > 0) {
+    return Math.round((totalEstimatedTime / state.totalWaves) * remainingWaves);
+  }
+
+  if (!Number.isNaN(startedAt) && completedWaves.length > 0) {
+    const elapsedSeconds = Math.max(1, Math.round((nowTimestamp - startedAt) / 1000));
+    return Math.round((elapsedSeconds / completedWaves.length) * remainingWaves);
+  }
+
+  return Math.round((averageWaveDuration ?? 60) * remainingWaves);
+}
+
+function buildTestStatus(metadata: Record<string, unknown>): string {
+  const testsRun = getMetadataNumber(metadata, 'testsRun');
+  const testFailures = getMetadataNumber(metadata, 'testFailures');
+  const configuredTestLevel = getMetadataString(metadata, 'testLevel');
+  const skipTests = metadata.skipTests === true || configuredTestLevel === 'NoTestRun';
+
+  return (
+    getMetadataString(metadata, 'testStatus') ??
+    (skipTests
+      ? 'No tests run'
+      : testsRun !== undefined
+      ? `Tests run: ${testsRun}${testFailures !== undefined ? ` (${testFailures} failures)` : ''}`
+      : configuredTestLevel
+      ? `Pending (${configuredTestLevel})`
+      : 'Not started')
+  );
+}
+
+function buildAIStatus(metadata: Record<string, unknown>): DeploymentStatusSummary['ai'] {
+  return {
+    provider: getMetadataString(metadata, 'aiProvider'),
+    model: getMetadataString(metadata, 'aiModel'),
+    fallback: getMetadataBoolean(metadata, 'aiFallback'),
+    aiAdjustments: getMetadataNumber(metadata, 'aiAdjustments'),
+    unknownTypes: getMetadataStringArray(metadata, 'aiUnknownTypes'),
+    inferenceFallback: getMetadataBoolean(metadata, 'aiInferenceFallback'),
+    inferredDependencies: getMetadataNumber(metadata, 'aiInferredDependencies'),
+  };
+}
+
 export function summarizeDeploymentState(state: DeploymentState, nowTimestamp = Date.now()): DeploymentStatusSummary {
-  const metadata = (state.metadata ?? {}) as Record<string, unknown>;
+  const metadata = state.metadata ?? {};
   const completedWaves = normalizeCompletedWaves(state);
   const currentWave = inferCurrentWave(state, completedWaves);
   const canResume = state.failedWave !== undefined;
@@ -132,50 +196,11 @@ export function summarizeDeploymentState(state: DeploymentState, nowTimestamp = 
   const remainingWaves = canResume
     ? Math.max(0, state.totalWaves - currentWave + 1)
     : Math.max(0, state.totalWaves - completedWaves.length);
-
-  const explicitEta = getMetadataNumber(metadata, 'estimatedTimeRemainingSeconds');
-  const totalEstimatedTime = getMetadataNumber(metadata, 'totalEstimatedTimeSeconds');
-  const averageWaveDuration = getMetadataNumber(metadata, 'averageWaveDurationSeconds');
-  const startedAt = Date.parse(state.timestamp);
-
-  let etaSeconds = 0;
-  if (explicitEta !== undefined) {
-    etaSeconds = explicitEta;
-  } else if (remainingWaves === 0) {
-    etaSeconds = 0;
-  } else if (totalEstimatedTime !== undefined && state.totalWaves > 0) {
-    etaSeconds = Math.round((totalEstimatedTime / state.totalWaves) * remainingWaves);
-  } else if (!Number.isNaN(startedAt) && completedWaves.length > 0) {
-    const elapsedSeconds = Math.max(1, Math.round((nowTimestamp - startedAt) / 1000));
-    etaSeconds = Math.round((elapsedSeconds / completedWaves.length) * remainingWaves);
-  } else {
-    etaSeconds = Math.round((averageWaveDuration ?? 60) * remainingWaves);
-  }
-
-  const testsRun = getMetadataNumber(metadata, 'testsRun');
-  const testFailures = getMetadataNumber(metadata, 'testFailures');
-  const configuredTestLevel = getMetadataString(metadata, 'testLevel');
-  const skipTests = metadata.skipTests === true || configuredTestLevel === 'NoTestRun';
-  const testStatus =
-    getMetadataString(metadata, 'testStatus') ??
-    (skipTests
-      ? 'No tests run'
-      : testsRun !== undefined
-      ? `Tests run: ${testsRun}${testFailures !== undefined ? ` (${testFailures} failures)` : ''}`
-      : configuredTestLevel
-      ? `Pending (${configuredTestLevel})`
-      : 'Not started');
+  const etaSeconds = calculateEtaSeconds(metadata, state, remainingWaves, completedWaves, nowTimestamp);
+  const testStatus = buildTestStatus(metadata);
   const cycleRemediation = describeCycleRemediationStatus(state);
-  const ai = {
-    provider: getMetadataString(metadata, 'aiProvider'),
-    model: getMetadataString(metadata, 'aiModel'),
-    fallback: getMetadataBoolean(metadata, 'aiFallback'),
-    aiAdjustments: getMetadataNumber(metadata, 'aiAdjustments'),
-    unknownTypes: getMetadataStringArray(metadata, 'aiUnknownTypes'),
-    inferenceFallback: getMetadataBoolean(metadata, 'aiInferenceFallback'),
-    inferredDependencies: getMetadataNumber(metadata, 'aiInferredDependencies'),
-  };
-  const hasAIContext = Object.values(ai).some((value) => value !== undefined);
+  const ai = buildAIStatus(metadata);
+  const hasAIContext = ai !== undefined && Object.values(ai).some((value) => value !== undefined);
 
   return {
     deploymentId: state.deploymentId,
@@ -201,7 +226,7 @@ export function createResumedState(
   retryStrategy: 'standard' | 'quick' | 'validate-only',
   resumedAt = new Date().toISOString()
 ): DeploymentState {
-  const metadata = { ...(state.metadata ?? {}) } as Record<string, unknown>;
+  const metadata = { ...(state.metadata ?? {}) };
   const completedWaves = normalizeCompletedWaves(state);
   const resumeWave = state.failedWave?.waveNumber ?? inferCurrentWave(state, completedWaves);
   const previousResumeCount = typeof metadata.resumeCount === 'number' ? metadata.resumeCount : 0;

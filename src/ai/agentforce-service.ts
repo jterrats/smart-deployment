@@ -20,7 +20,7 @@ const errorAggregator = getErrorAggregator();
 
 export type AgentforceFetch = typeof fetch;
 
-export interface AgentforceConfig extends LLMProviderConfig {
+export type AgentforceConfig = LLMProviderConfig & {
   provider: 'agentforce';
   endpoint: string;
   /** API endpoint URL */
@@ -34,12 +34,12 @@ export interface AgentforceConfig extends LLMProviderConfig {
   maxRetries: number;
   /** Injectable fetch implementation for tests or alternate runtimes */
   fetchFn?: AgentforceFetch;
-}
+};
 
 export type AgentforceRequest = LLMRequest;
 export type AgentforceResponse = LLMResponse;
 
-export interface ApiUsageStats {
+export type ApiUsageStats = {
   totalRequests: number;
   successfulRequests: number;
   failedRequests: number;
@@ -47,7 +47,7 @@ export interface ApiUsageStats {
   averageResponseTime: number;
   rateLimitHits: number;
   lastRequestTime?: Date;
-}
+};
 
 /**
  * @ac US-054-AC-1: Configure API endpoint
@@ -70,13 +70,13 @@ export class AgentforceService implements LLMProvider {
   public constructor(config: Partial<AgentforceConfig> = {}) {
     this.config = {
       provider: 'agentforce',
-      endpoint: config.endpoint || process.env.AGENTFORCE_ENDPOINT || 'https://api.salesforce.com/ai/v1',
-      apiKey: config.apiKey || process.env.AGENTFORCE_API_KEY,
-      model: config.model || 'agentforce-1',
-      timeout: config.timeout || 30000, // 30 seconds
-      maxRetries: config.maxRetries || 3,
-      enabled: config.enabled !== undefined ? config.enabled : true,
-      rateLimit: config.rateLimit || 60, // 60 requests per minute
+      endpoint: config.endpoint ?? process.env.AGENTFORCE_ENDPOINT ?? 'https://api.salesforce.com/ai/v1',
+      apiKey: config.apiKey ?? process.env.AGENTFORCE_API_KEY,
+      model: config.model ?? 'agentforce-1',
+      timeout: config.timeout ?? 30_000, // 30 seconds
+      maxRetries: config.maxRetries ?? 3,
+      enabled: config.enabled ?? true,
+      rateLimit: config.rateLimit ?? 60, // 60 requests per minute
       fetchFn: config.fetchFn ?? globalThis.fetch,
     };
     this.fetchFn = this.config.fetchFn;
@@ -100,7 +100,6 @@ export class AgentforceService implements LLMProvider {
     if (!this.config.apiKey) {
       throw new Error('Agentforce API key not configured');
     }
-
     // Rate limiting check
     this.enforceRateLimit();
 
@@ -164,7 +163,7 @@ export class AgentforceService implements LLMProvider {
       }
 
       // Calculate backoff delay (exponential)
-      const delay = Math.min(1000 * 2 ** (attempt - 1), 10000); // Max 10s
+      const delay = Math.min(1e3 * 2 ** (attempt - 1), 1e4); // Max 10s
 
       logger.warn(`Retrying Agentforce request (attempt ${attempt}/${this.config.maxRetries})`, {
         delay,
@@ -186,6 +185,10 @@ export class AgentforceService implements LLMProvider {
     if (!this.fetchFn) {
       throw new Error('Fetch API is not available in this runtime');
     }
+    const apiKey = this.config.apiKey;
+    if (!apiKey) {
+      throw new Error('Agentforce API key not configured');
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -194,7 +197,7 @@ export class AgentforceService implements LLMProvider {
       const response = await this.fetchFn(this.config.endpoint, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -211,7 +214,11 @@ export class AgentforceService implements LLMProvider {
         throw new Error(`Agentforce API error: ${response.status} ${response.statusText}`);
       }
 
-      const payload = (await response.json()) as Record<string, unknown>;
+      const rawPayload: unknown = await response.json();
+      if (typeof rawPayload !== 'object' || rawPayload === null) {
+        throw new Error('Agentforce response payload was not an object');
+      }
+      const payload = rawPayload as Record<string, unknown>;
       return {
         content: this.extractContent(payload),
         tokensUsed: this.extractTokensUsed(payload, request.prompt),
@@ -235,7 +242,7 @@ export class AgentforceService implements LLMProvider {
    */
   private enforceRateLimit(): void {
     const now = Date.now();
-    const oneMinuteAgo = now - 60000;
+    const oneMinuteAgo = now - 60_000;
 
     // Remove timestamps older than 1 minute
     this.requestTimestamps = this.requestTimestamps.filter((ts) => ts > oneMinuteAgo);
@@ -244,7 +251,7 @@ export class AgentforceService implements LLMProvider {
     if (this.requestTimestamps.length >= this.config.rateLimit) {
       this.usageStats.rateLimitHits++;
       const oldestTimestamp = this.requestTimestamps[0] ?? now;
-      const waitTime = 60000 - (now - oldestTimestamp);
+      const waitTime = 60_000 - (now - oldestTimestamp);
 
       throw new Error(`Rate limit exceeded. Please wait ${Math.ceil(waitTime / 1000)}s before retrying.`);
     }
@@ -334,7 +341,7 @@ export class AgentforceService implements LLMProvider {
 
     const choices = payload.choices;
     if (Array.isArray(choices) && choices.length > 0) {
-      const firstChoice = choices[0];
+      const [firstChoice] = choices as unknown[];
       if (typeof firstChoice === 'object' && firstChoice !== null && 'message' in firstChoice) {
         const message = (firstChoice as Record<string, unknown>).message;
         if (typeof message === 'object' && message !== null && 'content' in message) {

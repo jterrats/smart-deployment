@@ -3,7 +3,7 @@ import { AgentforceService, type AgentforceFetch } from './agentforce-service.js
 import { OpenAIService } from './openai-service.js';
 import type { LLMProvider, LLMProviderName } from './llm-provider.js';
 
-export interface LLMProviderFactoryConfig {
+export type LLMProviderFactoryConfig = {
   baseDir?: string;
   provider?: LLMProviderName;
   endpoint?: string;
@@ -14,7 +14,7 @@ export interface LLMProviderFactoryConfig {
   rateLimit?: number;
   maxRetries?: number;
   fetchFn?: AgentforceFetch;
-}
+};
 
 export function createLLMProvider(config: LLMProviderFactoryConfig = {}): LLMProvider {
   const repoConfig = loadRepoConfigSync(config.baseDir).llm ?? {};

@@ -24,12 +24,16 @@ type ResumeCommandTestDouble = {
 };
 
 describe('ResumeCommand', () => {
-  const originalLoadState = StateManager.prototype.loadState;
-  const originalSaveState = StateManager.prototype.saveState;
+  const originalLoadState = Object.getOwnPropertyDescriptor(StateManager.prototype, 'loadState')?.value as
+    | typeof StateManager.prototype.loadState
+    | undefined;
+  const originalSaveState = Object.getOwnPropertyDescriptor(StateManager.prototype, 'saveState')?.value as
+    | typeof StateManager.prototype.saveState
+    | undefined;
 
   afterEach(() => {
-    StateManager.prototype.loadState = originalLoadState;
-    StateManager.prototype.saveState = originalSaveState;
+    Object.defineProperty(StateManager.prototype, 'loadState', { value: originalLoadState, writable: true });
+    Object.defineProperty(StateManager.prototype, 'saveState', { value: originalSaveState, writable: true });
   });
 
   it('US-049: resumes from the failed wave and updates persisted state', async () => {

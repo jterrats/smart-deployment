@@ -1,6 +1,6 @@
+import { rm } from 'node:fs/promises';
 import { expect } from 'chai';
 import { describe, it, afterEach } from 'mocha';
-import { rm } from 'node:fs/promises';
 import { ProjectFixtures } from '../../fixtures/project-fixtures.js';
 import { DeploymentValidationService } from '../../../src/deployment/deployment-validation-service.js';
 

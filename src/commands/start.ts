@@ -16,11 +16,10 @@
  * @issue #46
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
-import { Messages } from '@salesforce/core';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import { Messages } from '@salesforce/core';
+import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 import { CycleRemediationPlanner, type CycleRemediationSourceEdit } from '../dependencies/cycle-remediation-planner.js';
 import {
@@ -51,7 +50,7 @@ const logger = getLogger('StartCommand');
  * @ac US-046-AC-2: Generates deployment waves
  * @ac US-046-AC-3: Executes deployment sequentially
  */
-interface StartResult {
+type StartResult = {
   success: boolean;
   waves: number;
   ai?: {
@@ -64,7 +63,7 @@ interface StartResult {
     inferredDependencies?: number;
     inferenceFallback?: boolean;
   };
-}
+};
 
 export default class Start extends SfCommand<StartResult> {
   public static readonly summary = messages.getMessage('summary');
@@ -96,27 +95,27 @@ export default class Start extends SfCommand<StartResult> {
       default: false,
     }),
     'source-path': Flags.string({
-      summary: 'Path to the Salesforce project to analyze and deploy',
-      description: 'Defaults to the current working directory when omitted',
+      summary: messages.getMessage('flags.source-path.summary'),
+      description: messages.getMessage('flags.source-path.description'),
     }),
     'allow-cycle-remediation': Flags.boolean({
-      summary: 'Allow conservative cycle remediation for supported ApexClass cycles',
-      description: 'Applies temporary reversible source edits for simple cycles only',
+      summary: messages.getMessage('flags.allow-cycle-remediation.summary'),
+      description: messages.getMessage('flags.allow-cycle-remediation.description'),
       default: false,
     }),
     'use-ai': Flags.boolean({
-      summary: 'Use Agentforce AI for intelligent priority weighting',
-      description: 'Enables AI-powered analysis for deployment prioritization',
+      summary: messages.getMessage('flags.use-ai.summary'),
+      description: messages.getMessage('flags.use-ai.description'),
       default: false,
     }),
     'org-type': Flags.string({
-      summary: 'Organization type (Production, Sandbox, Developer)',
-      description: 'Helps AI provide context-aware recommendations',
+      summary: messages.getMessage('flags.org-type.summary'),
+      description: messages.getMessage('flags.org-type.description'),
       options: ['Production', 'Sandbox', 'Developer'],
     }),
     industry: Flags.string({
-      summary: 'Industry context for AI analysis (e.g., Fintech, Healthcare)',
-      description: 'Provides business context to AI for better prioritization',
+      summary: messages.getMessage('flags.industry.summary'),
+      description: messages.getMessage('flags.industry.description'),
     }),
   };
 
@@ -253,7 +252,7 @@ export default class Start extends SfCommand<StartResult> {
     }
 
     // Execute waves sequentially
-    for (const wave of orderedWaves) {
+    await this.forEachSequentially(orderedWaves, async (wave) => {
       this.log(`\n🌊 Deploying Wave ${wave.number}/${orderedWaves.length} (${wave.components.length} components)...`);
 
       try {
@@ -344,7 +343,7 @@ export default class Start extends SfCommand<StartResult> {
         logger.error('Wave deployment failed', { wave: wave.number, error });
         this.error(`Wave ${wave.number} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-    }
+    });
 
     // Clear state on success
     await stateManager.clearState();
@@ -465,9 +464,20 @@ export default class Start extends SfCommand<StartResult> {
   }
 
   private generateReport(waves: number): void {
-    this.log(`\n📊 Deployment Report:`);
+    this.log('\n📊 Deployment Report:');
     this.log(`   - Waves: ${waves}`);
-    this.log(`   - Status: Success`);
+    this.log('   - Status: Success');
+  }
+
+  private async forEachSequentially<T>(
+    items: readonly T[],
+    callback: (item: T, index: number) => Promise<void>
+  ): Promise<void> {
+    let chain = Promise.resolve();
+    items.forEach((item, index) => {
+      chain = chain.then(async () => callback(item, index));
+    });
+    await chain;
   }
 
   private async executeCycleRemediationDeployment(params: {
@@ -501,12 +511,12 @@ export default class Start extends SfCommand<StartResult> {
 
     try {
       this.log('🩹 Applying conservative cycle remediation edits...');
-      for (const cycle of plan.cycles) {
-        for (const edit of cycle.edits) {
+      await this.forEachSequentially(plan.cycles, async (cycle) => {
+        await this.forEachSequentially(cycle.edits, async (edit) => {
           const request = await this.createCycleEditRequest(edit);
           editRecords.push(await editor.applyEdit(request));
-        }
-      }
+        });
+      });
 
       await stateManager.saveState({
         deploymentId,
@@ -751,14 +761,14 @@ export default class Start extends SfCommand<StartResult> {
     editRecords: CycleSourceEditRecord[],
     bestEffort = false
   ): Promise<void> {
-    for (const record of [...editRecords].reverse()) {
+    await this.forEachSequentially([...editRecords].reverse(), async (record) => {
       const result = await editor.restoreEdit(record);
       if (!result.restored && result.reason !== 'backup-missing' && !bestEffort) {
         throw new Error(
           `Failed to restore cycle remediation edit for ${record.filePath}: ${result.reason ?? 'unknown'}.`
         );
       }
-    }
+    });
   }
 
   private resolveTestLevel(skipTests: boolean): TestLevel {

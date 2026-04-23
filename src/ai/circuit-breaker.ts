@@ -17,14 +17,14 @@ const logger = getLogger('CircuitBreaker');
 
 export type CircuitState = 'closed' | 'open' | 'half-open';
 
-export interface CircuitBreakerOptions {
+export type CircuitBreakerOptions = {
   failureThreshold: number; // Number of failures before opening
   successThreshold: number; // Number of successes to close from half-open
   timeout: number; // Milliseconds to wait before half-open
   monitoringWindow: number; // Milliseconds to track failure rate
-}
+};
 
-export interface CircuitBreakerStats {
+export type CircuitBreakerStats = {
   state: CircuitState;
   failures: number;
   successes: number;
@@ -32,7 +32,7 @@ export interface CircuitBreakerStats {
   lastFailureTime?: Date;
   lastSuccessTime?: Date;
   tripCount: number; // How many times circuit has opened
-}
+};
 
 /**
  * @ac US-060-AC-1: Track failure rate
@@ -53,8 +53,8 @@ export class CircuitBreaker {
     this.options = {
       failureThreshold: options?.failureThreshold ?? 5,
       successThreshold: options?.successThreshold ?? 2,
-      timeout: options?.timeout ?? 60000, // 1 minute
-      monitoringWindow: options?.monitoringWindow ?? 300000, // 5 minutes
+      timeout: options?.timeout ?? 60_000, // 1 minute
+      monitoringWindow: options?.monitoringWindow ?? 300_000, // 5 minutes
     };
 
     logger.info('Circuit breaker initialized', {
@@ -68,20 +68,17 @@ export class CircuitBreaker {
    * @ac US-060-AC-3: Automatic fallback to static analysis
    * Execute function with circuit breaker protection
    */
-  public async execute<T>(
-    fn: () => Promise<T>,
-    fallback?: () => T | Promise<T>
-  ): Promise<T> {
+  public async execute<T>(fn: () => Promise<T>, fallback?: () => T | Promise<T>): Promise<T> {
     // Check if circuit should transition states
     this.checkStateTransition();
 
     if (this.state === 'open') {
       logger.warn('Circuit breaker is OPEN, using fallback');
-      
+
       if (fallback) {
         return Promise.resolve(fallback());
       }
-      
+
       throw new Error('Circuit breaker is OPEN and no fallback provided');
     }
 
@@ -91,14 +88,14 @@ export class CircuitBreaker {
       return result;
     } catch (error) {
       this.onFailure();
-      
+
       // If circuit just opened, use fallback
       // Re-check state after onFailure() which may have changed it
       if (this.getState() === 'open' && fallback) {
         logger.info('Circuit opened, using fallback');
         return Promise.resolve(fallback());
       }
-      
+
       throw error;
     }
   }
@@ -155,7 +152,7 @@ export class CircuitBreaker {
 
     this.state = 'open';
     this.tripCount++;
-    
+
     logger.error('🔴 CIRCUIT BREAKER OPENED', {
       tripCount: this.tripCount,
       consecutiveFailures: this.consecutiveFailures,

@@ -2,13 +2,14 @@ import { expect } from 'chai';
 import { describe, it } from 'mocha';
 import { PriorityWaveGenerator } from '../../../src/waves/priority-wave-generator.js';
 import type { MetadataComponent } from '../../../src/types/metadata.js';
+import type { MetadataType } from '../../../src/types/metadata.js';
 
 describe('PriorityWaveGenerator', () => {
-  function createComponent(type: string, name: string): [string, MetadataComponent] {
+  function createComponent(type: MetadataType, name: string): [string, MetadataComponent] {
     return [
       `${type}:${name}`,
       {
-        type: type as any,
+        type,
         name,
         filePath: `/path/${type}/${name}`,
         dependencies: new Set(),

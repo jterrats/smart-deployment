@@ -1,39 +1,39 @@
 /**
  * Wave Splitter
  * Splits large waves to respect Salesforce deployment limits
- * 
+ *
  * @ac US-039-AC-1: Split waves with >300 components
  * @ac US-039-AC-2: Maintain dependency order within split waves
  * @ac US-039-AC-3: Generate sub-waves (1a, 1b, etc.)
  * @ac US-039-AC-4: Split CMT waves at 200 records
  * @ac US-039-AC-5: Report split decisions
  * @ac US-039-AC-6: Ensure no dependency violations
- * 
+ *
  * @issue #39
  */
 
+import type { NodeId, DependencyGraph } from '../types/dependency.js';
 import { getLogger } from '../utils/logger.js';
 import type { Wave, WaveResult } from './wave-builder.js';
-import type { NodeId, DependencyGraph } from '../types/dependency.js';
 
 const logger = getLogger('WaveSplitter');
 
 /**
  * Sub-wave (split wave)
  */
-export interface SubWave extends Wave {
+export type SubWave = Wave & {
   /** Parent wave number */
   parentWave: number;
   /** Sub-wave letter (a, b, c, ...) */
   subWaveLetter: string;
   /** Full wave identifier (e.g., "1a", "1b") */
   fullWaveId: string;
-}
+};
 
 /**
  * Split result
  */
-export interface SplitResult {
+export type SplitResult = {
   /** Original waves (unsplit) */
   originalWaves: Wave[];
   /** Split waves with sub-waves */
@@ -42,12 +42,12 @@ export interface SplitResult {
   decisions: SplitDecision[];
   /** Statistics */
   stats: SplitStats;
-}
+};
 
 /**
  * Split decision record
  */
-export interface SplitDecision {
+export type SplitDecision = {
   /** Original wave number */
   waveNumber: number;
   /** Reason for split */
@@ -58,12 +58,12 @@ export interface SplitDecision {
   subWaveCount: number;
   /** Components per sub-wave */
   componentsPerSubWave: number[];
-}
+};
 
 /**
  * Split statistics
  */
-export interface SplitStats {
+export type SplitStats = {
   /** Total original waves */
   originalWaveCount: number;
   /** Total sub-waves after split */
@@ -72,41 +72,41 @@ export interface SplitStats {
   splitWaveCount: number;
   /** Total components */
   totalComponents: number;
-}
+};
 
 /**
  * Splitter options
  */
-export interface SplitterOptions {
+export type SplitterOptions = {
   /** Max components per wave (default: 300) */
   maxComponentsPerWave?: number;
   /** Max Custom Metadata records per wave (default: 200) */
   maxCustomMetadataPerWave?: number;
   /** Maintain dependency order within splits */
   maintainDependencyOrder?: boolean;
-}
+};
 
 /**
  * Wave Splitter
- * 
+ *
  * Splits large waves to respect Salesforce limits:
  * - General metadata: 300 components per deploy
  * - Custom Metadata Type records: 200 per deploy
- * 
+ *
  * Algorithm:
  * 1. Identify waves exceeding limits
  * 2. Split while maintaining dependency order
  * 3. Generate sub-waves (1a, 1b, 1c, ...)
  * 4. Validate no cross-sub-wave dependencies
- * 
+ *
  * Performance: O(V)
- * 
+ *
  * @example
  * const splitter = new WaveSplitter({
  *   maxComponentsPerWave: 300,
  *   maxCustomMetadataPerWave: 200
  * });
- * 
+ *
  * const result = splitter.splitWaves(waveResult, graph);
  * console.log(`Split ${result.decisions.length} waves`);
  */
@@ -199,9 +199,7 @@ export class WaveSplitter {
     }
 
     // Check Custom Metadata limit
-    const cmtCount = wave.components.filter((c) => 
-      c.startsWith('CustomMetadata:')
-    ).length;
+    const cmtCount = wave.components.filter((c) => c.startsWith('CustomMetadata:')).length;
 
     if (cmtCount > this.options.maxCustomMetadataPerWave) {
       return true;
@@ -214,9 +212,7 @@ export class WaveSplitter {
    * Get reason for split
    */
   private getSplitReason(wave: Wave): string {
-    const cmtCount = wave.components.filter((c) => 
-      c.startsWith('CustomMetadata:')
-    ).length;
+    const cmtCount = wave.components.filter((c) => c.startsWith('CustomMetadata:')).length;
 
     if (cmtCount > this.options.maxCustomMetadataPerWave) {
       return `Exceeded Custom Metadata limit (${cmtCount} > ${this.options.maxCustomMetadataPerWave})`;
@@ -231,7 +227,7 @@ export class WaveSplitter {
    */
   private splitWave(wave: Wave, graph: DependencyGraph): SubWave[] {
     const subWaves: SubWave[] = [];
-    let components = [...wave.components];
+    const components = [...wave.components];
 
     // Sort to maintain dependency order if configured
     if (this.options.maintainDependencyOrder) {
@@ -246,13 +242,13 @@ export class WaveSplitter {
       // Split CMT and non-CMT separately but maintain order
       const cmtChunks = this.chunkComponents(cmtComponents, this.options.maxCustomMetadataPerWave);
       const nonCmtComponents = components.filter((c) => !c.startsWith('CustomMetadata:'));
-      
+
       // Add CMT sub-waves first
       for (const chunk of cmtChunks) {
         const letter = this.getSubWaveLetter(subWaves.length);
         subWaves.push(this.createSubWave(wave, chunk, letter));
       }
-      
+
       // Add non-CMT components
       if (nonCmtComponents.length > 0) {
         const nonCmtChunks = this.chunkComponents(nonCmtComponents, this.options.maxComponentsPerWave);
@@ -264,7 +260,7 @@ export class WaveSplitter {
     } else {
       // Simple component-based splitting
       const chunks = this.chunkComponents(components, this.options.maxComponentsPerWave);
-      
+
       for (const chunk of chunks) {
         const letter = this.getSubWaveLetter(subWaves.length);
         subWaves.push(this.createSubWave(wave, chunk, letter));
@@ -291,13 +287,13 @@ export class WaveSplitter {
     for (const component of components) {
       let degree = 0;
       const deps = graph.get(component) ?? new Set();
-      
+
       for (const dep of deps) {
         if (componentSet.has(dep)) {
           degree++;
         }
       }
-      
+
       inDegree.set(component, degree);
     }
 
@@ -314,11 +310,11 @@ export class WaveSplitter {
    */
   private chunkComponents(components: NodeId[], chunkSize: number): NodeId[][] {
     const chunks: NodeId[][] = [];
-    
+
     for (let i = 0; i < components.length; i += chunkSize) {
       chunks.push(components.slice(i, i + chunkSize));
     }
-    
+
     return chunks;
   }
 
@@ -367,13 +363,11 @@ export class WaveSplitter {
     for (let i = 0; i < result.splitWaves.length - 1; i++) {
       const currentWave = result.splitWaves[i];
       const laterWaves = result.splitWaves.slice(i + 1);
-      const laterComponents = new Set(
-        laterWaves.flatMap((w) => w.components)
-      );
+      const laterComponents = new Set(laterWaves.flatMap((w) => w.components));
 
       for (const component of currentWave.components) {
         const deps = graph.get(component) ?? new Set();
-        
+
         for (const dep of deps) {
           if (laterComponents.has(dep)) {
             logger.error('Dependency violation detected', {
@@ -408,7 +402,7 @@ export class WaveSplitter {
     if (result.decisions.length > 0) {
       lines.push('## Split Decisions');
       lines.push('');
-      
+
       for (const decision of result.decisions) {
         lines.push(`### Wave ${decision.waveNumber}`);
         lines.push(`- Reason: ${decision.reason}`);
@@ -426,4 +420,3 @@ export class WaveSplitter {
     return lines.join('\n');
   }
 }
-

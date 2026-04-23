@@ -3,25 +3,25 @@ import * as syncFs from 'node:fs';
 import * as path from 'node:path';
 import type { LLMProviderName } from '../ai/llm-provider.js';
 
-export interface UserPriorities {
+export type UserPriorities = {
   [metadataId: string]: number;
-}
+};
 
-export interface RepoLLMConfig {
+export type RepoLLMConfig = {
   provider?: LLMProviderName;
   model?: string;
   endpoint?: string;
   timeout?: number;
   rateLimit?: number;
-}
+};
 
-export interface DeploymentConfig {
+export type DeploymentConfig = {
   priorities?: UserPriorities;
   testLevel?: string;
   timeout?: number;
   retryStrategy?: string;
   llm?: RepoLLMConfig;
-}
+};
 
 export function getRepoConfigPath(baseDir?: string): string {
   return path.join(baseDir ?? process.cwd(), '.smart-deployment.json');

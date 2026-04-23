@@ -1,8 +1,8 @@
-import { expect } from 'chai';
-import { afterEach, beforeEach, describe, it } from 'mocha';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterEach, beforeEach, describe, it } from 'mocha';
+import { expect } from 'chai';
 import { CycleSourceEditor } from '../../../src/deployment/cycle-source-editor.js';
 
 describe('CycleSourceEditor', () => {

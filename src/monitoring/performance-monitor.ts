@@ -16,7 +16,7 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('PerformanceMonitor');
 
-export interface PerformanceMetric {
+export type PerformanceMetric = {
   operation: string;
   executionTime: number;
   memoryBefore: number;
@@ -24,9 +24,9 @@ export interface PerformanceMetric {
   memoryDelta: number;
   timestamp: Date;
   metadata?: Record<string, unknown>;
-}
+};
 
-export interface PerformanceReport {
+export type PerformanceReport = {
   totalOperations: number;
   totalTime: number;
   averageTime: number;
@@ -35,22 +35,22 @@ export interface PerformanceReport {
   memoryAverage: number;
   bottlenecks: Bottleneck[];
   benchmarks: BenchmarkComparison[];
-}
+};
 
-export interface Bottleneck {
+export type Bottleneck = {
   operation: string;
   executionTime: number;
   percentage: number;
   suggestion: string;
-}
+};
 
-export interface BenchmarkComparison {
+export type BenchmarkComparison = {
   operation: string;
   currentTime: number;
   baselineTime: number;
   improvement: number;
   status: 'improved' | 'degraded' | 'stable';
-}
+};
 
 /**
  * @ac US-012-AC-1: Execution time tracking
@@ -149,9 +149,7 @@ export class PerformanceMonitor {
     const averageTime = totalTime / this.metrics.length;
 
     // Find slowest operations
-    const slowestOperations = [...this.metrics]
-      .sort((a, b) => b.executionTime - a.executionTime)
-      .slice(0, 10);
+    const slowestOperations = [...this.metrics].sort((a, b) => b.executionTime - a.executionTime).slice(0, 10);
 
     // Calculate memory stats
     const memoryValues = this.metrics.map((m) => m.memoryAfter);
@@ -193,7 +191,7 @@ export class PerformanceMonitor {
     // Group by operation
     const operationGroups = new Map<string, PerformanceMetric[]>();
     for (const metric of this.metrics) {
-      const existing = operationGroups.get(metric.operation) || [];
+      const existing = operationGroups.get(metric.operation) ?? [];
       existing.push(metric);
       operationGroups.set(metric.operation, existing);
     }
@@ -242,7 +240,7 @@ export class PerformanceMonitor {
     // Group by operation
     const operationGroups = new Map<string, PerformanceMetric[]>();
     for (const metric of this.metrics) {
-      const existing = operationGroups.get(metric.operation) || [];
+      const existing = operationGroups.get(metric.operation) ?? [];
       existing.push(metric);
       operationGroups.set(metric.operation, existing);
     }
@@ -340,4 +338,3 @@ export class PerformanceMonitor {
     return this.metrics.filter((m) => m.operation === operation);
   }
 }
-

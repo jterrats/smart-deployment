@@ -7,6 +7,7 @@ import { describe, it } from 'mocha';
 import { DependencyResolver } from '../../../src/dependencies/dependency-resolver.js';
 import type { DependencyGraph, CircularDependency } from '../../../src/types/dependency.js';
 import type { MetadataComponent } from '../../../src/types/metadata.js';
+import type { MetadataType } from '../../../src/types/metadata.js';
 
 describe('DependencyResolver', () => {
   /**
@@ -29,9 +30,10 @@ describe('DependencyResolver', () => {
     // Initialize graph and components
     for (const node of allNodes) {
       graph.set(node, new Set<string>());
+      const [type, name] = node.split(':') as [MetadataType, string];
       components.set(node, {
-        type: node.split(':')[0] as any,
-        name: node.split(':')[1],
+        type,
+        name,
         filePath: `/path/to/${node}`,
         dependencies: new Set<string>(),
         dependents: new Set<string>(),
@@ -392,7 +394,7 @@ describe('DependencyResolver', () => {
   describe('Edge Cases', () => {
     it('should handle empty graph', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       const resolver = new DependencyResolver(graph, components);
       const result = resolver.resolve();

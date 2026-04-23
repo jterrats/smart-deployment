@@ -296,8 +296,8 @@ function test() {
     it('should format bytes to human-readable strings', () => {
       expect(formatBytes(0)).to.equal('0 Bytes');
       expect(formatBytes(1024)).to.equal('1.00 KB');
-      expect(formatBytes(1048576)).to.equal('1.00 MB');
-      expect(formatBytes(1073741824)).to.equal('1.00 GB');
+      expect(formatBytes(1_048_576)).to.equal('1.00 MB');
+      expect(formatBytes(1_073_741_824)).to.equal('1.00 GB');
       expect(formatBytes(1536, 0)).to.equal('2 KB');
     });
   });

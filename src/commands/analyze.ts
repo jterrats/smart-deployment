@@ -1,5 +1,6 @@
 /**
  * smart-deployment:analyze command - US-047
+ *
  * @ac US-047-AC-1: Scans project metadata
  * @ac US-047-AC-2: Generates dependency graph
  * @ac US-047-AC-3: Generates deployment waves
@@ -12,8 +13,8 @@
  * @issue #47
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand } from '@salesforce/sf-plugins-core';
+import { Messages } from '@salesforce/core';
+import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 import { AnalysisReporter } from '../analysis/analysis-reporter.js';
 import { DependencyInferenceService } from '../ai/dependency-inference-service.js';
@@ -30,8 +31,10 @@ import type { MetadataComponent } from '../types/metadata.js';
 import type { NodeId } from '../types/dependency.js';
 
 const logger = getLogger('AnalyzeCommand');
+Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
+const messages = Messages.loadMessages('smart-deployment', 'analyze');
 
-interface AnalyzeResult {
+type AnalyzeResult = {
   success: boolean;
   components: number;
   dependencies: number;
@@ -45,28 +48,30 @@ interface AnalyzeResult {
     inferredDependencies?: number;
     inferenceFallback?: boolean;
   };
-}
+};
 
 export default class Analyze extends SfCommand<AnalyzeResult> {
-  public static readonly summary = 'Analyze metadata without deploying';
+  public static readonly summary = messages.getMessage('summary');
+  public static readonly description = messages.getMessage('description');
+  public static readonly examples = messages.getMessages('examples');
   public static readonly flags = {
-    'source-path': Flags.string({ summary: 'Source path to analyze' }),
+    'source-path': Flags.string({ summary: messages.getMessage('flags.source-path.summary') }),
     'save-plan': Flags.boolean({
-      summary: 'Generate and save deployment plan for CI/CD',
+      summary: messages.getMessage('flags.save-plan.summary'),
       default: false,
     }),
-    'plan-path': Flags.string({ summary: 'Path to save deployment plan' }),
+    'plan-path': Flags.string({ summary: messages.getMessage('flags.plan-path.summary') }),
     'use-ai': Flags.boolean({
-      summary: 'Enable AI metadata prioritization when generating plan',
+      summary: messages.getMessage('flags.use-ai.summary'),
       default: false,
     }),
     'org-type': Flags.string({
-      summary: 'Organization type context for plan metadata',
+      summary: messages.getMessage('flags.org-type.summary'),
       options: ['Production', 'Sandbox', 'Developer'],
     }),
-    industry: Flags.string({ summary: 'Industry context for plan metadata' }),
-    output: Flags.string({ summary: 'Output file path', char: 'o' }),
-    format: Flags.string({ summary: 'Output format (json|html)', char: 'f', default: 'json' }),
+    industry: Flags.string({ summary: messages.getMessage('flags.industry.summary') }),
+    output: Flags.string({ summary: messages.getMessage('flags.output.summary'), char: 'r' }),
+    format: Flags.string({ summary: messages.getMessage('flags.format.summary'), char: 'f', default: 'json' }),
   };
 
   public async run(): Promise<AnalyzeResult> {
@@ -148,7 +153,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
 
         await DeploymentPlanManager.savePlan(plan, flags['plan-path']);
 
-        const planPath = flags['plan-path'] || '.smart-deployment/deployment-plan.json';
+        const planPath = flags['plan-path'] ?? '.smart-deployment/deployment-plan.json';
         this.log(`✅ Deployment plan saved to: ${planPath}`);
         planSaved = true;
         this.log('');
@@ -195,7 +200,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
     const scanner = new MetadataScannerService();
     const scanResult = await scanner.scan({ sourcePath });
     const waveBuilder = new WaveBuilder({
-      maxComponentsPerWave: 10000,
+      maxComponentsPerWave: 10_000,
       respectTypeOrder: true,
       handleCircularDeps: true,
     });

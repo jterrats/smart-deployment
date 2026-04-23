@@ -2,21 +2,21 @@ import { createHash } from 'node:crypto';
 import { access, readFile, unlink, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 
-export interface CycleSourceEditRequest {
+export type CycleSourceEditRequest = {
   filePath: string;
   targetDescription: string;
   targetDependency: string;
   sourceSnippet: string;
-}
+};
 
-export interface CycleSourceBackupRecord {
+export type CycleSourceBackupRecord = {
   filePath: string;
   backupPath: string;
   originalHash: string;
   created: boolean;
-}
+};
 
-export interface CycleSourceEditRecord {
+export type CycleSourceEditRecord = {
   operation: 'comment-reference';
   filePath: string;
   backupPath: string;
@@ -26,14 +26,14 @@ export interface CycleSourceEditRecord {
   replacementSnippet: string;
   originalHash: string;
   editedHash: string;
-}
+};
 
-export interface CycleSourceRestoreResult {
+export type CycleSourceRestoreResult = {
   restored: boolean;
   reason?: 'backup-missing' | 'hash-mismatch';
   restoredHash?: string;
   currentHash?: string;
-}
+};
 
 function createBackupPath(filePath: string): string {
   return `${filePath}.cycle-remediation.bak`;

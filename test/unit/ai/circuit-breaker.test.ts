@@ -5,6 +5,24 @@ import { expect } from 'chai';
 import { describe, it, beforeEach } from 'mocha';
 import { CircuitBreaker } from '../../../src/ai/circuit-breaker.js';
 
+async function tripBreaker(breaker: CircuitBreaker, attempts: number): Promise<void> {
+  const failingFn = async () => {
+    throw new Error('Test failure');
+  };
+
+  if (attempts <= 0) {
+    return;
+  }
+
+  try {
+    await breaker.execute(failingFn);
+  } catch {
+    // Expected in tests
+  }
+
+  await tripBreaker(breaker, attempts - 1);
+}
+
 describe('CircuitBreaker', () => {
   let breaker: CircuitBreaker;
 
@@ -20,18 +38,7 @@ describe('CircuitBreaker', () => {
   describe('US-060: AI Circuit Breaker', () => {
     /** @ac US-060-AC-1: Track failure rate */
     it('US-060-AC-1: should track failure rate', async () => {
-      const failingFn = async () => {
-        throw new Error('Test failure');
-      };
-
-      // Execute and catch errors
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       const stats = breaker.getStats();
       expect(stats.failures).to.equal(3);
@@ -40,20 +47,8 @@ describe('CircuitBreaker', () => {
 
     /** @ac US-060-AC-2: Open circuit after N failures */
     it('US-060-AC-2: should open circuit after N failures', async () => {
-      const failingFn = async () => {
-        throw new Error('Test failure');
-      };
-
       expect(breaker.getState()).to.equal('closed');
-
-      // Trigger failures
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       expect(breaker.getState()).to.equal('open');
       expect(breaker.isOpen()).to.be.true;
@@ -67,14 +62,7 @@ describe('CircuitBreaker', () => {
 
       const fallback = () => 'fallback-result';
 
-      // Open circuit
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       expect(breaker.isOpen()).to.be.true;
 
@@ -86,19 +74,7 @@ describe('CircuitBreaker', () => {
     /** @ac US-060-AC-4: Reset after timeout */
     it('US-060-AC-4: should reset to half-open after timeout', async function () {
       this.timeout(500); // Increase mocha timeout
-
-      const failingFn = async () => {
-        throw new Error('Test failure');
-      };
-
-      // Open circuit
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       expect(breaker.getState()).to.equal('open');
 
@@ -125,20 +101,8 @@ describe('CircuitBreaker', () => {
 
     /** @ac US-060-AC-6: Alert on circuit open */
     it('US-060-AC-6: should alert when circuit opens', async () => {
-      const failingFn = async () => {
-        throw new Error('Test failure');
-      };
-
       const initialTripCount = breaker.getStats().tripCount;
-
-      // Open circuit
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       const stats = breaker.getStats();
       expect(stats.tripCount).to.be.greaterThan(initialTripCount);
@@ -148,20 +112,8 @@ describe('CircuitBreaker', () => {
   describe('Half-Open State', () => {
     it('should close circuit after successful tests in half-open', async function () {
       this.timeout(500);
-
-      const failingFn = async () => {
-        throw new Error('Test failure');
-      };
       const successFn = async () => 'success';
-
-      // Open circuit
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       expect(breaker.getState()).to.equal('open');
 
@@ -201,18 +153,7 @@ describe('CircuitBreaker', () => {
 
   describe('Manual Reset', () => {
     it('should allow manual reset', async () => {
-      const failingFn = async () => {
-        throw new Error('Test failure');
-      };
-
-      // Open circuit
-      for (let i = 0; i < 3; i++) {
-        try {
-          await breaker.execute(failingFn);
-        } catch {
-          // Expected
-        }
-      }
+      await tripBreaker(breaker, 3);
 
       expect(breaker.isOpen()).to.be.true;
 
@@ -237,4 +178,3 @@ describe('CircuitBreaker', () => {
     });
   });
 });
-

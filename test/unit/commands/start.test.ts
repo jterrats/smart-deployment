@@ -1,8 +1,8 @@
-import { expect } from 'chai';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { afterEach, beforeEach, describe, it } from 'mocha';
 import Start from '../../../src/commands/start.js';
 import { SfCliIntegration } from '../../../src/deployment/sf-cli-integration.js';
@@ -133,7 +133,9 @@ describe('StartCommand', () => {
     const originalBeta = await readFile(betaPath, 'utf8');
     const command = new Start([], {} as never);
     const logs: string[] = [];
-    const originalDeploy = SfCliIntegration.prototype.deploy;
+    const originalDeploy = Object.getOwnPropertyDescriptor(SfCliIntegration.prototype, 'deploy')?.value as
+      | typeof SfCliIntegration.prototype.deploy
+      | undefined;
     const deployCalls: string[] = [];
 
     SfCliIntegration.prototype.deploy = async function stubDeploy(options) {
@@ -194,7 +196,7 @@ describe('StartCommand', () => {
 
       expect(stateFileExists).to.equal(false);
     } finally {
-      SfCliIntegration.prototype.deploy = originalDeploy;
+      Object.defineProperty(SfCliIntegration.prototype, 'deploy', { value: originalDeploy, writable: true });
     }
   });
 });

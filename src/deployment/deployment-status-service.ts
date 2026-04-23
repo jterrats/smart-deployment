@@ -4,7 +4,7 @@ import { StateManager } from './state-manager.js';
 
 const logger = getLogger('DeploymentStatusService');
 
-export interface DeploymentStatusSummary {
+export type DeploymentStatusSummary = {
   hasState: boolean;
   status: 'not-started' | 'in-progress' | 'failed' | 'completed';
   deploymentId?: string;
@@ -19,9 +19,9 @@ export interface DeploymentStatusSummary {
   testStatus: 'unknown' | 'pending' | 'not-run';
   timestamp?: string;
   stateFilePath: string;
-}
+};
 
-export interface ResumeSummary {
+export type ResumeSummary = {
   success: boolean;
   reason?: string;
   resumeWave?: number;
@@ -29,7 +29,7 @@ export interface ResumeSummary {
   remainingWaves: number[];
   targetOrg?: string;
   deploymentId?: string;
-}
+};
 
 export class DeploymentStatusService {
   public constructor(private readonly stateManager: StateManager = new StateManager()) {}

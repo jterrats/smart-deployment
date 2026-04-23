@@ -1,5 +1,5 @@
-import { glob as globAsync } from 'glob';
 import * as path from 'node:path';
+import { glob as globAsync } from 'glob';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { getLogger } from '../utils/logger.js';
 import { XmlMetadataValidator } from '../validators/xml-metadata-validator.js';
@@ -9,14 +9,14 @@ import { validateWaveOrder } from '../waves/wave-executor.js';
 
 const logger = getLogger('DeploymentValidationService');
 
-export interface DeploymentValidationIssue {
+export type DeploymentValidationIssue = {
   severity: 'error' | 'warning';
   message: string;
   filePath?: string;
   waveNumber?: number;
-}
+};
 
-export interface DeploymentValidationSummary {
+export type DeploymentValidationSummary = {
   valid: boolean;
   components: number;
   totalWaves: number;
@@ -28,7 +28,7 @@ export interface DeploymentValidationSummary {
   aiProvider?: string;
   aiModel?: string;
   aiFallback?: boolean;
-}
+};
 
 export class DeploymentValidationService {
   private readonly scanner = new MetadataScannerService();
@@ -40,7 +40,7 @@ export class DeploymentValidationService {
   ): Promise<DeploymentValidationSummary> {
     const scanResult = await this.scanner.scan({ sourcePath });
     const waveBuilder = new WaveBuilder({
-      maxComponentsPerWave: 10000,
+      maxComponentsPerWave: 10_000,
       respectTypeOrder: true,
       handleCircularDeps: true,
     });

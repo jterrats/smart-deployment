@@ -1,14 +1,14 @@
 /**
  * Graph Visualizer
  * Generates visual representations of the dependency graph
- * 
+ *
  * @ac US-035-AC-1: Generate Mermaid diagram
  * @ac US-035-AC-2: Generate DOT format
  * @ac US-035-AC-3: Support filtering by type
  * @ac US-035-AC-4: Support filtering by depth
  * @ac US-035-AC-5: Highlight critical path
  * @ac US-035-AC-6: Export as SVG/PNG (requires external tools)
- * 
+ *
  * @issue #35
  */
 
@@ -64,14 +64,14 @@ const TYPE_COLORS: Record<string, string> = {
 
 /**
  * Graph Visualizer
- * 
+ *
  * Generates visual representations of dependency graphs in multiple formats:
  * - Mermaid: For GitHub, documentation
  * - DOT: For Graphviz rendering
  * - ASCII: For terminal output
- * 
+ *
  * Performance: O(V + E)
- * 
+ *
  * @example
  * const visualizer = new GraphVisualizer(graph);
  * const mermaid = visualizer.toMermaid({ criticalPath });
@@ -160,9 +160,7 @@ export class GraphVisualizer {
     // Add edges
     for (const [nodeId, deps] of filtered.entries()) {
       for (const dep of deps) {
-        const edgeStyle = criticalSet.has(nodeId) && criticalSet.has(dep) 
-          ? ', color=red, penwidth=2.0' 
-          : '';
+        const edgeStyle = criticalSet.has(nodeId) && criticalSet.has(dep) ? ', color=red, penwidth=2.0' : '';
         lines.push(`    "${nodeId}" -> "${dep}"${edgeStyle};`);
       }
     }
@@ -178,13 +176,10 @@ export class GraphVisualizer {
   public toAscii(rootNode?: NodeId, overrideOptions?: VisualizationOptions): string {
     const opts = { ...this.options, ...overrideOptions };
     const filtered = this.filterGraph(opts);
+    const selectedRootNode = rootNode ?? this.findRootNode(filtered);
 
-    if (!rootNode) {
-      // Find a root (node with no dependencies or highest level)
-      rootNode = this.findRootNode(filtered);
-      if (!rootNode) {
-        return 'Empty graph';
-      }
+    if (!selectedRootNode) {
+      return 'Empty graph';
     }
 
     const visited = new Set<NodeId>();
@@ -209,7 +204,7 @@ export class GraphVisualizer {
       });
     };
 
-    buildTree(rootNode, '', true);
+    buildTree(selectedRootNode, '', true);
 
     return lines.join('\n');
   }
@@ -335,4 +330,3 @@ export class GraphVisualizer {
     return { nodes: this.graph.size, edges };
   }
 }
-

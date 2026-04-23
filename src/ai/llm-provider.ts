@@ -1,31 +1,31 @@
 export type LLMProviderName = 'agentforce' | 'openai';
 
-export interface LLMRequest {
+export type LLMRequest = {
   model: string;
   prompt: string;
   context?: Record<string, unknown>;
   temperature?: number;
   maxTokens?: number;
-}
+};
 
-export interface LLMResponse {
+export type LLMResponse = {
   content: string;
   tokensUsed: number;
   model: string;
   executionTime: number;
-}
+};
 
-export interface LLMProviderConfig {
+export type LLMProviderConfig = {
   provider: LLMProviderName;
   endpoint: string;
   model: string;
   timeout: number;
   enabled: boolean;
   rateLimit?: number;
-}
+};
 
-export interface LLMProvider {
+export type LLMProvider = {
   sendRequest(request: LLMRequest): Promise<LLMResponse>;
   getConfig(): Readonly<LLMProviderConfig>;
   isEnabled(): boolean;
-}
+};

@@ -1,0 +1,9 @@
+{
+  "summary": "Validate deployment without executing it",
+  "examples": [
+    "<%= config.bin %> <%= command.id %> --source-path force-app",
+    "<%= config.bin %> <%= command.id %> --source-path force-app --use-ai"
+  ],
+  "flags.source-path.summary": "Path to the Salesforce project to validate",
+  "flags.use-ai.summary": "Use AI wave validation with the configured provider when available"
+}

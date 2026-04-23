@@ -19,16 +19,16 @@ import type { LLMProvider, LLMProviderName } from './llm-provider.js';
 
 const logger = getLogger('AgentforcePriorityService');
 
-export interface PriorityRecommendation {
+export type PriorityRecommendation = {
   componentName: string;
   priority: number;
   reason: string;
   confidence: number;
   businessCriticality: 'low' | 'medium' | 'high' | 'critical';
   failureImpact: 'low' | 'medium' | 'high' | 'critical';
-}
+};
 
-export interface AgentforceConfig {
+export type AgentforceConfig = {
   baseDir?: string;
   provider?: LLMProviderName;
   endpoint?: string;
@@ -40,16 +40,16 @@ export interface AgentforceConfig {
   rateLimit?: number;
   fetchFn?: AgentforceFetch;
   llmProvider?: LLMProvider;
-}
+};
 
-export interface PriorityAnalysisResult {
+export type PriorityAnalysisResult = {
   recommendations: PriorityRecommendation[];
   totalComponents: number;
   aiAdjustments: number;
   executionTime: number;
   tokensUsed?: number;
   usedFallback: boolean;
-}
+};
 
 /**
  * @ac US-057-AC-1: Send component list to Agentforce
@@ -152,7 +152,7 @@ export class AgentforcePriorityService {
     const componentList = components.map((c) => `- ${c.type}: ${c.name}`).join('\n');
 
     const contextInfo = context
-      ? `\nOrg Type: ${context.orgType || 'Unknown'}\nIndustry: ${context.industry || 'Unknown'}`
+      ? `\nOrg Type: ${context.orgType ?? 'Unknown'}\nIndustry: ${context.industry ?? 'Unknown'}`
       : '';
 
     return `You are an expert Salesforce deployment analyst. Analyze these components and suggest deployment priorities.
@@ -283,7 +283,7 @@ Respond ONLY with valid JSON (no markdown):
       totalComponents: components.length,
       aiAdjustments: recommendations.filter((recommendation) => recommendation.confidence > 0.8).length,
       executionTime: Date.now() - startTime,
-      tokensUsed: response.usage?.total_tokens,
+      tokensUsed: response.usage?.['total_tokens'],
       usedFallback: true,
     };
   }
@@ -334,7 +334,7 @@ Respond ONLY with valid JSON (no markdown):
 }
 
 // Internal types
-interface AgentforceResponse {
+type AgentforceResponse = {
   choices?: Array<{
     message?: {
       content?: string;
@@ -343,4 +343,4 @@ interface AgentforceResponse {
   usage?: {
     total_tokens?: number;
   };
-}
+};

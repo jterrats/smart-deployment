@@ -1,14 +1,15 @@
 /**
  * E2E-style Tests for Status Command - US-067
+ *
  * @ac US-067-AC-5: 3 scenarios for status command
  * @issue #67
  */
 
-import { expect } from 'chai';
-import { afterEach, beforeEach, describe, it } from 'mocha';
 import { mkdtemp, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterEach, beforeEach, describe, it } from 'mocha';
+import { expect } from 'chai';
 import { DeploymentStatusService } from '../../src/deployment/deployment-status-service.js';
 import { StateManager } from '../../src/deployment/state-manager.js';
 

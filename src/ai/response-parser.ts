@@ -15,7 +15,7 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ResponseParser');
 
-export interface ParsedResponse<T> {
+export type ParsedResponse<T> = {
   success: boolean;
   data?: T;
   confidence: number;
@@ -23,14 +23,14 @@ export interface ParsedResponse<T> {
   errors: string[];
   rawContent: string;
   hallucinationDetected: boolean;
-}
+};
 
-export interface SchemaValidationResult {
+export type SchemaValidationResult = {
   valid: boolean;
   errors: string[];
   missingFields: string[];
   invalidTypes: string[];
-}
+};
 
 /**
  * @ac US-059-AC-1: Parse JSON responses

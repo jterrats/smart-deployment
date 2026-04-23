@@ -17,30 +17,30 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('SfdxProjectDetector');
 
-export interface SfdxProjectJson {
+export type SfdxProjectJson = {
   packageDirectories: PackageDirectory[];
   namespace?: string;
   sourceApiVersion: string;
   sfdcLoginUrl?: string;
   plugins?: Record<string, unknown>;
   [key: string]: unknown;
-}
+};
 
-export interface PackageDirectory {
+export type PackageDirectory = {
   path: string;
   default?: boolean;
   package?: string;
   versionName?: string;
   versionNumber?: string;
   dependencies?: PackageDependency[];
-}
+};
 
-export interface PackageDependency {
+export type PackageDependency = {
   package: string;
   versionNumber: string;
-}
+};
 
-export interface ProjectDetectionResult {
+export type ProjectDetectionResult = {
   detected: boolean;
   projectRoot: string;
   projectFile: string;
@@ -52,7 +52,7 @@ export interface ProjectDetectionResult {
   namespace?: string;
   errors: string[];
   warnings: string[];
-}
+};
 
 /**
  * @ac US-079-AC-1: Detect sfdx-project.json
@@ -127,31 +127,28 @@ export class SfdxProjectDetector {
    * Search up the directory tree for sfdx-project.json
    */
   private static async findProjectFile(startPath: string): Promise<string | null> {
-    let currentPath = resolve(startPath);
-    let depth = 0;
+    return this.findProjectFileRecursive(resolve(startPath), 0);
+  }
 
-    while (depth < this.MAX_SEARCH_DEPTH) {
-      const projectFilePath = join(currentPath, this.PROJECT_FILE_NAME);
-
-      try {
-        await access(projectFilePath);
-        logger.debug('Found sfdx-project.json', { path: projectFilePath });
-        return projectFilePath;
-      } catch {
-        // File doesn't exist, continue searching
-      }
-
-      const parentPath = dirname(currentPath);
-      if (parentPath === currentPath) {
-        // Reached filesystem root
-        break;
-      }
-
-      currentPath = parentPath;
-      depth++;
+  private static async findProjectFileRecursive(currentPath: string, depth: number): Promise<string | null> {
+    if (depth >= this.MAX_SEARCH_DEPTH) {
+      return null;
     }
 
-    return null;
+    const projectFilePath = join(currentPath, this.PROJECT_FILE_NAME);
+
+    try {
+      await access(projectFilePath);
+      logger.debug('Found sfdx-project.json', { path: projectFilePath });
+      return projectFilePath;
+    } catch {
+      const parentPath = dirname(currentPath);
+      if (parentPath === currentPath) {
+        return null;
+      }
+
+      return this.findProjectFileRecursive(parentPath, depth + 1);
+    }
   }
 
   /**
@@ -270,7 +267,7 @@ export class SfdxProjectDetector {
       return lines.join('\n');
     }
 
-    lines.push(`✅ Project detected`);
+    lines.push('✅ Project detected');
     lines.push(`   Root: ${result.projectRoot}`);
     lines.push(`   Config: ${result.projectFile}`);
     lines.push('');

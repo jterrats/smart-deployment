@@ -1,7 +1,7 @@
-import { expect } from 'chai';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { beforeEach, describe, it } from 'mocha';
 import { OpenAIService, type OpenAIFetch } from '../../../src/ai/openai-service.js';
 import { createLLMProvider } from '../../../src/ai/llm-provider-factory.js';
@@ -108,7 +108,7 @@ describe('OpenAIService', () => {
             provider: 'openai',
             model: 'gpt-4o-mini',
             endpoint: 'https://api.openai.test/v1/chat/completions',
-            timeout: 45000,
+            timeout: 45_000,
           },
         }),
         'utf8'
@@ -127,7 +127,7 @@ describe('OpenAIService', () => {
       });
 
       expect(provider.getConfig().provider).to.equal('openai');
-      expect(provider.getConfig().timeout).to.equal(45000);
+      expect(provider.getConfig().timeout).to.equal(45_000);
       expect(response.model).to.equal('gpt-4o-mini');
     } finally {
       await rm(tempDir, { recursive: true, force: true });

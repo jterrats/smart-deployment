@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
 import type { WaveResult } from '../waves/wave-builder.js';
 
-export interface AnalysisAIContext {
+export type AnalysisAIContext = {
   enabled: boolean;
   provider?: string;
   model?: string;
@@ -10,17 +10,17 @@ export interface AnalysisAIContext {
   unknownTypes?: string[];
   inferredDependencies?: number;
   inferenceFallback?: boolean;
-}
+};
 
-export interface AnalysisAIEffect {
+export type AnalysisAIEffect = {
   priorityAdjustments: number;
   inferredDependencies: number;
   fallbackApplied: boolean;
   unknownTypeCount: number;
   summary: string;
-}
+};
 
-export interface AnalysisReport {
+export type AnalysisReport = {
   generatedAt: string;
   projectRoot: string;
   summary: {
@@ -50,15 +50,17 @@ export interface AnalysisReport {
       estimatedTime: number;
     };
   }>;
-}
+};
 
 export class AnalysisReporter {
   public createReport(scanResult: ScanResult, waveResult: WaveResult, aiContext?: AnalysisAIContext): AnalysisReport {
     const componentsByType = scanResult.components.reduce<Record<string, string[]>>((accumulator, component) => {
       const nodeId = `${component.type}:${component.name}`;
-      accumulator[component.type] ??= [];
-      accumulator[component.type].push(nodeId);
-      return accumulator;
+      const next = accumulator[component.type] ?? [];
+      return {
+        ...accumulator,
+        [component.type]: [...next, nodeId],
+      };
     }, {});
 
     for (const componentNames of Object.values(componentsByType)) {

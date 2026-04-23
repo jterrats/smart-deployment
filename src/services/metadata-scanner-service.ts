@@ -9,31 +9,30 @@
  * - DependencyGraphBuilder
  */
 
-import { getLogger } from '../utils/logger.js';
-import { SfdxProjectDetector } from '../scanner/sfdx-project-detector.js';
-import { ForceIgnoreParser } from '../scanner/forceignore-parser.js';
-import { DependencyGraphBuilder } from '../dependencies/dependency-graph-builder.js';
-import { parseApexClass } from '../parsers/apex-class-parser.js';
-import { parseApexTrigger } from '../parsers/apex-trigger-parser.js';
-import { parseLWC } from '../parsers/lwc-parser.js';
-import { parseAura } from '../parsers/aura-parser.js';
-import { parseFlow } from '../parsers/flow-parser.js';
-import { parseCustomObject } from '../parsers/custom-object-parser.js';
-import { parseCustomMetadataType } from '../parsers/custom-metadata-parser.js';
-// import { parseCustomMetadataRecord } from '../parsers/custom-metadata-parser.js'; // TODO: Use when implementing CMT record parsing
-import { parseEmailTemplate } from '../parsers/email-template-parser.js';
-import { parseFlexiPage } from '../parsers/flexipage-parser.js';
-import { parseLayout } from '../parsers/layout-parser.js';
-import { parseProfile } from '../parsers/profile-parser.js';
-import { parsePermissionSet } from '../parsers/permission-set-parser.js';
-import { parseBot } from '../parsers/bot-parser.js';
-import { parseGenAiPrompt } from '../parsers/genai-prompt-parser.js';
-import { parseVisualforce } from '../parsers/visualforce-parser.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { glob as globAsync } from 'glob';
+import { DependencyGraphBuilder } from '../dependencies/dependency-graph-builder.js';
+import { parseAura } from '../parsers/aura-parser.js';
+import { parseApexClass } from '../parsers/apex-class-parser.js';
+import { parseApexTrigger } from '../parsers/apex-trigger-parser.js';
+import { parseBot } from '../parsers/bot-parser.js';
+import { parseCustomMetadataType } from '../parsers/custom-metadata-parser.js';
+import { parseCustomObject } from '../parsers/custom-object-parser.js';
+import { parseEmailTemplate } from '../parsers/email-template-parser.js';
+import { parseFlexiPage } from '../parsers/flexipage-parser.js';
+import { parseFlow } from '../parsers/flow-parser.js';
+import { parseGenAiPrompt } from '../parsers/genai-prompt-parser.js';
+import { parseLayout } from '../parsers/layout-parser.js';
+import { parseLWC } from '../parsers/lwc-parser.js';
+import { parsePermissionSet } from '../parsers/permission-set-parser.js';
+import { parseProfile } from '../parsers/profile-parser.js';
+import { parseVisualforce } from '../parsers/visualforce-parser.js';
+import { ForceIgnoreParser } from '../scanner/forceignore-parser.js';
+import { SfdxProjectDetector } from '../scanner/sfdx-project-detector.js';
 import type { MetadataComponent } from '../types/metadata.js';
 import type { DependencyAnalysisResult } from '../types/dependency.js';
+import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('MetadataScannerService');
 
@@ -43,20 +42,24 @@ function toNodeIds(dependencies: Iterable<string>, defaultType: string): Set<str
   );
 }
 
-export interface ScanOptions {
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
+}
+
+export type ScanOptions = {
   sourcePath?: string;
   includeIgnored?: boolean;
   maxDepth?: number;
-}
+};
 
-export interface ScanResult {
+export type ScanResult = {
   components: MetadataComponent[];
   dependencyResult: DependencyAnalysisResult;
   projectRoot: string;
   executionTime: number;
   errors: string[];
   warnings: string[];
-}
+};
 
 /**
  * Metadata file pattern matcher
@@ -83,9 +86,8 @@ export class MetadataScannerService {
     const startTime = Date.now();
     const errors: string[] = [];
     const warnings: string[] = [];
-
     // Detect project
-    const sourcePath = options.sourcePath || process.cwd();
+    const sourcePath = options.sourcePath ?? process.cwd();
     const projectInfo = await SfdxProjectDetector.detect(sourcePath);
 
     if (!projectInfo.detected) {
@@ -151,22 +153,20 @@ export class MetadataScannerService {
     errors: string[],
     warnings: string[]
   ): Promise<MetadataComponent[]> {
-    const components: MetadataComponent[] = [];
+    const scannedPackages = await Promise.all(
+      packageDirs.map(async (packageDir) => {
+        const packagePath = path.isAbsolute(packageDir) ? packageDir : path.join(projectRoot, packageDir);
+        if (!(await this.fileExists(packagePath))) {
+          logger.warn('Package directory not found', { packagePath });
+          warnings.push(`Package directory not found: ${packagePath}`);
+          return [];
+        }
 
-    for (const packageDir of packageDirs) {
-      const packagePath = path.isAbsolute(packageDir) ? packageDir : path.join(projectRoot, packageDir);
-      if (!(await this.fileExists(packagePath))) {
-        logger.warn('Package directory not found', { packagePath });
-        warnings.push(`Package directory not found: ${packagePath}`);
-        continue;
-      }
+        return this.scanPackageDirectory(packagePath, errors, warnings);
+      })
+    );
 
-      // Scan all metadata types
-      const scanned = await this.scanPackageDirectory(packagePath, errors, warnings);
-      components.push(...scanned);
-    }
-
-    return components;
+    return scannedPackages.flat();
   }
 
   /**
@@ -177,488 +177,585 @@ export class MetadataScannerService {
     errors: string[],
     warnings: string[]
   ): Promise<MetadataComponent[]> {
+    void warnings;
     const components: MetadataComponent[] = [];
 
     // Scan Apex Classes
     const apexFiles = await this.findFiles(packagePath, '**/classes/**/*.cls');
-    for (const filePath of apexFiles) {
-      if (this.shouldIgnore(filePath)) continue;
-      if (filePath.endsWith('.cls-meta.xml')) continue;
+    const apexComponents = await Promise.all(
+      apexFiles
+        .filter((filePath) => !this.shouldIgnore(filePath) && !filePath.endsWith('.cls-meta.xml'))
+        .map(async (filePath) => {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const parsed = parseApexClass(filePath, content);
 
-      try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        const parsed = parseApexClass(filePath, content);
-
-        components.push({
-          name: parsed.className,
-          type: 'ApexClass',
-          filePath,
-          dependencies: toNodeIds(
-            parsed.dependencies.map((d) => d.className),
-            'ApexClass'
-          ),
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Apex class ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+            return {
+              name: parsed.className,
+              type: 'ApexClass' as const,
+              filePath,
+              dependencies: toNodeIds(
+                parsed.dependencies.map((d) => d.className),
+                'ApexClass'
+              ),
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            };
+          } catch (error) {
+            const errorMsg = `Failed to parse Apex class ${filePath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            logger.warn(errorMsg);
+            errors.push(errorMsg);
+            return undefined;
+          }
+        })
+    );
+    components.push(...apexComponents.filter(isDefined));
 
     // Scan Apex Triggers
     const triggerFiles = await this.findFiles(packagePath, '**/triggers/**/*.trigger');
-    for (const filePath of triggerFiles) {
-      if (this.shouldIgnore(filePath)) continue;
-      if (filePath.endsWith('.trigger-meta.xml')) continue;
+    const triggerComponents = await Promise.all(
+      triggerFiles
+        .filter((filePath) => !this.shouldIgnore(filePath) && !filePath.endsWith('.trigger-meta.xml'))
+        .map(async (filePath) => {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const parsed = parseApexTrigger(filePath, content);
 
-      try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        const parsed = parseApexTrigger(filePath, content);
-
-        components.push({
-          name: parsed.triggerName,
-          type: 'ApexTrigger',
-          filePath,
-          dependencies: toNodeIds(
-            parsed.dependencies.map((d) => d.className),
-            'ApexClass'
-          ),
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Apex trigger ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+            return {
+              name: parsed.triggerName,
+              type: 'ApexTrigger' as const,
+              filePath,
+              dependencies: toNodeIds(
+                parsed.dependencies.map((d) => d.className),
+                'ApexClass'
+              ),
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            };
+          } catch (error) {
+            const errorMsg = `Failed to parse Apex trigger ${filePath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            logger.warn(errorMsg);
+            errors.push(errorMsg);
+            return undefined;
+          }
+        })
+    );
+    components.push(...triggerComponents.filter(isDefined));
 
     // Scan LWC Components (container-based)
     const lwcDirs = await this.findDirectories(packagePath, '**/lwc/*');
-    for (const lwcDir of lwcDirs) {
-      if (this.shouldIgnore(lwcDir)) continue;
+    const lwcComponents = await Promise.all(
+      lwcDirs
+        .filter((lwcDir) => !this.shouldIgnore(lwcDir))
+        .map(async (lwcDir) => {
+          const componentName = path.basename(lwcDir);
+          const jsFile = path.join(lwcDir, `${componentName}.js`);
+          const tsFile = path.join(lwcDir, `${componentName}.ts`);
+          const metaFile = path.join(lwcDir, `${componentName}.js-meta.xml`);
 
-      const componentName = path.basename(lwcDir);
-      const jsFile = path.join(lwcDir, `${componentName}.js`);
-      const tsFile = path.join(lwcDir, `${componentName}.ts`);
-      const metaFile = path.join(lwcDir, `${componentName}.js-meta.xml`);
+          const jsExists = await this.fileExists(jsFile);
+          const tsExists = jsExists ? false : await this.fileExists(tsFile);
+          const codeFile = jsExists ? jsFile : tsExists ? tsFile : null;
+          if (!codeFile) {
+            return undefined;
+          }
 
-      const codeFile = (await this.fileExists(jsFile)) ? jsFile : (await this.fileExists(tsFile)) ? tsFile : null;
-      if (!codeFile) continue;
+          try {
+            const jsContent = await fs.readFile(codeFile, 'utf-8');
+            const metaContent = (await this.fileExists(metaFile)) ? await fs.readFile(metaFile, 'utf-8') : undefined;
+            const parsed = parseLWC(componentName, jsContent, metaContent);
 
-      try {
-        const jsContent = await fs.readFile(codeFile, 'utf-8');
-        const metaContent = (await this.fileExists(metaFile)) ? await fs.readFile(metaFile, 'utf-8') : undefined;
-        const parsed = parseLWC(componentName, jsContent, metaContent);
-
-        components.push({
-          name: componentName,
-          type: 'LightningComponentBundle',
-          filePath: codeFile,
-          dependencies: new Set<string>([...parsed.apexImports, ...parsed.lwcImports.map((imp) => `c:${imp}`)]),
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse LWC ${componentName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+            return {
+              name: componentName,
+              type: 'LightningComponentBundle' as const,
+              filePath: codeFile,
+              dependencies: new Set<string>([...parsed.apexImports, ...parsed.lwcImports.map((imp) => `c:${imp}`)]),
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            };
+          } catch (error) {
+            const errorMsg = `Failed to parse LWC ${componentName}: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            logger.warn(errorMsg);
+            errors.push(errorMsg);
+            return undefined;
+          }
+        })
+    );
+    components.push(...lwcComponents.filter(isDefined));
 
     // Scan Aura Components (container-based)
     const auraDirs = await this.findDirectories(packagePath, '**/aura/*');
-    for (const auraDir of auraDirs) {
-      if (this.shouldIgnore(auraDir)) continue;
+    const auraComponents = await Promise.all(
+      auraDirs
+        .filter((auraDir) => !this.shouldIgnore(auraDir))
+        .map(async (auraDir) => {
+          const componentName = path.basename(auraDir);
+          const cmpFile = path.join(auraDir, `${componentName}.cmp`);
+          if (!(await this.fileExists(cmpFile))) {
+            return undefined;
+          }
 
-      const componentName = path.basename(auraDir);
-      const cmpFile = path.join(auraDir, `${componentName}.cmp`);
-      if (!(await this.fileExists(cmpFile))) continue;
+          try {
+            const cmpContent = await fs.readFile(cmpFile, 'utf-8');
+            const parsed = parseAura(componentName, cmpContent);
 
-      try {
-        const cmpContent = await fs.readFile(cmpFile, 'utf-8');
-        const parsed = parseAura(componentName, cmpContent);
+            const deps = new Set<string>();
+            if (parsed.apexController) deps.add(parsed.apexController);
+            if (parsed.extendsComponent) deps.add(parsed.extendsComponent);
+            parsed.implementsInterfaces.forEach((i) => deps.add(i));
+            parsed.childComponents.forEach((c) => deps.add(`c:${c}`));
 
-        const deps = new Set<string>();
-        if (parsed.apexController) deps.add(parsed.apexController);
-        if (parsed.extendsComponent) deps.add(parsed.extendsComponent);
-        parsed.implementsInterfaces.forEach((i) => deps.add(i));
-        parsed.childComponents.forEach((c) => deps.add(`c:${c}`));
-
-        components.push({
-          name: componentName,
-          type: 'AuraDefinitionBundle',
-          filePath: cmpFile,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Aura component ${componentName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+            return {
+              name: componentName,
+              type: 'AuraDefinitionBundle' as const,
+              filePath: cmpFile,
+              dependencies: deps,
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            };
+          } catch (error) {
+            const errorMsg = `Failed to parse Aura component ${componentName}: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            logger.warn(errorMsg);
+            errors.push(errorMsg);
+            return undefined;
+          }
+        })
+    );
+    components.push(...auraComponents.filter(isDefined));
 
     // Scan Flows
     const flowFiles = await this.findFiles(packagePath, '**/flows/**/*.flow-meta.xml');
-    for (const filePath of flowFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const flowComponents = await Promise.all(
+      flowFiles
+        .filter((filePath) => !this.shouldIgnore(filePath))
+        .map(async (filePath) => {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const parsed = parseFlow(filePath, content);
 
-      try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        const parsed = parseFlow(filePath, content);
+            const deps = new Set<string>();
+            parsed.dependencies.forEach((d) => {
+              if (d.type === 'apex_action' || d.type === 'subflow') {
+                deps.add(d.name);
+              }
+            });
 
-        const deps = new Set<string>();
-        parsed.dependencies.forEach((d) => {
-          if (d.type === 'apex_action' || d.type === 'subflow') {
-            deps.add(d.name);
+            return {
+              name: parsed.flowName,
+              type: 'Flow' as const,
+              filePath,
+              dependencies: deps,
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            };
+          } catch (error) {
+            const errorMsg = `Failed to parse Flow ${filePath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            logger.warn(errorMsg);
+            errors.push(errorMsg);
+            return undefined;
           }
-        });
-
-        components.push({
-          name: parsed.flowName,
-          type: 'Flow',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Flow ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+        })
+    );
+    components.push(...flowComponents.filter(isDefined));
 
     // Scan Custom Objects
     const objectDirs = await this.findDirectories(packagePath, '**/objects/*');
-    for (const objectDir of objectDirs) {
-      if (this.shouldIgnore(objectDir)) continue;
+    const objectComponents = await Promise.all(
+      objectDirs.map(async (objectDir) => {
+        if (this.shouldIgnore(objectDir)) {
+          return undefined;
+        }
 
-      const objectName = path.basename(objectDir);
-      const objectFile = path.join(objectDir, `${objectName}.object-meta.xml`);
-      if (!(await this.fileExists(objectFile))) continue;
+        const objectName = path.basename(objectDir);
+        const objectFile = path.join(objectDir, `${objectName}.object-meta.xml`);
+        if (!(await this.fileExists(objectFile))) {
+          return undefined;
+        }
 
-      try {
-        const content = await fs.readFile(objectFile, 'utf-8');
-        const parsed = await parseCustomObject(objectName, content);
+        try {
+          const content = await fs.readFile(objectFile, 'utf-8');
+          const parsed = await parseCustomObject(objectName, content);
 
-        const deps = new Set<string>();
-        parsed.dependencies.forEach((d) => {
-          if (d.type === 'lookup_field' || d.type === 'master_detail_field') {
-            deps.add(d.referencedObject || '');
-          }
-        });
+          const deps = new Set<string>();
+          parsed.dependencies.forEach((dependency) => {
+            if (
+              (dependency.type === 'lookup_field' || dependency.type === 'master_detail_field') &&
+              dependency.referencedObject
+            ) {
+              deps.add(dependency.referencedObject);
+            }
+          });
 
-        components.push({
-          name: objectName,
-          type: 'CustomObject',
-          filePath: objectFile,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Custom Object ${objectName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: objectName,
+            type: 'CustomObject' as const,
+            filePath: objectFile,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Custom Object ${objectName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...objectComponents.filter(isDefined));
 
     // Scan Custom Metadata Types
     const cmtDirs = await this.findDirectories(packagePath, '**/customMetadata/*');
-    for (const cmtDir of cmtDirs) {
-      if (this.shouldIgnore(cmtDir)) continue;
+    const customMetadataComponents = await Promise.all(
+      cmtDirs.map(async (cmtDir) => {
+        if (this.shouldIgnore(cmtDir)) {
+          return undefined;
+        }
 
-      const typeName = path.basename(cmtDir);
-      const typeFile = path.join(cmtDir, `${typeName}.md-meta.xml`);
-      if (!(await this.fileExists(typeFile))) continue;
+        const typeName = path.basename(cmtDir);
+        const typeFile = path.join(cmtDir, `${typeName}.md-meta.xml`);
+        if (!(await this.fileExists(typeFile))) {
+          return undefined;
+        }
 
-      try {
-        const content = await fs.readFile(typeFile, 'utf-8');
-        await parseCustomMetadataType(typeName, content);
+        try {
+          const content = await fs.readFile(typeFile, 'utf-8');
+          await parseCustomMetadataType(typeName, content);
 
-        components.push({
-          name: typeName,
-          type: 'CustomMetadata',
-          filePath: typeFile,
-          dependencies: new Set<string>(),
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Custom Metadata Type ${typeName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: typeName,
+            type: 'CustomMetadata' as const,
+            filePath: typeFile,
+            dependencies: new Set<string>(),
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Custom Metadata Type ${typeName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...customMetadataComponents.filter(isDefined));
 
     // Scan Profiles
     const profileFiles = await this.findFiles(packagePath, '**/profiles/**/*.profile-meta.xml');
-    for (const filePath of profileFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const profileComponents = await Promise.all(
+      profileFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const profileName = path.basename(filePath, '.profile-meta.xml');
-        const parsed = await parseProfile(filePath, profileName);
+        try {
+          const profileName = path.basename(filePath, '.profile-meta.xml');
+          const parsed = await parseProfile(filePath, profileName);
 
-        const deps = new Set<string>();
-        parsed.objectPermissions.forEach((op: string) => deps.add(op));
-        parsed.apexClassAccesses.forEach((ac: string) => deps.add(ac));
-        parsed.layoutAssignments.forEach((pl: string) => deps.add(pl));
+          const deps = new Set<string>();
+          parsed.objectPermissions.forEach((permission: string) => deps.add(permission));
+          parsed.apexClassAccesses.forEach((classAccess: string) => deps.add(classAccess));
+          parsed.layoutAssignments.forEach((layoutAssignment: string) => deps.add(layoutAssignment));
 
-        components.push({
-          name: profileName,
-          type: 'Profile',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Profile ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: profileName,
+            type: 'Profile' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Profile ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...profileComponents.filter(isDefined));
 
     // Scan Permission Sets
     const permSetFiles = await this.findFiles(packagePath, '**/permissionsets/**/*.permissionset-meta.xml');
-    for (const filePath of permSetFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const permissionSetComponents = await Promise.all(
+      permSetFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const permSetName = path.basename(filePath, '.permissionset-meta.xml');
-        const parsed = await parsePermissionSet(filePath, permSetName);
+        try {
+          const permSetName = path.basename(filePath, '.permissionset-meta.xml');
+          const parsed = await parsePermissionSet(filePath, permSetName);
 
-        const deps = new Set<string>();
-        parsed.objectPermissions.forEach((op: string) => deps.add(op));
-        parsed.apexClassAccesses.forEach((ac: string) => deps.add(ac));
-        parsed.customPermissions.forEach((cp: string) => deps.add(cp));
+          const deps = new Set<string>();
+          parsed.objectPermissions.forEach((permission: string) => deps.add(permission));
+          parsed.apexClassAccesses.forEach((classAccess: string) => deps.add(classAccess));
+          parsed.customPermissions.forEach((customPermission: string) => deps.add(customPermission));
 
-        components.push({
-          name: permSetName,
-          type: 'PermissionSet',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Permission Set ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: permSetName,
+            type: 'PermissionSet' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Permission Set ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...permissionSetComponents.filter(isDefined));
 
     // Scan FlexiPages
     const flexipageFiles = await this.findFiles(packagePath, '**/flexipages/**/*.flexipage-meta.xml');
-    for (const filePath of flexipageFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const flexipageComponents = await Promise.all(
+      flexipageFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const flexipageName = path.basename(filePath, '.flexipage-meta.xml');
-        const parsed = await parseFlexiPage(filePath, flexipageName);
+        try {
+          const flexipageName = path.basename(filePath, '.flexipage-meta.xml');
+          const parsed = await parseFlexiPage(filePath, flexipageName);
 
-        const deps = new Set<string>();
-        parsed.lwcComponents.forEach((c) => deps.add(`c:${c}`));
-        parsed.auraComponents.forEach((c) => deps.add(`c:${c}`));
-        parsed.objects.forEach((o) => deps.add(o));
+          const deps = new Set<string>();
+          parsed.lwcComponents.forEach((componentName) => deps.add(`c:${componentName}`));
+          parsed.auraComponents.forEach((componentName) => deps.add(`c:${componentName}`));
+          parsed.objects.forEach((objectName) => deps.add(objectName));
 
-        components.push({
-          name: flexipageName,
-          type: 'FlexiPage',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse FlexiPage ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: flexipageName,
+            type: 'FlexiPage' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse FlexiPage ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...flexipageComponents.filter(isDefined));
 
     // Scan Layouts
     const layoutFiles = await this.findFiles(packagePath, '**/layouts/**/*.layout-meta.xml');
-    for (const filePath of layoutFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const layoutComponents = await Promise.all(
+      layoutFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const layoutName = path.basename(filePath, '.layout-meta.xml');
-        const parsed = await parseLayout(filePath, layoutName);
+        try {
+          const layoutName = path.basename(filePath, '.layout-meta.xml');
+          const parsed = await parseLayout(filePath, layoutName);
 
-        const deps = new Set<string>();
-        deps.add(parsed.object);
-        parsed.customButtons.forEach((b) => deps.add(b));
-        parsed.visualforcePages.forEach((v) => deps.add(v));
+          const deps = new Set<string>();
+          deps.add(parsed.object);
+          parsed.customButtons.forEach((buttonName) => deps.add(buttonName));
+          parsed.visualforcePages.forEach((pageName) => deps.add(pageName));
 
-        components.push({
-          name: layoutName,
-          type: 'Layout',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Layout ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: layoutName,
+            type: 'Layout' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Layout ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...layoutComponents.filter(isDefined));
 
     // Scan Email Templates
     const emailTemplateFiles = await this.findFiles(packagePath, '**/email/**/*.email-meta.xml');
-    for (const filePath of emailTemplateFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const emailTemplateComponents = await Promise.all(
+      emailTemplateFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const templateName = path.basename(filePath, '.email-meta.xml');
-        const content = await fs.readFile(filePath, 'utf-8');
-        const parsed = await parseEmailTemplate(templateName, content, content);
+        try {
+          const templateName = path.basename(filePath, '.email-meta.xml');
+          const content = await fs.readFile(filePath, 'utf-8');
+          const parsed = await parseEmailTemplate(templateName, content, content);
 
-        const deps = new Set<string>();
-        parsed.dependencies.forEach((d) => {
-          if (d.type === 'visualforce_page') {
-            deps.add(d.name);
-          }
-        });
+          const deps = new Set<string>();
+          parsed.dependencies.forEach((dependency) => {
+            if (dependency.type === 'visualforce_page') {
+              deps.add(dependency.name);
+            }
+          });
 
-        components.push({
-          name: templateName,
-          type: 'EmailTemplate',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Email Template ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: templateName,
+            type: 'EmailTemplate' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Email Template ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...emailTemplateComponents.filter(isDefined));
 
     // Scan Bots
     const botFiles = await this.findFiles(packagePath, '**/bots/**/*.bot-meta.xml');
-    for (const filePath of botFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const botComponents = await Promise.all(
+      botFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const botName = path.basename(filePath, '.bot-meta.xml');
-        const parsed = await parseBot(filePath, botName);
+        try {
+          const botName = path.basename(filePath, '.bot-meta.xml');
+          const parsed = await parseBot(filePath, botName);
 
-        const deps = new Set<string>();
-        parsed.flows.forEach((f) => deps.add(f));
-        parsed.apexActions.forEach((a) => deps.add(a));
-        parsed.genAiPrompts.forEach((g) => deps.add(g));
+          const deps = new Set<string>();
+          parsed.flows.forEach((flowName) => deps.add(flowName));
+          parsed.apexActions.forEach((actionName) => deps.add(actionName));
+          parsed.genAiPrompts.forEach((promptName) => deps.add(promptName));
 
-        components.push({
-          name: botName,
-          type: 'Bot',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Bot ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: botName,
+            type: 'Bot' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Bot ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...botComponents.filter(isDefined));
 
     // Scan GenAI Prompts
     const genaiFiles = await this.findFiles(packagePath, '**/genaiPromptTemplates/**/*.genAiPromptTemplate-meta.xml');
-    for (const filePath of genaiFiles) {
-      if (this.shouldIgnore(filePath)) continue;
+    const genAiPromptComponents = await Promise.all(
+      genaiFiles.map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const promptName = path.basename(filePath, '.genAiPromptTemplate-meta.xml');
-        const parsed = await parseGenAiPrompt(filePath, promptName);
+        try {
+          const promptName = path.basename(filePath, '.genAiPromptTemplate-meta.xml');
+          const parsed = await parseGenAiPrompt(filePath, promptName);
 
-        const deps = new Set<string>();
-        parsed.sobjects.forEach((o: string) => deps.add(o));
-        parsed.dependencies.sobjects.forEach((o: string) => deps.add(o));
+          const deps = new Set<string>();
+          parsed.sobjects.forEach((sObjectName: string) => deps.add(sObjectName));
+          parsed.dependencies.sobjects.forEach((sObjectName: string) => deps.add(sObjectName));
 
-        components.push({
-          name: promptName,
-          type: 'GenAiPromptTemplate',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse GenAI Prompt ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          return {
+            name: promptName,
+            type: 'GenAiPromptTemplate' as const,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse GenAI Prompt ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...genAiPromptComponents.filter(isDefined));
 
     // Scan Visualforce Pages/Components
     const vfPageFiles = await this.findFiles(packagePath, '**/pages/**/*.page');
     const vfComponentFiles = await this.findFiles(packagePath, '**/components/**/*.component');
-    for (const filePath of [...vfPageFiles, ...vfComponentFiles]) {
-      if (this.shouldIgnore(filePath)) continue;
+    const visualforceComponents = await Promise.all(
+      [...vfPageFiles, ...vfComponentFiles].map(async (filePath) => {
+        if (this.shouldIgnore(filePath)) {
+          return undefined;
+        }
 
-      try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        const fileName = path.basename(filePath);
-        const parsed = parseVisualforce(fileName, content);
+        try {
+          const content = await fs.readFile(filePath, 'utf-8');
+          const fileName = path.basename(filePath);
+          const parsed = parseVisualforce(fileName, content);
 
-        const deps = new Set<string>();
-        parsed.dependencies.forEach((d) => {
-          if (d.type === 'apex_controller' || d.type === 'apex_extension') {
-            deps.add(d.name);
-          }
-        });
+          const deps = new Set<string>();
+          parsed.dependencies.forEach((dependency) => {
+            if (dependency.type === 'apex_controller' || dependency.type === 'apex_extension') {
+              deps.add(dependency.name);
+            }
+          });
 
-        components.push({
-          name: parsed.name,
-          type: parsed.type === 'page' ? 'VisualforcePage' : 'VisualforceComponent',
-          filePath,
-          dependencies: deps,
-          dependents: new Set<string>(),
-          priorityBoost: 0,
-        });
-      } catch (error) {
-        const errorMsg = `Failed to parse Visualforce ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        logger.warn(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
+          const componentType: 'VisualforcePage' | 'VisualforceComponent' =
+            parsed.type === 'page' ? 'VisualforcePage' : 'VisualforceComponent';
+
+          return {
+            name: parsed.name,
+            type: componentType,
+            filePath,
+            dependencies: deps,
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          };
+        } catch (error) {
+          const errorMsg = `Failed to parse Visualforce ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          logger.warn(errorMsg);
+          errors.push(errorMsg);
+          return undefined;
+        }
+      })
+    );
+    components.push(...visualforceComponents.filter(isDefined));
 
     return components;
   }
@@ -683,19 +780,18 @@ export class MetadataScannerService {
       ignore: ['**/node_modules/**', '**/.git/**'],
     });
 
-    // Filter to only directories
-    const dirs: string[] = [];
-    for (const match of allMatches) {
-      try {
-        const stat = await fs.stat(match);
-        if (stat.isDirectory()) {
-          dirs.push(match);
+    const directoryMatches = await Promise.all(
+      allMatches.map(async (match) => {
+        try {
+          const stat = await fs.stat(match);
+          return stat.isDirectory() ? match : undefined;
+        } catch {
+          return undefined;
         }
-      } catch {
-        // Skip if stat fails (file doesn't exist, etc.)
-      }
-    }
-    return dirs;
+      })
+    );
+
+    return directoryMatches.filter((match): match is string => match !== undefined);
   }
 
   /**

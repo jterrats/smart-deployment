@@ -6,7 +6,7 @@
 /**
  * Definición de proyecto Salesforce (sfdx-project.json)
  */
-export interface SfdxProject {
+export type SfdxProject = {
   /** Versión del archivo de configuración */
   sourceApiVersion: string;
   /** Paths de packages */
@@ -17,12 +17,12 @@ export interface SfdxProject {
   plugins?: Record<string, unknown>;
   /** Paths a incluir */
   sourcePaths?: string[];
-}
+};
 
 /**
  * Directorio de package
  */
-export interface PackageDirectory {
+export type PackageDirectory = {
   /** Path relativo al proyecto */
   path: string;
   /** Si es el package por defecto */
@@ -35,22 +35,22 @@ export interface PackageDirectory {
   versionNumber?: string;
   /** Dependencies */
   dependencies?: PackageDependency[];
-}
+};
 
 /**
  * Dependencia de package
  */
-export interface PackageDependency {
+export type PackageDependency = {
   /** Nombre del package */
   package: string;
   /** Número de versión */
   versionNumber?: string;
-}
+};
 
 /**
  * Estructura de proyecto detectada
  */
-export interface ProjectStructure {
+export type ProjectStructure = {
   /** Tipo de estructura */
   type: ProjectStructureType;
   /** Path raíz del proyecto */
@@ -63,7 +63,7 @@ export interface ProjectStructure {
   packages: DetectedPackage[];
   /** Versión de API */
   apiVersion: string;
-}
+};
 
 /**
  * Tipos de estructura de proyecto
@@ -87,7 +87,7 @@ export type MetadataFormat =
 /**
  * Package detectado
  */
-export interface DetectedPackage {
+export type DetectedPackage = {
   /** Nombre del package */
   name: string;
   /** Path al package */
@@ -98,7 +98,7 @@ export interface DetectedPackage {
   type: PackageType;
   /** Subdirectorios de metadata */
   metadataDirectories: string[];
-}
+};
 
 /**
  * Tipo de package
@@ -112,7 +112,7 @@ export type PackageType =
 /**
  * Opciones de escaneo de proyecto
  */
-export interface ProjectScanOptions {
+export type ProjectScanOptions = {
   /** Paths a incluir (override de sfdx-project.json) */
   includePaths?: string[];
   /** Paths a excluir */
@@ -125,12 +125,12 @@ export interface ProjectScanOptions {
   maxDepth?: number;
   /** Detectar packages automáticamente */
   autoDetectPackages?: boolean;
-}
+};
 
 /**
  * Resultado del escaneo de proyecto
  */
-export interface ProjectScanResult {
+export type ProjectScanResult = {
   /** Estructura detectada */
   structure: ProjectStructure;
   /** Archivos de metadata encontrados */
@@ -139,12 +139,12 @@ export interface ProjectScanResult {
   stats: ProjectStats;
   /** Warnings */
   warnings: string[];
-}
+};
 
 /**
  * Estadísticas del proyecto
  */
-export interface ProjectStats {
+export type ProjectStats = {
   /** Total de archivos de metadata */
   totalFiles: number;
   /** Archivos por tipo */
@@ -155,13 +155,13 @@ export interface ProjectStats {
   packagesFound: number;
   /** Tiempo de escaneo (ms) */
   scanTime: number;
-}
+};
 
 /**
  * Patrón de metadata
  * Define cómo identificar cada tipo de metadata
  */
-export interface MetadataPattern {
+export type MetadataPattern = {
   /** Tipo de metadata */
   type: string;
   /** Patrón de directorio (glob) */
@@ -174,7 +174,7 @@ export interface MetadataPattern {
   format: 'source' | 'metadata' | 'both';
   /** Requiere directorio contenedor */
   requiresContainer?: boolean;
-}
+};
 
 /**
  * Patrones de metadata conocidos
@@ -227,4 +227,3 @@ export const METADATA_PATTERNS: MetadataPattern[] = [
   },
   // ... más patrones
 ];
-

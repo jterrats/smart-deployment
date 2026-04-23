@@ -19,19 +19,19 @@ import type { MetadataComponent, MetadataType } from '../types/metadata.js';
 
 const logger = getLogger('MetadataFormatScanner');
 
-export interface MetadataFormatScanResult {
+export type MetadataFormatScanResult = {
   format: 'metadata-api' | 'source-format' | 'mixed';
   packageXmlPath?: string;
   srcDirectory?: string;
   components: MetadataComponent[];
   warnings: string[];
   executionTime: number;
-}
+};
 
-export interface PackageXmlEntry {
+export type PackageXmlEntry = {
   name: string;
   type: string;
-}
+};
 
 /**
  * @ac US-080-AC-1: Detect package.xml
@@ -95,7 +95,7 @@ export class MetadataFormatScanner {
       const packageXmlPath = path.join(projectRoot, 'package.xml');
       if (fs.existsSync(packageXmlPath)) {
         result.packageXmlPath = packageXmlPath;
-        const packageEntries = await this.parsePackageXml(packageXmlPath);
+        const packageEntries = this.parsePackageXml(packageXmlPath);
         logger.info('Parsed package.xml', { entries: packageEntries.length });
       }
 
@@ -134,17 +134,17 @@ export class MetadataFormatScanner {
    * @ac US-080-AC-3: Parse metadata format files
    * Parse package.xml
    */
-  private async parsePackageXml(packageXmlPath: string): Promise<PackageXmlEntry[]> {
+  private parsePackageXml(packageXmlPath: string): PackageXmlEntry[] {
     try {
       const content = fs.readFileSync(packageXmlPath, 'utf-8');
       const entries: PackageXmlEntry[] = [];
 
       // Simple XML parsing for <types> elements
-      const typeBlocks = content.match(/<types>[\s\S]*?<\/types>/g) || [];
+      const typeBlocks = content.match(/<types>[\s\S]*?<\/types>/g) ?? [];
 
       for (const block of typeBlocks) {
         const typeMatch = /<name>(.*?)<\/name>/.exec(block);
-        const memberMatches = block.match(/<members>(.*?)<\/members>/g) || [];
+        const memberMatches = block.match(/<members>(.*?)<\/members>/g) ?? [];
 
         if (typeMatch) {
           const type = typeMatch[1];
@@ -181,21 +181,25 @@ export class MetadataFormatScanner {
     try {
       const entries = fs.readdirSync(srcDir, { withFileTypes: true });
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
+      const typeComponents = await Promise.all(
+        entries.map((entry) => {
+          if (!entry.isDirectory()) {
+            return Promise.resolve<MetadataComponent[]>([]);
+          }
 
-        const typeDir = path.join(srcDir, entry.name);
-        const metadataType = this.mapDirectoryToType(entry.name);
+          const typeDir = path.join(srcDir, entry.name);
+          const metadataType = this.mapDirectoryToType(entry.name);
 
-        if (!metadataType) {
-          logger.debug('Unknown metadata type directory', { dir: entry.name });
-          continue;
-        }
+          if (!metadataType) {
+            logger.debug('Unknown metadata type directory', { dir: entry.name });
+            return Promise.resolve<MetadataComponent[]>([]);
+          }
 
-        // Scan files in type directory
-        const typeComponents = await this.scanTypeDirectory(typeDir, metadataType);
-        components.push(...typeComponents);
-      }
+          return this.scanTypeDirectory(typeDir, metadataType);
+        })
+      );
+
+      components.push(...typeComponents.flat());
 
       return components;
     } catch (error) {
@@ -210,10 +214,7 @@ export class MetadataFormatScanner {
    * @ac US-080-AC-3: Parse metadata format files
    * Scan specific metadata type directory
    */
-  private async scanTypeDirectory(
-    typeDir: string,
-    metadataType: MetadataType
-  ): Promise<MetadataComponent[]> {
+  private scanTypeDirectory(typeDir: string, metadataType: MetadataType): MetadataComponent[] {
     const components: MetadataComponent[] = [];
 
     try {
@@ -239,7 +240,7 @@ export class MetadataFormatScanner {
           });
         } else if (stat.isDirectory()) {
           // Handle bundle types (e.g., Documents, DigitalExperience)
-          const bundleComponents = await this.scanBundleDirectory(filePath, metadataType);
+          const bundleComponents = this.scanBundleDirectory(filePath, metadataType);
           components.push(...bundleComponents);
         }
       }
@@ -259,10 +260,7 @@ export class MetadataFormatScanner {
    * @ac US-080-AC-6: Handle DigitalExperience bundles
    * Scan bundle directory (for Documents, DigitalExperience, etc.)
    */
-  private async scanBundleDirectory(
-    bundleDir: string,
-    metadataType: MetadataType
-  ): Promise<MetadataComponent[]> {
+  private scanBundleDirectory(bundleDir: string, metadataType: MetadataType): MetadataComponent[] {
     const components: MetadataComponent[] = [];
 
     try {
@@ -316,13 +314,14 @@ export class MetadataFormatScanner {
       experiences: 'DigitalExperience',
     };
 
-    return mappings[dirName] || null;
+    return mappings[dirName] ?? null;
   }
 
   /**
    * Extract component name from filename
    */
   private extractComponentName(filename: string, metadataType: MetadataType): string {
+    void metadataType;
     // Remove extension
     const withoutExt = filename.replace(/\.[^.]+$/, '');
 
@@ -337,4 +336,3 @@ export class MetadataFormatScanner {
     return this.errorAggregator.formatReport();
   }
 }
-

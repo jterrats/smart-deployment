@@ -22,10 +22,12 @@ type StatusCommandTestDouble = {
 };
 
 describe('StatusCommand', () => {
-  const originalLoadState = StateManager.prototype.loadState;
+  const originalLoadState = Object.getOwnPropertyDescriptor(StateManager.prototype, 'loadState')?.value as
+    | typeof StateManager.prototype.loadState
+    | undefined;
 
   afterEach(() => {
-    StateManager.prototype.loadState = originalLoadState;
+    Object.defineProperty(StateManager.prototype, 'loadState', { value: originalLoadState, writable: true });
   });
 
   it('US-050: reports current deployment status from persisted state', async () => {

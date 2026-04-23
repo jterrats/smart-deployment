@@ -7,9 +7,12 @@
     "@salesforce/core": "^8",
     "@salesforce/sf-plugins-core": "^12",
     "fast-xml-parser": "^5.3.6",
-    "glob": "^11.0.0"
+    "glob": "^11.0.0",
+    "minimatch": "^10.1.1"
   },
   "devDependencies": {
+    "@types/chai": "^5.2.2",
+    "@types/mocha": "^10.0.10",
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
     "@cucumber/cucumber": "^12.6.0",
@@ -19,9 +22,11 @@
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@types/cucumber": "^7.0.3",
+    "chai": "^4.5.0",
     "commitizen": "^4.3.1",
     "cz-customizable": "^7.5.1",
     "eslint-plugin-sf-plugin": "^1.20.33",
+    "mocha": "^10.8.2",
     "oclif": "^4.22.77",
     "semantic-release": "^22.0.12",
     "ts-node": "^10.9.2",

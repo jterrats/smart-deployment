@@ -71,9 +71,9 @@ describe('Logger', () => {
       logger.configure({ logToConsole: true });
       logger.configure({ level: LogLevel.WARN });
       const captured: string[] = [];
-      const consoleRef = Reflect.get(globalThis, 'console') as typeof globalThis.console;
-      const originalWarn = consoleRef.warn;
-      const originalError = consoleRef.error;
+      const consoleRef = Reflect.get(globalThis, 'console');
+      const originalWarn = consoleRef.warn.bind(consoleRef);
+      const originalError = consoleRef.error.bind(consoleRef);
 
       consoleRef.warn = (message?: unknown) => {
         captured.push(String(message));

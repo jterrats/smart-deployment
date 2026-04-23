@@ -17,7 +17,7 @@ import { getLogger } from '../../src/utils/logger.js';
 
 const logger = getLogger('ProjectFixtures');
 
-export interface ProjectFixture {
+export type ProjectFixture = {
   name: string;
   description: string;
   structure: ProjectStructure;
@@ -26,14 +26,14 @@ export interface ProjectFixture {
   expectedDependencies: number;
   hasCircularDependencies: boolean;
   hasCorruptedFiles: boolean;
-}
+};
 
-export interface ProjectStructure {
+export type ProjectStructure = {
   root: string;
   packageDirs: string[];
   metadataTypes: string[];
   fileCount: number;
-}
+};
 
 /**
  * @ac US-068-AC-1: Sample Salesforce projects
@@ -166,24 +166,28 @@ export class ProjectFixtures {
     await fs.mkdir(path.join(forceAppPath, 'classes'), { recursive: true });
 
     // Generate many files
-    for (let i = 0; i < fileCount; i++) {
-      const className = `TestClass${i}`;
-      const classPath = path.join(forceAppPath, `classes/${className}.cls`);
-      await fs.writeFile(classPath, `public class ${className} {}`, 'utf-8');
-      metadataFiles.push(classPath);
+    await Promise.all(
+      Array.from({ length: fileCount }, async (_, index) => {
+        const className = `TestClass${index}`;
+        const classPath = path.join(forceAppPath, `classes/${className}.cls`);
+        const metaPath = path.join(forceAppPath, `classes/${className}.clsm-meta.xml`);
 
-      const metaPath = path.join(forceAppPath, `classes/${className}.clsm-meta.xml`);
-      await fs.writeFile(
-        metaPath,
-        `<?xml version="1.0" encoding="UTF-8"?>
+        await Promise.all([
+          fs.writeFile(classPath, `public class ${className} {}`, 'utf-8'),
+          fs.writeFile(
+            metaPath,
+            `<?xml version="1.0" encoding="UTF-8"?>
 <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>61.0</apiVersion>
     <status>Active</status>
 </ApexClass>`,
-        'utf-8'
-      );
-      metadataFiles.push(metaPath);
-    }
+            'utf-8'
+          ),
+        ]);
+
+        metadataFiles.push(classPath, metaPath);
+      })
+    );
 
     logger.info('Large project fixture created', { name, fileCount });
 
@@ -341,31 +345,32 @@ export class ProjectFixtures {
     // Create multiple SFDX projects
     const projects = ['project-a', 'project-b', 'project-c'];
 
-    for (const projectName of projects) {
-      const projectDir = path.join(projectPath, projectName);
-      await fs.mkdir(projectDir, { recursive: true });
+    await Promise.all(
+      projects.map(async (projectName) => {
+        const projectDir = path.join(projectPath, projectName);
+        await fs.mkdir(projectDir, { recursive: true });
 
-      // Create sfdx-project.json for each
-      const sfdxProject = {
-        packageDirectories: [
-          {
-            path: 'force-app',
-            default: true,
-          },
-        ],
-        sourceApiVersion: '61.0',
-      };
+        const sfdxProject = {
+          packageDirectories: [
+            {
+              path: 'force-app',
+              default: true,
+            },
+          ],
+          sourceApiVersion: '61.0',
+        };
 
-      await fs.writeFile(path.join(projectDir, 'sfdx-project.json'), JSON.stringify(sfdxProject, null, 2), 'utf-8');
+        const forceAppPath = path.join(projectDir, 'force-app/main/default/classes');
+        const classPath = path.join(forceAppPath, `${projectName}Class.cls`);
 
-      // Create sample class
-      const forceAppPath = path.join(projectDir, 'force-app/main/default/classes');
-      await fs.mkdir(forceAppPath, { recursive: true });
-
-      const classPath = path.join(forceAppPath, `${projectName}Class.cls`);
-      await fs.writeFile(classPath, `public class ${projectName}Class {}`, 'utf-8');
-      metadataFiles.push(classPath);
-    }
+        await Promise.all([
+          fs.writeFile(path.join(projectDir, 'sfdx-project.json'), JSON.stringify(sfdxProject, null, 2), 'utf-8'),
+          fs.mkdir(forceAppPath, { recursive: true }),
+        ]);
+        await fs.writeFile(classPath, `public class ${projectName}Class {}`, 'utf-8');
+        metadataFiles.push(classPath);
+      })
+    );
 
     logger.info('Monorepo project fixture created', { name, projects: projects.length });
 

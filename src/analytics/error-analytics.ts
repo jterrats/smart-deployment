@@ -15,28 +15,28 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ErrorAnalytics');
 
-export interface ErrorMetric {
+export type ErrorMetric = {
   code: string;
   count: number;
   firstSeen: Date;
   lastSeen: Date;
   category: string;
-}
+};
 
-export interface ErrorTrend {
+export type ErrorTrend = {
   code: string;
   trend: 'increasing' | 'decreasing' | 'stable';
   changePercentage: number;
-}
+};
 
-export interface ErrorAnalyticsReport {
+export type ErrorAnalyticsReport = {
   totalErrors: number;
   uniqueErrors: number;
   topErrors: ErrorMetric[];
   trends: ErrorTrend[];
   categoryBreakdown: Record<string, number>;
   timeRange: { start: Date; end: Date };
-}
+};
 
 /**
  * @ac US-078-AC-1: Track error metrics
@@ -74,7 +74,7 @@ export class ErrorAnalytics {
    * @ac US-078-AC-2: Error frequency analysis
    * Get error frequency
    */
-  public getFrequency(code: string, timeWindow: number = 3600000): number {
+  public getFrequency(code: string, timeWindow: number = 3_600_000): number {
     const now = Date.now();
     const windowStart = now - timeWindow;
 
@@ -89,8 +89,8 @@ export class ErrorAnalytics {
     const trends: ErrorTrend[] = [];
 
     for (const [code] of this.metrics.entries()) {
-      const recentCount = this.getFrequency(code, 3600000); // Last hour
-      const olderCount = this.getFrequency(code, 7200000) - recentCount; // Previous hour
+      const recentCount = this.getFrequency(code, 3_600_000); // Last hour
+      const olderCount = this.getFrequency(code, 7_200_000) - recentCount; // Previous hour
 
       let trend: 'increasing' | 'decreasing' | 'stable' = 'stable';
       let changePercentage = 0;

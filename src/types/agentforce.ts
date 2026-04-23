@@ -2,38 +2,38 @@ import { type MetadataComponent, type MetadataType } from './metadata.js';
 import { type DeploymentWave } from './deployment.js';
 import { type NodeId } from './dependency.js';
 
-export interface AnalysisContext {
+export type AnalysisContext = {
   components: MetadataComponent[];
   staticDependencies: Map<NodeId, Set<NodeId>>;
   orgType: 'sandbox' | 'production' | 'scratch';
   deploymentHistory?: DeploymentHistoryEntry[];
-}
+};
 
-export interface DeploymentHistoryEntry {
+export type DeploymentHistoryEntry = {
   timestamp: string;
   componentsDeployed: string[];
   success: boolean;
   errors?: string[];
   duration: number; // ms
-}
+};
 
-export interface AgentforceAnalysisResult {
+export type AgentforceAnalysisResult = {
   inferredDependencies: InferredDependency[];
   priorityAdjustments: PriorityAdjustment[];
   warnings: AIWarning[];
   optimizations: AIOptimization[];
   confidenceScore: number; // 0-1
   analysisTime: number; // ms
-}
+};
 
-export interface InferredDependency {
+export type InferredDependency = {
   from: NodeId;
   to: NodeId;
   metadataType?: MetadataType; // For filtering/prioritization
   reason: string;
   confidence: number; // 0-1
   inferenceType: InferenceType;
-}
+};
 
 export type InferenceType =
   | 'semantic-analysis'
@@ -43,21 +43,21 @@ export type InferenceType =
   | 'api-usage'
   | 'complex-relationship';
 
-export interface PriorityAdjustment {
+export type PriorityAdjustment = {
   component: NodeId;
   currentPriority: number;
   suggestedPriority: number;
   reason: string;
   impact: 'low' | 'medium' | 'high';
-}
+};
 
-export interface AIWarning {
+export type AIWarning = {
   type: AIWarningType;
   message: string;
   affectedComponents: NodeId[];
   severity: 'info' | 'warning' | 'error';
   suggestion?: string;
-}
+};
 
 export type AIWarningType =
   | 'potential-circular-dependency'
@@ -67,13 +67,13 @@ export type AIWarningType =
   | 'test-coverage-gap'
   | 'breaking-change-risk';
 
-export interface AIOptimization {
+export type AIOptimization = {
   type: AIOptimizationType;
   description: string;
   estimatedBenefit: number; // Saved seconds
   howToApply: string;
   affectedComponents: NodeId[];
-}
+};
 
 export type AIOptimizationType =
   | 'wave-consolidation'
@@ -82,16 +82,16 @@ export type AIOptimizationType =
   | 'batch-optimization'
   | 'test-selection';
 
-export interface WaveValidationRequest {
+export type WaveValidationRequest = {
   /** Proposed waves */
   waves: DeploymentWave[];
   /** Deployment context */
   context: AnalysisContext;
   /** Validation level (quick, normal, deep) */
   validationLevel: 'quick' | 'normal' | 'deep';
-}
+};
 
-export interface WaveValidationResult {
+export type WaveValidationResult = {
   /** Are the waves valid? */
   isValid: boolean;
   /** Quality score (0-100) */
@@ -102,9 +102,9 @@ export interface WaveValidationResult {
   improvements: WaveImprovement[];
   /** Optimized waves (if requested) */
   optimizedWaves?: DeploymentWave[];
-}
+};
 
-export interface ValidationIssue {
+export type ValidationIssue = {
   /** Affected wave */
   waveNumber: number;
   /** Issue type */
@@ -115,7 +115,7 @@ export interface ValidationIssue {
   severity: 'critical' | 'high' | 'medium' | 'low';
   /** How to resolve it */
   resolution: string;
-}
+};
 
 export type ValidationIssueType =
   | 'dependency-violation' // Dependency violation
@@ -124,7 +124,7 @@ export type ValidationIssueType =
   | 'test-coverage-missing' // Missing test coverage
   | 'circular-reference'; // Circular reference
 
-export interface WaveImprovement {
+export type WaveImprovement = {
   /** Wave to improve */
   waveNumber: number;
   /** Improvement type */
@@ -133,7 +133,7 @@ export interface WaveImprovement {
   description: string;
   /** Estimated benefit */
   benefit: string;
-}
+};
 
 export type ImprovementType =
   | 'reorder-components' // Reorder components
@@ -142,7 +142,7 @@ export type ImprovementType =
   | 'add-test-class' // Add test class
   | 'remove-redundancy'; // Remove redundancy
 
-export interface AgentforcePrompt {
+export type AgentforcePrompt = {
   /** Requested analysis type */
   analysisType: AnalysisType;
   /** Analysis context */
@@ -153,7 +153,7 @@ export interface AgentforcePrompt {
   temperature?: number;
   /** Max tokens */
   maxTokens?: number;
-}
+};
 
 export type AnalysisType =
   | 'dependency-inference' // Infer dependencies
@@ -163,7 +163,7 @@ export type AnalysisType =
   | 'risk-assessment' // Assess risks
   | 'test-strategy'; // Testing strategy
 
-export interface AgentforceResponse {
+export type AgentforceResponse = {
   /** Generated analysis */
   analysis: string;
   /** Structured data (if applicable) */
@@ -174,9 +174,9 @@ export interface AgentforceResponse {
   model: string;
   /** Timestamp */
   timestamp: string;
-}
+};
 
-export interface AgentforceConfig {
+export type AgentforceConfig = {
   /** Agentforce endpoint */
   endpoint: string;
   /** Model to use */
@@ -191,9 +191,9 @@ export interface AgentforceConfig {
   retries: number;
   /** Enable response cache */
   enableCache: boolean;
-}
+};
 
-export interface AgentforceMetrics {
+export type AgentforceMetrics = {
   /** Total requests */
   totalRequests: number;
   /** Successful requests */
@@ -208,4 +208,4 @@ export interface AgentforceMetrics {
   cacheHits: number;
   /** Cache misses */
   cacheMisses: number;
-}
+};

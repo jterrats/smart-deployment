@@ -19,25 +19,24 @@ import type { SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('ProjectValidator');
 
-export interface ValidationIssue {
+export type ValidationIssue = {
   severity: 'error' | 'warning' | 'info';
   message: string;
   path?: string;
   suggestion?: string;
-}
+};
 
-export interface ValidationReport {
+export type ValidationReport = {
   isValid: boolean;
   issues: ValidationIssue[];
   checkedItems: string[];
   executionTime: number;
-}
+};
 
 /**
  * @ac US-084-AC-1: Validate sfdx-project.json schema
  */
 export class ProjectValidator {
-
   /**
    * Validate project structure
    */
@@ -53,7 +52,7 @@ export class ProjectValidator {
 
     try {
       // Check 1: sfdx-project.json exists
-      await this.validateSfdxProjectJson(projectRoot, report);
+      this.validateSfdxProjectJson(projectRoot, report);
 
       // Check 2: Package directories exist
       await this.validatePackageDirectories(projectRoot, report);
@@ -62,7 +61,7 @@ export class ProjectValidator {
       await this.validateMetadataStructure(projectRoot, report);
 
       // Check 4: Required files
-      await this.validateRequiredFiles(projectRoot, report);
+      this.validateRequiredFiles(projectRoot, report);
 
       // Determine overall validity
       report.isValid = !report.issues.some((i) => i.severity === 'error');
@@ -91,7 +90,7 @@ export class ProjectValidator {
   /**
    * @ac US-084-AC-1: Validate sfdx-project.json schema
    */
-  private async validateSfdxProjectJson(projectRoot: string, report: ValidationReport): Promise<void> {
+  private validateSfdxProjectJson(projectRoot: string, report: ValidationReport): void {
     report.checkedItems.push('sfdx-project.json existence');
 
     const sfdxProjectPath = path.join(projectRoot, 'sfdx-project.json');
@@ -133,7 +132,7 @@ export class ProjectValidator {
       }
 
       report.checkedItems.push('sfdx-project.json schema');
-    } catch (error) {
+    } catch {
       report.issues.push({
         severity: 'error',
         message: 'Invalid JSON in sfdx-project.json',
@@ -204,12 +203,16 @@ export class ProjectValidator {
   /**
    * @ac US-084-AC-4: Check for required files
    */
-  private async validateRequiredFiles(projectRoot: string, report: ValidationReport): Promise<void> {
+  private validateRequiredFiles(projectRoot: string, report: ValidationReport): void {
     report.checkedItems.push('required files');
 
     const recommendedFiles = [
       { file: '.gitignore', severity: 'warning' as const, suggestion: 'Add .gitignore to exclude build artifacts' },
-      { file: '.forceignore', severity: 'warning' as const, suggestion: 'Add .forceignore to exclude files from deployment' },
+      {
+        file: '.forceignore',
+        severity: 'warning' as const,
+        suggestion: 'Add .forceignore to exclude files from deployment',
+      },
       { file: 'README.md', severity: 'info' as const, suggestion: 'Add README.md to document your project' },
     ];
 

@@ -17,18 +17,18 @@ import type { TestLevel } from './sf-cli-integration.js';
 
 const logger = getLogger('TestExecutor');
 
-export interface TestExecutionPlan {
+export type TestExecutionPlan = {
   testLevel: TestLevel;
   tests: string[];
   reason: string;
-}
+};
 
-export interface TestResults {
+export type TestResults = {
   testsRun: number;
   testFailures: number;
   coverage?: number;
   failedTests: string[];
-}
+};
 
 /**
  * @ac US-087-AC-1: Run tests only in Apex waves
@@ -39,9 +39,7 @@ export interface TestResults {
 export class TestExecutor {
   public determineTestLevel(wave: Wave, isSandbox: boolean): TestExecutionPlan {
     // AC-1: Only run tests in Apex waves
-    const hasApex = wave.metadata.types.some(type =>
-      type === 'ApexClass' || type === 'ApexTrigger'
-    );
+    const hasApex = wave.metadata.types.some((type) => type === 'ApexClass' || type === 'ApexTrigger');
 
     // AC-4: No tests in sandbox
     if (isSandbox) {
@@ -61,8 +59,8 @@ export class TestExecutor {
     }
 
     // AC-3: Run specified tests if available
-    const apexComponents = wave.components.filter(c =>
-      c.startsWith('ApexClass:') || c.startsWith('ApexTrigger:')
+    const apexComponents = wave.components.filter(
+      (component) => component.startsWith('ApexClass:') || component.startsWith('ApexTrigger:')
     );
 
     if (apexComponents.length > 0 && apexComponents.length <= 10) {
@@ -88,19 +86,15 @@ export class TestExecutor {
     // Placeholder: In real implementation, this would analyze test classes
     // and match them to the components being deployed
     return apexComponents
-      .filter(c => c.startsWith('ApexClass:'))
-      .map(c => c.replace('ApexClass:', '') + 'Test');
+      .filter((component) => component.startsWith('ApexClass:'))
+      .map((component) => component.replace('ApexClass:', '') + 'Test');
   }
 
   /**
    * @ac US-087-AC-5: Track test results
    * @ac US-087-AC-6: Report coverage
    */
-  public analyzeTestResults(
-    testsRun: number,
-    testFailures: number,
-    coverage?: number
-  ): TestResults {
+  public analyzeTestResults(testsRun: number, testFailures: number, coverage?: number): TestResults {
     logger.info('Analyzing test results', { testsRun, testFailures, coverage });
 
     return {
@@ -112,10 +106,7 @@ export class TestExecutor {
   }
 
   public formatTestResults(results: TestResults): string {
-    const lines = [
-      `Tests Run: ${results.testsRun}`,
-      `Failures: ${results.testFailures}`,
-    ];
+    const lines = [`Tests Run: ${results.testsRun}`, `Failures: ${results.testFailures}`];
 
     if (results.coverage !== undefined) {
       lines.push(`Coverage: ${results.coverage}%`);
@@ -124,4 +115,3 @@ export class TestExecutor {
     return lines.join(' | ');
   }
 }
-

@@ -10,14 +10,16 @@
  * @issue #48
  */
 
-import { SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
-import { Flags } from '@oclif/core';
+import { Messages } from '@salesforce/core';
+import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { DeploymentValidationService } from '../deployment/deployment-validation-service.js';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ValidateCommand');
+Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
+const messages = Messages.loadMessages('smart-deployment', 'validate');
 
-interface ValidateResult {
+type ValidateResult = {
   success: boolean;
   components: number;
   waves: number;
@@ -29,18 +31,19 @@ interface ValidateResult {
     fallback?: boolean;
     overallRisk?: 'low' | 'medium' | 'high' | 'critical';
   };
-}
+};
 
 export default class Validate extends SfCommand<ValidateResult> {
-  public static readonly summary = 'Validate deployment without executing';
+  public static readonly summary = messages.getMessage('summary');
+  public static readonly examples = messages.getMessages('examples');
   public static readonly flags = {
     'target-org': optionalOrgFlagWithDeprecations,
     'source-path': Flags.directory({
-      summary: 'Path to the Salesforce project to validate',
+      summary: messages.getMessage('flags.source-path.summary'),
       exists: true,
     }),
     'use-ai': Flags.boolean({
-      summary: 'Use AI wave validation with the configured provider when available',
+      summary: messages.getMessage('flags.use-ai.summary'),
       default: false,
     }),
   };

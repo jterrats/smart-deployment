@@ -18,7 +18,7 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('DeploymentReporter');
 
-export interface WaveReport {
+export type WaveReport = {
   waveNumber: number;
   components: number;
   startTime: string;
@@ -28,9 +28,9 @@ export interface WaveReport {
   testsRun?: number;
   testFailures?: number;
   error?: string;
-}
+};
 
-export interface DeploymentReport {
+export type DeploymentReport = {
   deploymentId: string;
   targetOrg: string;
   startTime: string;
@@ -43,7 +43,7 @@ export interface DeploymentReport {
   totalTests: number;
   waves: WaveReport[];
   errors: string[];
-}
+};
 
 /**
  * @ac US-090-AC-1: Generate deployment summary
@@ -134,7 +134,9 @@ export class DeploymentReporter {
 </head>
 <body>
   <h1>Deployment Report</h1>
-  <p><strong>Status:</strong> <span class="${report.success ? 'success' : 'failure'}">${report.success ? 'SUCCESS' : 'FAILED'}</span></p>
+  <p><strong>Status:</strong> <span class="${report.success ? 'success' : 'failure'}">${
+      report.success ? 'SUCCESS' : 'FAILED'
+    }</span></p>
   <p><strong>Target:</strong> ${report.targetOrg}</p>
   <p><strong>Duration:</strong> ${report.totalDuration}s</p>
 
@@ -147,7 +149,9 @@ export class DeploymentReporter {
       <th>Tests</th>
       <th>Status</th>
     </tr>
-    ${report.waves.map(w => `
+    ${report.waves
+      .map(
+        (w) => `
     <tr>
       <td>${w.waveNumber}</td>
       <td>${w.components}</td>
@@ -155,7 +159,9 @@ export class DeploymentReporter {
       <td>${w.testsRun ?? 0}</td>
       <td class="${w.success ? 'success' : 'failure'}">${w.success ? '✅' : '❌'}</td>
     </tr>
-    `).join('')}
+    `
+      )
+      .join('')}
   </table>
 </body>
 </html>
@@ -187,4 +193,3 @@ export class DeploymentReporter {
     return filename;
   }
 }
-

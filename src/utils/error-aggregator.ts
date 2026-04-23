@@ -11,7 +11,7 @@ import { getLogger } from './logger.js';
 
 const logger = getLogger('ErrorAggregator');
 
-export interface AggregatedError {
+export type AggregatedError = {
   filePath?: string;
   lineNumber?: number;
   columnNumber?: number;
@@ -21,16 +21,16 @@ export interface AggregatedError {
   timestamp: Date;
   stack?: string;
   context?: Record<string, unknown>;
-}
+};
 
-export interface ErrorStats {
+export type ErrorStats = {
   total: number;
   byType: Map<string, number>;
   bySeverity: Map<string, number>;
   byFile: Map<string, number>;
-}
+};
 
-export interface ErrorReport {
+export type ErrorReport = {
   totalErrors: number;
   criticalCount: number;
   highCount: number;
@@ -39,7 +39,7 @@ export interface ErrorReport {
   errors: AggregatedError[];
   stats: ErrorStats;
   timestamp: Date;
-}
+};
 
 /**
  * @ac US-076-AC-6: Error aggregation
@@ -70,18 +70,18 @@ export class ErrorAggregator {
     let { filePath, lineNumber, columnNumber } = error;
     if (!filePath && error.stack) {
       const location = this.extractLocationFromStack(error.stack);
-      filePath = filePath || location.filePath;
-      lineNumber = lineNumber || location.lineNumber;
-      columnNumber = columnNumber || location.columnNumber;
+      filePath = filePath ?? location.filePath;
+      lineNumber = lineNumber ?? location.lineNumber;
+      columnNumber = columnNumber ?? location.columnNumber;
     }
 
     const aggregatedError: AggregatedError = {
       filePath,
       lineNumber,
       columnNumber,
-      errorType: error.type || 'UnknownError',
+      errorType: error.type ?? 'UnknownError',
       errorMessage: error.message,
-      severity: error.severity || 'MEDIUM',
+      severity: error.severity ?? 'MEDIUM',
       timestamp: new Date(),
       stack: error.stack,
       context: error.context,
@@ -174,14 +174,14 @@ export class ErrorAggregator {
 
     for (const error of this.errors) {
       // Count by type
-      stats.byType.set(error.errorType, (stats.byType.get(error.errorType) || 0) + 1);
+      stats.byType.set(error.errorType, (stats.byType.get(error.errorType) ?? 0) + 1);
 
       // Count by severity
-      stats.bySeverity.set(error.severity, (stats.bySeverity.get(error.severity) || 0) + 1);
+      stats.bySeverity.set(error.severity, (stats.bySeverity.get(error.severity) ?? 0) + 1);
 
       // Count by file
       if (error.filePath) {
-        stats.byFile.set(error.filePath, (stats.byFile.get(error.filePath) || 0) + 1);
+        stats.byFile.set(error.filePath, (stats.byFile.get(error.filePath) ?? 0) + 1);
       }
     }
 
@@ -196,10 +196,10 @@ export class ErrorAggregator {
 
     return {
       totalErrors: this.errors.length,
-      criticalCount: stats.bySeverity.get('CRITICAL') || 0,
-      highCount: stats.bySeverity.get('HIGH') || 0,
-      mediumCount: stats.bySeverity.get('MEDIUM') || 0,
-      lowCount: stats.bySeverity.get('LOW') || 0,
+      criticalCount: stats.bySeverity.get('CRITICAL') ?? 0,
+      highCount: stats.bySeverity.get('HIGH') ?? 0,
+      mediumCount: stats.bySeverity.get('MEDIUM') ?? 0,
+      lowCount: stats.bySeverity.get('LOW') ?? 0,
       errors: this.getErrors(),
       stats,
       timestamp: new Date(),
@@ -259,7 +259,7 @@ export class ErrorAggregator {
         lines.push(`\n${index + 1}. ${severity} ${error.errorType}`);
         lines.push(`   Message: ${error.errorMessage}`);
         if (error.filePath) {
-          lines.push(`   Location: ${error.filePath}:${error.lineNumber || '?'}:${error.columnNumber || '?'}`);
+          lines.push(`   Location: ${error.filePath}:${error.lineNumber ?? '?'}:${error.columnNumber ?? '?'}`);
         }
         if (error.context && Object.keys(error.context).length > 0) {
           lines.push(`   Context: ${JSON.stringify(error.context)}`);

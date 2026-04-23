@@ -1,8 +1,8 @@
-import { expect } from 'chai';
-import { describe, it, beforeEach, afterEach } from 'mocha';
 import { mkdtemp, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { describe, it, beforeEach, afterEach } from 'mocha';
+import { expect } from 'chai';
 import { DeploymentStatusService } from '../../../src/deployment/deployment-status-service.js';
 import { StateManager } from '../../../src/deployment/state-manager.js';
 

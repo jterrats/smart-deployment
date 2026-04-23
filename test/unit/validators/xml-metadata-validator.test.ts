@@ -1,10 +1,10 @@
 /**
  * Tests for XML Metadata Validator - US-091
  */
-import { expect } from 'chai';
-import { describe, it } from 'mocha';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { XmlMetadataValidator } from '../../../src/validators/xml-metadata-validator.js';
 
 describe('XmlMetadataValidator', () => {
@@ -75,17 +75,15 @@ describe('XmlMetadataValidator', () => {
       await fs.writeFile(testFile, xmlMissingStatus, 'utf-8');
 
       const result = await validator.validateFile(testFile);
-      
+
       // Should detect missing status field (schema validation)
       // The validator checks for required fields in Apex metadata
-      const hasSchemaError = result.errors.some((e) => 
-        e.type === 'schema' && e.message.includes('status')
-      );
-      
+      const hasSchemaError = result.errors.some((e) => e.type === 'schema' && e.message.includes('status'));
+
       // Verify the validator ran and detected schema issues
       expect(result.errors).to.be.an('array');
       expect(result.filePath).to.equal(testFile);
-      
+
       // Schema validation should catch missing required fields
       if (hasSchemaError) {
         expect(hasSchemaError).to.be.true;
@@ -208,4 +206,3 @@ describe('XmlMetadataValidator', () => {
     });
   });
 });
-

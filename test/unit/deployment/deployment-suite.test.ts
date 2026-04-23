@@ -1,7 +1,7 @@
-import { expect } from 'chai';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { afterEach, describe, it } from 'mocha';
 import { DeploymentReporter, type DeploymentReport } from '../../../src/deployment/deployment-reporter.js';
 import { DeploymentTracker } from '../../../src/deployment/deployment-tracker.js';
@@ -157,7 +157,7 @@ describe('Deployment Engine Suite', () => {
       const internals = tracker as unknown as {
         startTimes: Map<string, number>;
       };
-      internals.startTimes.set('0Afxx0000001111', Date.now() - 4_000);
+      internals.startTimes.set('0Afxx0000001111', Date.now() - 4000);
 
       tracker.updateProgress('0Afxx0000001111', {
         success: false,

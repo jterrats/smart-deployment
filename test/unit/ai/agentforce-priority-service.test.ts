@@ -1,10 +1,10 @@
 /**
  * Tests for Agentforce Priority Service - US-057
  */
-import { expect } from 'chai';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { expect } from 'chai';
 import { describe, it } from 'mocha';
 import { AgentforcePriorityService } from '../../../src/ai/agentforce-priority-service.js';
 import type { AgentforceFetch } from '../../../src/ai/agentforce-service.js';

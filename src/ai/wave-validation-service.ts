@@ -18,32 +18,32 @@ import { createLLMProvider } from './llm-provider-factory.js';
 
 const logger = getLogger('WaveValidationService');
 
-export interface WaveValidationIssue {
+export type WaveValidationIssue = {
   waveNumber: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
   category: 'dependency' | 'business-logic' | 'performance' | 'risk';
   message: string;
   affectedComponents: string[];
   suggestion?: string;
-}
+};
 
-export interface WaveOptimization {
+export type WaveOptimization = {
   waveNumber: number;
   type: 'merge' | 'split' | 'reorder' | 'add-component' | 'remove-component';
   description: string;
   confidence: number;
   estimatedImprovement: string;
-}
+};
 
-export interface WaveRiskAssessment {
+export type WaveRiskAssessment = {
   waveNumber: number;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
   riskFactors: string[];
   mitigation: string[];
   recommendedActions: string[];
-}
+};
 
-export interface WaveValidationResult {
+export type WaveValidationResult = {
   isValid: boolean;
   issues: WaveValidationIssue[];
   optimizations: WaveOptimization[];
@@ -51,11 +51,11 @@ export interface WaveValidationResult {
   overallRisk: 'low' | 'medium' | 'high' | 'critical';
   executionTime: number;
   aiAnalyzed: boolean;
-}
+};
 
-export interface WaveValidationServiceOptions {
+export type WaveValidationServiceOptions = {
   baseDir?: string;
-}
+};
 
 /**
  * @ac US-056-AC-1: Send wave structure to Agentforce
@@ -229,9 +229,9 @@ Be conservative - only report issues with high confidence.`;
       };
 
       return {
-        issues: this.parseIssues(parsed.issues || []),
-        optimizations: this.parseOptimizations(parsed.optimizations || []),
-        riskAssessments: this.parseRiskAssessments(parsed.riskAssessments || []),
+        issues: this.parseIssues(parsed.issues ?? []),
+        optimizations: this.parseOptimizations(parsed.optimizations ?? []),
+        riskAssessments: this.parseRiskAssessments(parsed.riskAssessments ?? []),
       };
     } catch (error) {
       logger.error('Failed to parse validation response', {
@@ -402,7 +402,7 @@ Be conservative - only report issues with high confidence.`;
 
       const bySeverity = new Map<string, WaveValidationIssue[]>();
       for (const issue of result.issues) {
-        const issues = bySeverity.get(issue.severity) || [];
+        const issues = bySeverity.get(issue.severity) ?? [];
         issues.push(issue);
         bySeverity.set(issue.severity, issues);
       }

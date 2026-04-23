@@ -13,21 +13,21 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { CycleSourceEditRecord } from './cycle-source-editor.js';
 import { getLogger } from '../utils/logger.js';
+import type { CycleSourceEditRecord } from './cycle-source-editor.js';
 
 const logger = getLogger('StateManager');
 
-export interface CycleRemediationState {
+export type CycleRemediationState = {
   cycleId: string;
   strategy: 'comment-reference' | 'manual';
   activePhase: 1 | 2;
   startedAt: string;
   completedPhases: Array<1 | 2>;
   editRecords: CycleSourceEditRecord[];
-}
+};
 
-export interface DeploymentState {
+export type DeploymentState = {
   deploymentId: string;
   targetOrg: string;
   timestamp: string;
@@ -41,11 +41,11 @@ export interface DeploymentState {
   };
   cycleRemediation?: CycleRemediationState;
   metadata?: Record<string, unknown>;
-}
+};
 
-export interface StateManagerOptions {
+export type StateManagerOptions = {
   baseDir?: string;
-}
+};
 
 /**
  * @ac US-089-AC-1: Save state after each wave
