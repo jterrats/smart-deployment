@@ -3,6 +3,9 @@ module.exports = {
   // Allow describe and it
   env: { mocha: true },
   rules: {
+    // Test files should be allowed to import test-only tooling from devDependencies.
+    'import/no-extraneous-dependencies': ['warn', { devDependencies: true }],
+
     // Allow assert style expressions. i.e. expect(true).to.be.true
     'no-unused-expressions': 'off',
 

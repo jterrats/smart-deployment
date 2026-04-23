@@ -1,0 +1,8 @@
+{
+  "summary": "Show deployment status",
+  "examples": [
+    "<%= config.bin %> <%= command.id %> --source-path force-app",
+    "<%= config.bin %> <%= command.id %> --target-org myorg --source-path force-app"
+  ],
+  "flags.source-path.summary": "Path to the Salesforce project containing deployment state"
+}

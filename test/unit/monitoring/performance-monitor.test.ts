@@ -72,11 +72,13 @@ describe('PerformanceMonitor', () => {
       });
 
       // Create fast operations
-      for (let i = 0; i < 5; i++) {
-        await monitor.trackOperation('fast-op', async () => {
-          await new Promise((resolve) => setTimeout(resolve, 1));
-        });
-      }
+      await Promise.all(
+        Array.from({ length: 5 }, async () =>
+          monitor.trackOperation('fast-op', async () => {
+            await new Promise((resolve) => setTimeout(resolve, 1));
+          })
+        )
+      );
 
       const report = monitor.generateReport();
       expect(report.bottlenecks).to.be.an('array');
@@ -92,7 +94,7 @@ describe('PerformanceMonitor', () => {
 
       const report = monitor.generateReport();
       expect(report.benchmarks).to.be.an('array');
-      
+
       if (report.benchmarks.length > 0) {
         expect(report.benchmarks[0]).to.have.property('operation');
         expect(report.benchmarks[0]).to.have.property('currentTime');
@@ -112,13 +114,12 @@ describe('PerformanceMonitor', () => {
 
     it('should reset metrics', async () => {
       await monitor.trackOperation('test', async () => 'result');
-      
+
       expect(monitor.generateReport().totalOperations).to.equal(1);
-      
+
       monitor.reset();
-      
+
       expect(monitor.generateReport().totalOperations).to.equal(0);
     });
   });
 });
-

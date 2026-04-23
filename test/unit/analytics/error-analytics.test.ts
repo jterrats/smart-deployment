@@ -44,7 +44,7 @@ describe('ErrorAnalytics', () => {
     it('US-078-AC-5: should export metrics', () => {
       const json = analytics.exportJSON();
       expect(json).to.be.a('string');
-      const parsed = JSON.parse(json);
+      const parsed = JSON.parse(json) as { totalErrors: number };
       expect(parsed).to.have.property('totalErrors');
     });
 

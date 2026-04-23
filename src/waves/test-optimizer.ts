@@ -12,16 +12,16 @@
  * @issue #40
  */
 
+import type { NodeId } from '../types/dependency.js';
 import { getLogger } from '../utils/logger.js';
 import type { Wave } from './wave-builder.js';
-import type { NodeId } from '../types/dependency.js';
 
 const logger = getLogger('TestOptimizer');
 
 /**
  * Test optimization result
  */
-export interface TestOptimizationResult {
+export type TestOptimizationResult = {
   /** Original waves */
   originalWaves: Wave[];
   /** Optimized waves with test classes */
@@ -30,12 +30,12 @@ export interface TestOptimizationResult {
   decisions: OptimizationDecision[];
   /** Statistics */
   stats: OptimizationStats;
-}
+};
 
 /**
  * Optimized wave with test information
  */
-export interface OptimizedWave extends Wave {
+export type OptimizedWave = Wave & {
   /** Test classes included in this wave */
   testClasses: NodeId[];
   /** Code classes in this wave */
@@ -46,12 +46,12 @@ export interface OptimizedWave extends Wave {
   needsTests: boolean;
   /** Estimated test coverage % */
   estimatedCoverage: number;
-}
+};
 
 /**
  * Optimization decision
  */
-export interface OptimizationDecision {
+export type OptimizationDecision = {
   /** Wave number */
   waveNumber: number;
   /** Decision type */
@@ -60,12 +60,12 @@ export interface OptimizationDecision {
   reason: string;
   /** Tests affected */
   testsAffected: number;
-}
+};
 
 /**
  * Optimization statistics
  */
-export interface OptimizationStats {
+export type OptimizationStats = {
   /** Total waves */
   totalWaves: number;
   /** Waves with tests */
@@ -76,19 +76,19 @@ export interface OptimizationStats {
   totalTestsAdded: number;
   /** Estimated time saved (seconds) */
   timeSaved: number;
-}
+};
 
 /**
  * Optimizer options
  */
-export interface OptimizerOptions {
+export type OptimizerOptions = {
   /** Always run all tests (disable optimization) */
   alwaysRunAllTests?: boolean;
   /** Minimum test coverage required (0-100) */
   minCoverageRequired?: number;
   /** Include related tests (not just direct) */
   includeRelatedTests?: boolean;
-}
+};
 
 /**
  * Test Optimizer
@@ -234,9 +234,7 @@ export class TestOptimizer {
    * Get code classes (non-test Apex classes)
    */
   private getCodeClasses(wave: Wave): NodeId[] {
-    return wave.components.filter((c) =>
-      c.startsWith('ApexClass:') && !this.isTestClass(c)
-    );
+    return wave.components.filter((c) => c.startsWith('ApexClass:') && !this.isTestClass(c));
   }
 
   /**
@@ -250,19 +248,16 @@ export class TestOptimizer {
    * Check if component is a test class
    */
   private isTestClass(component: NodeId): boolean {
-    return component.startsWith('ApexClass:') &&
-           (component.toLowerCase().includes('test') ||
-            component.toLowerCase().endsWith('_test'));
+    return (
+      component.startsWith('ApexClass:') &&
+      (component.toLowerCase().includes('test') || component.toLowerCase().endsWith('_test'))
+    );
   }
 
   /**
    * Sync test classes with production classes
    */
-  private syncTestClasses(
-    codeClasses: NodeId[],
-    triggers: NodeId[],
-    allTestClasses: NodeId[]
-  ): NodeId[] {
+  private syncTestClasses(codeClasses: NodeId[], triggers: NodeId[], allTestClasses: NodeId[]): NodeId[] {
     const matchedTests = new Set<NodeId>();
 
     // Match tests to code classes
@@ -277,10 +272,7 @@ export class TestOptimizer {
         // - AccountService → AccountServiceTest
         // - AccountService → TestAccountService
         // - AccountService → AccountService_Test
-        if (
-          testName.includes(codeName) ||
-          codeName.includes(testName.replace('test', ''))
-        ) {
+        if (testName.includes(codeName) || codeName.includes(testName.replace('test', ''))) {
           matchedTests.add(testClass);
         }
       }
@@ -329,10 +321,7 @@ export class TestOptimizer {
   /**
    * Calculate optimization statistics
    */
-  private calculateStats(
-    optimizedWaves: OptimizedWave[],
-    totalAvailableTests: number
-  ): OptimizationStats {
+  private calculateStats(optimizedWaves: OptimizedWave[], totalAvailableTests: number): OptimizationStats {
     let wavesWithTests = 0;
     let wavesWithoutTests = 0;
     let totalTestsAdded = 0;
@@ -347,7 +336,7 @@ export class TestOptimizer {
     }
 
     // Estimate time saved (assume 5s per test class skipped)
-    const testsSkipped = (optimizedWaves.length * totalAvailableTests) - totalTestsAdded;
+    const testsSkipped = optimizedWaves.length * totalAvailableTests - totalTestsAdded;
     const timeSaved = testsSkipped * 5;
 
     return {
@@ -413,10 +402,6 @@ export class TestOptimizer {
    * Get total test count across all waves
    */
   public getTotalTestCount(result: TestOptimizationResult): number {
-    return result.optimizedWaves.reduce(
-      (sum, wave) => sum + wave.testClasses.length,
-      0
-    );
+    return result.optimizedWaves.reduce((sum, wave) => sum + wave.testClasses.length, 0);
   }
 }
-

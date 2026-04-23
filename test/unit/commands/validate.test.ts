@@ -75,12 +75,16 @@ type ValidateCommandTestDouble = {
 };
 
 describe('ValidateCommand', () => {
-  const originalScan = MetadataScannerService.prototype.scan;
-  const originalLoadState = StateManager.prototype.loadState;
+  const originalScan = Object.getOwnPropertyDescriptor(MetadataScannerService.prototype, 'scan')?.value as
+    | typeof MetadataScannerService.prototype.scan
+    | undefined;
+  const originalLoadState = Object.getOwnPropertyDescriptor(StateManager.prototype, 'loadState')?.value as
+    | typeof StateManager.prototype.loadState
+    | undefined;
 
   afterEach(() => {
-    MetadataScannerService.prototype.scan = originalScan;
-    StateManager.prototype.loadState = originalLoadState;
+    Object.defineProperty(MetadataScannerService.prototype, 'scan', { value: originalScan, writable: true });
+    Object.defineProperty(StateManager.prototype, 'loadState', { value: originalLoadState, writable: true });
   });
 
   it('US-048: validates waves without deploying', async () => {

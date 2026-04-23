@@ -1,10 +1,10 @@
 /**
  * Tests for Test Framework Setup - US-061
  */
-import { expect } from 'chai';
-import { describe, it } from 'mocha';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { expect } from 'chai';
+import { describe, it } from 'mocha';
 
 describe('US-061: Test Framework Setup', () => {
   /** @ac US-061-AC-1: Jest configured with TypeScript */
@@ -12,11 +12,14 @@ describe('US-061: Test Framework Setup', () => {
     // Mocha is configured and running (this test itself proves it)
     // TypeScript support via ts-node in package.json
     const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
 
-    const hasTsNode = pkg.dependencies?.['ts-node'] || pkg.devDependencies?.['ts-node'];
+    const hasTsNode = pkg.dependencies?.['ts-node'] ?? pkg.devDependencies?.['ts-node'];
     expect(hasTsNode).to.exist;
-    
+
     // Test is running with TypeScript, confirming configuration works
     expect(typeof describe).to.equal('function');
     expect(typeof it).to.equal('function');
@@ -69,4 +72,3 @@ describe('US-061: Test Framework Setup', () => {
     expect(pkg.wireit?.test).to.exist;
   });
 });
-

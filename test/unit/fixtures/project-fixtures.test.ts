@@ -45,7 +45,7 @@ describe('ProjectFixtures', () => {
 
       expect(fixture.metadataFiles.length).to.be.greaterThan(100);
       expect(fixture.expectedComponents).to.equal(100);
-    }).timeout(30000); // Allow time for file creation
+    }).timeout(30_000); // Allow time for file creation
 
     /** @ac US-068-AC-5: Corrupted file samples */
     it('US-068-AC-5: should create corrupted file samples', async () => {
@@ -70,4 +70,3 @@ describe('ProjectFixtures', () => {
     });
   });
 });
-

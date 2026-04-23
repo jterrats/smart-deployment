@@ -10,7 +10,15 @@
   "flags.target-org.summary": "Target Salesforce org for deployment",
   "flags.dry-run.summary": "Preview deployment without executing",
   "flags.validate-only.summary": "Validate deployment without committing changes",
-  "flags.skip-tests.summary": "Skip running tests during deployment"
+  "flags.skip-tests.summary": "Skip running tests during deployment",
+  "flags.source-path.summary": "Path to the Salesforce project to analyze and deploy",
+  "flags.source-path.description": "Defaults to the current working directory when omitted",
+  "flags.allow-cycle-remediation.summary": "Allow conservative cycle remediation for supported ApexClass cycles",
+  "flags.allow-cycle-remediation.description": "Applies temporary reversible source edits for simple cycles only",
+  "flags.use-ai.summary": "Use AI for intelligent priority weighting and dependency inference",
+  "flags.use-ai.description": "Enables provider-backed analysis for deployment prioritization",
+  "flags.org-type.summary": "Organization type context for AI analysis",
+  "flags.org-type.description": "Helps AI provide context-aware recommendations",
+  "flags.industry.summary": "Industry context for AI analysis",
+  "flags.industry.description": "Provides business context to AI for better prioritization"
 }
-
-

@@ -116,8 +116,7 @@ describe('WaveBuilder', () => {
       const result = builder.generateWaves(graph);
 
       // Verify each wave only depends on previous waves
-      for (let i = 0; i < result.waves.length; i++) {
-        const wave = result.waves[i];
+      for (const wave of result.waves) {
         for (const component of wave.components) {
           const deps = graph.get(component) ?? new Set();
           for (const dep of deps) {
@@ -139,9 +138,7 @@ describe('WaveBuilder', () => {
      */
     it('US-038-AC-4: should place components with no dependencies in first wave', () => {
       // A depends on B, so B has no deps and should be in wave 1
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const builder = new WaveBuilder();
       const result = builder.generateWaves(graph);
@@ -186,9 +183,7 @@ describe('WaveBuilder', () => {
     });
 
     it('US-038-AC-5: should mix isolated and dependent components correctly', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
       graph.set('ApexClass:Isolated', new Set());
 
       const builder = new WaveBuilder();
@@ -210,9 +205,7 @@ describe('WaveBuilder', () => {
      * @ac US-038-AC-6: Generate wave metadata
      */
     it('US-038-AC-6: should generate wave metadata', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const builder = new WaveBuilder();
       const result = builder.generateWaves(graph);
@@ -239,11 +232,11 @@ describe('WaveBuilder', () => {
       const result = builder.generateWaves(graph);
 
       // Wave 1 should have D (1 component)
-      const wave1 = result.waves.find(w => w.components.includes('ApexClass:D'));
+      const wave1 = result.waves.find((w) => w.components.includes('ApexClass:D'));
       expect(wave1?.metadata.componentCount).to.equal(1);
 
       // Wave 2 should have A, B, C (3 components)
-      const wave2 = result.waves.find(w => w.components.includes('ApexClass:A'));
+      const wave2 = result.waves.find((w) => w.components.includes('ApexClass:A'));
       expect(wave2?.metadata.componentCount).to.equal(3);
     });
 
@@ -257,11 +250,11 @@ describe('WaveBuilder', () => {
       const result = builder.generateWaves(graph);
 
       // CustomObject should be in first wave
-      const wave1 = result.waves.find(w => w.components.some(c => c.startsWith('CustomObject:')));
+      const wave1 = result.waves.find((w) => w.components.some((c) => c.startsWith('CustomObject:')));
       expect(wave1?.metadata.types).to.include('CustomObject');
 
       // ApexClass and ApexTrigger should be in later wave
-      const wave2 = result.waves.find(w => w.components.some(c => c.startsWith('ApexClass:')));
+      const wave2 = result.waves.find((w) => w.components.some((c) => c.startsWith('ApexClass:')));
       expect(wave2?.metadata.types.length).to.be.greaterThan(0);
     });
   });
@@ -317,7 +310,7 @@ describe('WaveBuilder', () => {
   describe('Max Components Per Wave', () => {
     it('should split large waves when maxComponentsPerWave is set', () => {
       const graph: DependencyGraph = new Map();
-      
+
       // Create 15 independent components
       for (let i = 0; i < 15; i++) {
         graph.set(`ApexClass:Node${i}`, new Set());
@@ -335,7 +328,7 @@ describe('WaveBuilder', () => {
 
     it('should not split when maxComponentsPerWave is 0', () => {
       const graph: DependencyGraph = new Map();
-      
+
       for (let i = 0; i < 100; i++) {
         graph.set(`ApexClass:Node${i}`, new Set());
       }
@@ -369,9 +362,7 @@ describe('WaveBuilder', () => {
 
   describe('Helper Methods', () => {
     it('should get wave by number', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const builder = new WaveBuilder();
       const result = builder.generateWaves(graph);
@@ -382,9 +373,7 @@ describe('WaveBuilder', () => {
     });
 
     it('should get component wave number', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const builder = new WaveBuilder();
       const result = builder.generateWaves(graph);
@@ -425,7 +414,7 @@ describe('WaveBuilder', () => {
 
     it('should handle complex dependency tree', () => {
       const edges: Array<[string, string]> = [];
-      
+
       // Create a tree: 1 -> 2,3  ; 2 -> 4,5 ; 3 -> 6,7
       for (let i = 1; i <= 7; i++) {
         if (i * 2 <= 7) {
@@ -448,7 +437,7 @@ describe('WaveBuilder', () => {
       this.timeout(5000);
 
       const edges: Array<[string, string]> = [];
-      
+
       // Linear chain of 500 nodes
       for (let i = 0; i < 499; i++) {
         edges.push([`ApexClass:Node${i}`, `ApexClass:Node${i + 1}`]);
@@ -467,4 +456,3 @@ describe('WaveBuilder', () => {
     });
   });
 });
-

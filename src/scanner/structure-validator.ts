@@ -18,20 +18,20 @@ import type { SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('StructureValidator');
 
-export interface ValidationIssue {
+export type ValidationIssue = {
   severity: 'error' | 'warning' | 'info';
   code: string;
   message: string;
   path?: string;
   suggestion?: string;
-}
+};
 
-export interface ValidationReport {
+export type ValidationReport = {
   isValid: boolean;
   issues: ValidationIssue[];
   checkedPaths: string[];
   executionTime: number;
-}
+};
 
 /**
  * @ac US-084-AC-1: Validate sfdx-project.json
@@ -128,22 +128,29 @@ export class StructureValidator {
       const config = JSON.parse(content) as Partial<SfdxProjectJson>;
 
       if (config.packageDirectories) {
-        for (const pkg of config.packageDirectories) {
-          if (pkg.path) {
+        const missingPackages = await Promise.all(
+          config.packageDirectories.map(async (pkg) => {
+            if (!pkg.path) {
+              return undefined;
+            }
+
             const fullPath = path.join(projectRoot, pkg.path);
             try {
               await fs.access(fullPath);
+              return undefined;
             } catch {
-              issues.push({
-                severity: 'error',
+              return {
+                severity: 'error' as const,
                 code: 'PACKAGE_DIR_NOT_FOUND',
                 message: `Package directory not found: ${pkg.path}`,
                 path: fullPath,
                 suggestion: `Create directory: mkdir -p ${pkg.path}`,
-              });
+              };
             }
-          }
-        }
+          })
+        );
+
+        issues.push(...(missingPackages.filter(Boolean) as ValidationIssue[]));
       }
     } catch {
       // Already handled in validateSfdxProject
@@ -199,20 +206,25 @@ export class StructureValidator {
       { file: 'README.md', severity: 'info' as const, suggestion: 'Add README.md for documentation' },
     ];
 
-    for (const { file, severity, suggestion } of requiredFiles) {
-      const filePath = path.join(projectRoot, file);
-      try {
-        await fs.access(filePath);
-      } catch {
-        issues.push({
-          severity,
-          code: `MISSING_${file.toUpperCase().replace(/\./g, '_')}`,
-          message: `${file} not found`,
-          path: projectRoot,
-          suggestion,
-        });
-      }
-    }
+    const missingFiles = await Promise.all(
+      requiredFiles.map(async ({ file, severity, suggestion }) => {
+        const filePath = path.join(projectRoot, file);
+        try {
+          await fs.access(filePath);
+          return undefined;
+        } catch {
+          return {
+            severity,
+            code: `MISSING_${file.toUpperCase().replace(/\./g, '_')}`,
+            message: `${file} not found`,
+            path: projectRoot,
+            suggestion,
+          };
+        }
+      })
+    );
+
+    issues.push(...(missingFiles.filter(Boolean) as ValidationIssue[]));
 
     return issues;
   }
@@ -227,21 +239,25 @@ export class StructureValidator {
     // Check for metadata in wrong location
     const commonMetadataDirs = ['classes', 'triggers', 'objects', 'lwc', 'aura'];
 
-    for (const dir of commonMetadataDirs) {
-      const wrongPath = path.join(projectRoot, dir);
-      try {
-        await fs.access(wrongPath);
-        issues.push({
-          severity: 'warning',
-          code: 'METADATA_IN_ROOT',
-          message: `Metadata directory found in project root: ${dir}`,
-          path: wrongPath,
-          suggestion: 'Move metadata into package directory (e.g., force-app/main/default/)',
-        });
-      } catch {
-        // OK, not in root
-      }
-    }
+    const misplacedDirs = await Promise.all(
+      commonMetadataDirs.map(async (dir) => {
+        const wrongPath = path.join(projectRoot, dir);
+        try {
+          await fs.access(wrongPath);
+          return {
+            severity: 'warning' as const,
+            code: 'METADATA_IN_ROOT',
+            message: `Metadata directory found in project root: ${dir}`,
+            path: wrongPath,
+            suggestion: 'Move metadata into package directory (e.g., force-app/main/default/)',
+          };
+        } catch {
+          return undefined;
+        }
+      })
+    );
+
+    issues.push(...(misplacedDirs.filter(Boolean) as ValidationIssue[]));
 
     return issues;
   }

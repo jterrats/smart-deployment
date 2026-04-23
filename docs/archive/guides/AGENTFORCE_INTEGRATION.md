@@ -13,12 +13,14 @@ The Smart Deployment plugin uses **Agentforce** (Salesforce's LLM) for intellige
 **Problem**: Static parsers cannot detect all dependencies
 
 **Solution with Agentforce**:
+
 - Semantically analyzes Apex code to detect indirect dependencies
 - Identifies non-obvious usage patterns
 - Infers dependencies based on naming conventions
 - Detects business dependencies (e.g., "CaseHandler always requires CaseService")
 
 **Example**:
+
 ```typescript
 // Static parser CANNOT detect this dependency:
 public class MyController {
@@ -38,12 +40,14 @@ public class MyController {
 **Problem**: In what order to deploy components without explicit dependencies?
 
 **Solution with Agentforce**:
+
 - Analyzes business importance
 - Evaluates failure impact
 - Considers historical patterns
 - Suggests optimal order based on risk
 
 **Example**:
+
 ```
 Components without explicit dependencies:
 - TriggerHandler_A
@@ -63,6 +67,7 @@ Suggested order: A → B → C
 **Problem**: Do generated waves make sense from a business perspective?
 
 **Solution with Agentforce**:
+
 - Validates order respects business logic
 - Detects potential non-obvious conflicts
 - Suggests wave consolidations or splits
@@ -73,6 +78,7 @@ Suggested order: A → B → C
 **Problem**: Which tests to run in each wave?
 
 **Solution with Agentforce**:
+
 - Suggests specific tests based on deployed components
 - Identifies tests that cover multiple components
 - Optimizes test execution order
@@ -83,6 +89,7 @@ Suggested order: A → B → C
 **Problem**: How risky is this deployment?
 
 **Solution with Agentforce**:
+
 - Evaluates impact of each wave
 - Identifies critical components
 - Suggests rollback strategies
@@ -128,7 +135,7 @@ const intelligentDeploymentPipeline = pipe(
   scanMetadata,
   parseComponents,
   buildStaticDependencyGraph,
-  
+
   // 2. ✨ Agentforce Analysis
   async (context) => {
     const aiAnalysis = await agentforceService.analyzeDependencies({
@@ -136,19 +143,19 @@ const intelligentDeploymentPipeline = pipe(
       staticDependencies: context.graph,
       orgType: context.orgType,
     });
-    
+
     return {
       ...context,
       aiAnalysis,
     };
   },
-  
+
   // 3. Merge static + AI analysis
   mergeDependencies,
-  
+
   // 4. Wave generation
   generateWaves,
-  
+
   // 5. ✨ Validation and optimization with Agentforce
   async (context) => {
     const validation = await agentforceService.validateWaves({
@@ -156,14 +163,14 @@ const intelligentDeploymentPipeline = pipe(
       context: context.analysisContext,
       validationLevel: 'normal',
     });
-    
+
     return {
       ...context,
       validation,
       optimizedWaves: validation.optimizedWaves || context.waves,
     };
   },
-  
+
   // 6. Generate manifests
   generateManifests
 );
@@ -178,7 +185,7 @@ const intelligentDeploymentPipeline = pipe(
 ```
 Context: I'm analyzing Salesforce metadata for an intelligent deployment.
 
-Task: Analyze the following Apex code and identify ALL dependencies, 
+Task: Analyze the following Apex code and identify ALL dependencies,
 including non-obvious ones (dynamic instantiation, reflection, etc.)
 
 Code:
@@ -281,36 +288,32 @@ import { type AnalysisContext, type AgentforceAnalysisResult } from '../../types
 
 export class AgentforceService {
   constructor(private config: AgentforceConfig) {}
-  
-  async analyzeDependencies(
-    context: AnalysisContext
-  ): Promise<AgentforceAnalysisResult> {
+
+  async analyzeDependencies(context: AnalysisContext): Promise<AgentforceAnalysisResult> {
     // 1. Build prompt
     const prompt = this.buildDependencyAnalysisPrompt(context);
-    
+
     // 2. Check cache
     const cached = await this.cacheManager.get(prompt);
     if (cached) return cached;
-    
+
     // 3. Call Agentforce API
     const response = await this.callAgentforce(prompt);
-    
+
     // 4. Parse response
     const result = this.parseAnalysisResponse(response);
-    
+
     // 5. Cache result
     await this.cacheManager.set(prompt, result);
-    
+
     return result;
   }
-  
-  private buildDependencyAnalysisPrompt(
-    context: AnalysisContext
-  ): AgentforcePrompt {
+
+  private buildDependencyAnalysisPrompt(context: AnalysisContext): AgentforcePrompt {
     // Build intelligent prompt with context
     const componentsSummary = this.summarizeComponents(context.components);
     const dependenciesSummary = this.summarizeDependencies(context.staticDependencies);
-    
+
     return {
       analysisType: 'dependency-inference',
       context: `
@@ -323,17 +326,15 @@ export class AgentforceService {
       maxTokens: 4000,
     };
   }
-  
-  private async callAgentforce(
-    prompt: AgentforcePrompt
-  ): Promise<AgentforceResponse> {
+
+  private async callAgentforce(prompt: AgentforcePrompt): Promise<AgentforceResponse> {
     // Agentforce API call implementation
     // Using Named Credential or API Key
     const response = await fetch(this.config.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({
         model: this.config.model,
@@ -351,7 +352,7 @@ export class AgentforceService {
         max_tokens: prompt.maxTokens,
       }),
     });
-    
+
     return await response.json();
   }
 }
@@ -455,16 +456,19 @@ Continue with deployment? (y/n)
 ## 🚀 Agentforce Roadmap
 
 ### Phase 1: MVP (Current)
+
 - ✅ Dependency inference
 - ✅ Wave validation
 - ✅ Priority weighting
 
 ### Phase 2: Advanced
+
 - 🔄 Test strategy optimization
 - 🔄 Risk assessment
 - 🔄 Rollback suggestions
 
 ### Phase 3: Autonomous
+
 - ⏳ Auto-healing deployments
 - ⏳ Predictive failure detection
 - ⏳ Self-optimizing waves

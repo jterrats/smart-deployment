@@ -9,6 +9,7 @@ import type { Wave, WaveResult } from './wave-builder.js';
 
 /**
  * Sort waves by numerical order (not alphabetical)
+ *
  * @example sortWavesByNumber({ waves: [wave10, wave2, wave1] }) => [wave1, wave2, wave10]
  */
 export function sortWavesByNumber(result: WaveResult): Wave[] {
@@ -24,6 +25,7 @@ export function getWavesInExecutionOrder(result: WaveResult): Wave[] {
 
 /**
  * Format wave ID with zero-padding for consistent alphabetical sorting
+ *
  * @example formatWaveId(1, 15) => "wave-001"
  */
 export function formatWaveId(waveNumber: number, totalWaves: number): string {
@@ -33,6 +35,7 @@ export function formatWaveId(waveNumber: number, totalWaves: number): string {
 
 /**
  * Parse wave ID back to number
+ *
  * @example parseWaveId("wave-001") => 1
  */
 export function parseWaveId(waveId: string): number | undefined {

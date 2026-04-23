@@ -1,5 +1,6 @@
 /**
  * smart-deployment:resume command - US-049
+ *
  * @ac US-049-AC-1: Detects previous failed deployment
  * @ac US-049-AC-2: Loads deployment state
  * @ac US-049-AC-3: Resumes from failed wave
@@ -9,27 +10,35 @@
  * @issue #49
  */
 
-import { Flags } from '@oclif/core';
-import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
+import { type Interfaces } from '@oclif/core';
+import { Messages } from '@salesforce/core';
+import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
 import { StateManager } from '../deployment/state-manager.js';
 import { createResumedState, summarizeDeploymentState } from '../deployment/deployment-state-summary.js';
 
 const logger = getLogger('ResumeCommand');
+Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
+const messages = Messages.loadMessages('smart-deployment', 'resume');
 
-interface ResumeResult {
+type ResumeResult = {
   success: boolean;
   resumedFromWave: number;
   remainingWaves: number;
   deploymentId: string;
-}
+};
 
 export default class Resume extends SfCommand<ResumeResult> {
-  public static readonly summary = 'Resume failed deployment';
-  public static readonly flags = {
-    'target-org': requiredOrgFlagWithDeprecations,
+  public static readonly summary = messages.getMessage('summary');
+  public static readonly examples = messages.getMessages('examples');
+  public static readonly flags: Interfaces.FlagInput = {
+    'target-org': optionalOrgFlagWithDeprecations,
+    'source-path': Flags.directory({
+      summary: messages.getMessage('flags.source-path.summary'),
+      exists: true,
+    }),
     'retry-strategy': Flags.string({
-      summary: 'Retry strategy to use when resuming the deployment',
+      summary: messages.getMessage('flags.retry-strategy.summary'),
       options: ['standard', 'quick', 'validate-only'],
       default: 'standard',
     }),
@@ -37,11 +46,12 @@ export default class Resume extends SfCommand<ResumeResult> {
 
   public async run(): Promise<ResumeResult> {
     const { flags } = await this.parse(Resume);
+    const sourcePath = typeof flags['source-path'] === 'string' ? flags['source-path'] : undefined;
 
     try {
       logger.info('Resuming deployment', { flags });
 
-      const stateManager = new StateManager();
+      const stateManager = new StateManager({ baseDir: sourcePath });
       const state = await stateManager.loadState();
 
       if (!state?.failedWave) {

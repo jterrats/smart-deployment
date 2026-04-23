@@ -2,11 +2,11 @@
  * Unit tests for Dependency Cache
  */
 
-import { expect } from 'chai';
-import { describe, it, beforeEach, afterEach } from 'mocha';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, beforeEach, afterEach } from 'mocha';
+import { expect } from 'chai';
 import { DependencyCache, createCacheKey } from '../../../src/dependencies/dependency-cache.js';
 import type { DependencyGraph } from '../../../src/types/dependency.js';
 
@@ -20,14 +20,9 @@ describe('DependencyCache', () => {
     await fs.mkdir(cacheDir, { recursive: true });
 
     // Create test files
-    testFiles = [
-      path.join(cacheDir, 'test1.txt'),
-      path.join(cacheDir, 'test2.txt'),
-    ];
+    testFiles = [path.join(cacheDir, 'test1.txt'), path.join(cacheDir, 'test2.txt')];
 
-    for (const file of testFiles) {
-      await fs.writeFile(file, 'test content', 'utf-8');
-    }
+    await Promise.all(testFiles.map(async (file) => fs.writeFile(file, 'test content', 'utf-8')));
   });
 
   afterEach(async () => {
@@ -157,9 +152,7 @@ describe('DependencyCache', () => {
     it('US-036-AC-4: should cache circular dependency results', async () => {
       const cache = new DependencyCache({ cacheDir, ttl: 60 });
 
-      const cycles = [
-        { cycle: ['A', 'B', 'C'], severity: 'error' as const, message: 'Cycle' },
-      ];
+      const cycles = [{ cycle: ['A', 'B', 'C'], severity: 'error' as const, message: 'Cycle' }];
 
       await cache.set('circular-dependencies', cycles, testFiles);
       const cached = await cache.get('circular-dependencies', testFiles);
@@ -474,4 +467,3 @@ describe('DependencyCache', () => {
     });
   });
 });
-

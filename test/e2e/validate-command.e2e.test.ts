@@ -1,12 +1,13 @@
 /**
  * E2E-style Tests for Validate Command - US-067
+ *
  * @ac US-067-AC-3: 5 scenarios for validate command
  * @issue #67
  */
 
+import { rm } from 'node:fs/promises';
 import { expect } from 'chai';
 import { afterEach, describe, it } from 'mocha';
-import { rm } from 'node:fs/promises';
 import { ProjectFixtures } from '../fixtures/project-fixtures.js';
 import { DeploymentValidationService } from '../../src/deployment/deployment-validation-service.js';
 
@@ -18,7 +19,7 @@ describe('E2E: Validate Command - US-067', () => {
     await Promise.all(
       Array.from(createdRoots, async (root) => {
         await rm(root, { recursive: true, force: true });
-      }),
+      })
     );
     createdRoots.clear();
   });

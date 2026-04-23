@@ -30,7 +30,7 @@ export type ReverseGraph = Map<NodeId, Set<NodeId>>;
 /**
  * Resultado del análisis de dependencias
  */
-export interface DependencyAnalysisResult {
+export type DependencyAnalysisResult = {
   /** Mapa de todos los componentes por ID */
   components: Map<NodeId, MetadataComponent>;
   /** Grafo de dependencias (A → B significa "A depende de B") */
@@ -43,24 +43,24 @@ export interface DependencyAnalysisResult {
   isolatedComponents: NodeId[];
   /** Estadísticas */
   stats: DependencyStats;
-}
+};
 
 /**
  * Dependencia circular detectada
  */
-export interface CircularDependency {
+export type CircularDependency = {
   /** Nodos involucrados en el ciclo */
   cycle: NodeId[];
   /** Severidad del ciclo */
   severity: 'warning' | 'error';
   /** Mensaje descriptivo */
   message: string;
-}
+};
 
 /**
  * Dependencia inferida (heurística o AI)
  */
-export interface InferredDependency {
+export type InferredDependency = {
   /** Nodo origen */
   from: NodeId;
   /** Nodo destino */
@@ -69,12 +69,12 @@ export interface InferredDependency {
   confidence: number;
   /** Razón de la inferencia */
   reason: string;
-}
+};
 
 /**
  * Estadísticas de dependencias
  */
-export interface DependencyStats {
+export type DependencyStats = {
   /** Total de componentes analizados */
   totalComponents: number;
   /** Total de dependencias encontradas */
@@ -87,16 +87,16 @@ export interface DependencyStats {
   mostDepended: { nodeId: NodeId; count: number };
   /** Nodo con más dependencias */
   mostDependencies: { nodeId: NodeId; count: number };
-}
+};
 
 /**
  * Opciones para resolución de dependencias
  */
-export interface DependencyResolutionOptions {
+export type DependencyResolutionOptions = {
   /** Aplicar heurísticas inteligentes */
   applyHeuristics: boolean;
   /** Detectar y reportar dependencias circulares */
   detectCircularDeps: boolean;
   /** Seguir .forceignore */
   respectForceignore: boolean;
-}
+};

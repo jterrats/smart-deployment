@@ -1,83 +1,82 @@
 /**
  * Wave Merger
  * Merges small adjacent waves to reduce total deployment time
- * 
+ *
  * @ac US-041-AC-1: Identify waves with <50 components
  * @ac US-041-AC-2: Merge if combined < 300 components
  * @ac US-041-AC-3: Respect dependency order
  * @ac US-041-AC-4: Don't merge if different test requirements
  * @ac US-041-AC-5: Report merge decisions
  * @ac US-041-AC-6: User override option
- * 
+ *
  * @issue #41
  */
 
 import { getLogger } from '../utils/logger.js';
 import type { Wave } from './wave-builder.js';
-import type { DependencyGraph } from '../types/dependency.js';
 
 const logger = getLogger('WaveMerger');
 
 /**
  * Merge result
  */
-export interface MergeResult {
+export type MergeResult = {
   originalWaves: Wave[];
   mergedWaves: Wave[];
   decisions: MergeDecision[];
   stats: MergeStats;
-}
+};
 
 /**
  * Merge decision
  */
-export interface MergeDecision {
+export type MergeDecision = {
   mergedWaves: number[];
   resultWaveNumber: number;
   reason: string;
   originalCount: number[];
   mergedCount: number;
-}
+};
 
 /**
  * Merge statistics
  */
-export interface MergeStats {
+export type MergeStats = {
   originalWaveCount: number;
   mergedWaveCount: number;
   wavesSaved: number;
   componentsAffected: number;
-}
+};
 
 /**
  * Merger options
  */
-export interface MergerOptions {
+export type MergerOptions = {
   minComponentsForMerge?: number;
   maxComponentsAfterMerge?: number;
   respectTestRequirements?: boolean;
   allowUserOverride?: boolean;
-}
+};
 
 /**
  * Wave Merger
- * 
+ *
  * Merges small adjacent waves to reduce total deployment time.
- * 
+ *
  * Algorithm:
  * 1. Identify small waves (< threshold)
  * 2. Check if adjacent waves can be merged
  * 3. Validate no dependency violations
  * 4. Merge waves and renumber
- * 
+ *
  * Performance: O(V)
- * 
+ *
  * @example
  * const merger = new WaveMerger({
  *   minComponentsForMerge: 50,
  *   maxComponentsAfterMerge: 300
  * });
- * 
+ *
  * const result = merger.mergeWaves(waves, graph);
  * console.log(`Saved ${result.stats.wavesSaved} waves`);
  */
@@ -104,15 +103,16 @@ export class WaveMerger {
    * @ac US-041-AC-3: Respect dependency order
    * @ac US-041-AC-5: Report merge decisions
    */
-  public mergeWaves(waves: Wave[], _graph: DependencyGraph): MergeResult {
+  public mergeWaves(waves: Wave[], graph?: unknown): MergeResult {
     const startTime = Date.now();
+    void graph;
     const decisions: MergeDecision[] = [];
     const mergedWaves: Wave[] = [];
     let i = 0;
 
     while (i < waves.length) {
       const currentWave = waves[i];
-      
+
       // Check if current wave is small
       if (currentWave.components.length >= this.options.minComponentsForMerge) {
         mergedWaves.push({ ...currentWave, number: mergedWaves.length + 1 });
@@ -127,12 +127,8 @@ export class WaveMerger {
 
         if (this.canMerge(currentWave, nextWave, combined)) {
           // Merge waves
-          const merged = this.createMergedWave(
-            currentWave,
-            nextWave,
-            mergedWaves.length + 1
-          );
-          
+          const merged = this.createMergedWave(currentWave, nextWave, mergedWaves.length + 1);
+
           mergedWaves.push(merged);
 
           decisions.push({
@@ -250,4 +246,3 @@ export class WaveMerger {
     return lines.join('\n');
   }
 }
-

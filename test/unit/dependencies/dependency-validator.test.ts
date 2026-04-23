@@ -7,6 +7,7 @@ import { describe, it } from 'mocha';
 import { DependencyValidator } from '../../../src/dependencies/dependency-validator.js';
 import type { DependencyGraph, CircularDependency } from '../../../src/types/dependency.js';
 import type { MetadataComponent } from '../../../src/types/metadata.js';
+import type { MetadataType } from '../../../src/types/metadata.js';
 
 describe('DependencyValidator', () => {
   /**
@@ -29,9 +30,10 @@ describe('DependencyValidator', () => {
     // Initialize graph and components
     for (const node of allNodes) {
       graph.set(node, new Set<string>());
+      const [type, name] = node.split(':') as [MetadataType, string];
       components.set(node, {
-        type: node.split(':')[0] as any,
-        name: node.split(':')[1],
+        type,
+        name,
         filePath: `/path/to/${node}`,
         dependencies: new Set<string>(),
         dependents: new Set<string>(),
@@ -53,9 +55,7 @@ describe('DependencyValidator', () => {
      * @ac US-034-AC-1: Validate no dangling references
      */
     it('US-034-AC-1: should detect dangling references', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       // Remove B to create dangling reference
       graph.delete('ApexClass:B');
@@ -82,9 +82,7 @@ describe('DependencyValidator', () => {
     });
 
     it('US-034-AC-1: should provide helpful error message', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       graph.delete('ApexClass:Missing');
       components.delete('ApexClass:Missing');
@@ -105,7 +103,7 @@ describe('DependencyValidator', () => {
      */
     it('US-034-AC-2: should detect invalid node format', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       // Add node without type separator
       graph.set('InvalidNode', new Set());
@@ -120,7 +118,7 @@ describe('DependencyValidator', () => {
 
     it('US-034-AC-2: should detect missing type', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       // Add node with empty type
       graph.set(':ComponentName', new Set());
@@ -133,7 +131,7 @@ describe('DependencyValidator', () => {
 
     it('US-034-AC-2: should detect missing name', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       // Add node with empty name
       graph.set('ApexClass:', new Set());
@@ -162,9 +160,7 @@ describe('DependencyValidator', () => {
      * @ac US-034-AC-3: Validate no self-loops (except cycles)
      */
     it('US-034-AC-3: should detect self-loops', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:A'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:A']]);
 
       const validator = new DependencyValidator(graph, components);
       const result = validator.validate();
@@ -175,15 +171,15 @@ describe('DependencyValidator', () => {
     });
 
     it('US-034-AC-3: should allow self-loops in known cycles', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:A'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:A']]);
 
-      const cycles: CircularDependency[] = [{
-        cycle: ['ApexClass:A'],
-        severity: 'error',
-        message: 'Self-loop',
-      }];
+      const cycles: CircularDependency[] = [
+        {
+          cycle: ['ApexClass:A'],
+          severity: 'error',
+          message: 'Self-loop',
+        },
+      ];
 
       const validator = new DependencyValidator(graph, components, {
         circularDependencies: cycles,
@@ -196,9 +192,7 @@ describe('DependencyValidator', () => {
     });
 
     it('US-034-AC-3: should allow self-loops when configured', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:A'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:A']]);
 
       const validator = new DependencyValidator(graph, components, {
         allowSelfLoops: true,
@@ -215,9 +209,7 @@ describe('DependencyValidator', () => {
      * @ac US-034-AC-4: Validate edge consistency
      */
     it('US-034-AC-4: should detect graph-component mismatch', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       // Add dependency to graph but not to component
       graph.get('ApexClass:A')!.add('ApexClass:C');
@@ -256,9 +248,7 @@ describe('DependencyValidator', () => {
      * @ac US-034-AC-5: Generate validation report
      */
     it('US-034-AC-5: should generate complete validation report', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const validator = new DependencyValidator(graph, components);
       const result = validator.validate();
@@ -274,9 +264,7 @@ describe('DependencyValidator', () => {
     });
 
     it('US-034-AC-5: should categorize issues by severity', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       // Create various issues
       graph.set('InvalidNode', new Set()); // Critical
@@ -296,7 +284,7 @@ describe('DependencyValidator', () => {
      */
     it('US-034-AC-6: should fail validation on critical issues', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       graph.set('InvalidFormat', new Set());
 
@@ -308,9 +296,7 @@ describe('DependencyValidator', () => {
     });
 
     it('US-034-AC-6: should fail on errors in normal mode', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       graph.delete('ApexClass:Missing');
       components.delete('ApexClass:Missing');
@@ -324,9 +310,7 @@ describe('DependencyValidator', () => {
     });
 
     it('US-034-AC-6: should fail on warnings in strict mode', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       // Create a warning by having graph-component mismatch
       graph.get('ApexClass:A')!.add('ApexClass:C');
@@ -351,9 +335,7 @@ describe('DependencyValidator', () => {
 
   describe('validateComponent', () => {
     it('should validate specific component', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const validator = new DependencyValidator(graph, components);
       const issues = validator.validateComponent('ApexClass:A');
@@ -363,9 +345,7 @@ describe('DependencyValidator', () => {
     });
 
     it('should detect issues in specific component', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       graph.delete('ApexClass:Missing');
       components.delete('ApexClass:Missing');
@@ -377,9 +357,7 @@ describe('DependencyValidator', () => {
     });
 
     it('should return error for non-existent component', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const validator = new DependencyValidator(graph, components);
       const issues = validator.validateComponent('ApexClass:NonExistent');
@@ -402,9 +380,7 @@ describe('DependencyValidator', () => {
     });
 
     it('should return false for invalid graph', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       graph.delete('ApexClass:Missing');
       components.delete('ApexClass:Missing');
@@ -418,7 +394,7 @@ describe('DependencyValidator', () => {
   describe('Edge Cases', () => {
     it('should handle empty graph', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       const validator = new DependencyValidator(graph, components);
       const result = validator.validate();
@@ -429,7 +405,7 @@ describe('DependencyValidator', () => {
 
     it('should handle isolated nodes', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       graph.set('ApexClass:Isolated', new Set());
       components.set('ApexClass:Isolated', {
@@ -449,7 +425,7 @@ describe('DependencyValidator', () => {
 
     it('should handle multiple issues in one node', () => {
       const graph: DependencyGraph = new Map();
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
 
       // Node with no type AND dangling ref
       graph.set('InvalidNode', new Set(['ApexClass:Missing']));
@@ -466,7 +442,7 @@ describe('DependencyValidator', () => {
       this.timeout(5000);
 
       const edges: Array<[string, string]> = [];
-      
+
       for (let i = 0; i < 500; i++) {
         edges.push([`ApexClass:Node${i}`, `ApexClass:Node${i + 1}`]);
       }
@@ -486,9 +462,7 @@ describe('DependencyValidator', () => {
 
   describe('Issue Details', () => {
     it('should include nodeId in issues', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       graph.delete('ApexClass:Missing');
       components.delete('ApexClass:Missing');
@@ -500,9 +474,7 @@ describe('DependencyValidator', () => {
     });
 
     it('should include related nodes for reference issues', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       graph.delete('ApexClass:Missing');
       components.delete('ApexClass:Missing');
@@ -516,9 +488,7 @@ describe('DependencyValidator', () => {
     });
 
     it('should include suggestions for fixes', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:A'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:A']]);
 
       const validator = new DependencyValidator(graph, components);
       const result = validator.validate();
@@ -529,4 +499,3 @@ describe('DependencyValidator', () => {
     });
   });
 });
-

@@ -1,0 +1,121 @@
+name: Publish to npm with Provenance
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'GitHub tag to publish (e.g. v1.0.0)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-npm:
+    name: Publish to npm Registry
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: yarn
+
+      - name: Verify version matches release tag
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          EXPECTED_VERSION="${RELEASE_TAG#v}"
+          ACTUAL_VERSION=$(node -p "require('./package.json').version")
+
+          echo "Release tag: $RELEASE_TAG"
+          echo "Expected version: $EXPECTED_VERSION"
+          echo "package.json version: $ACTUAL_VERSION"
+
+          if [ "$EXPECTED_VERSION" != "$ACTUAL_VERSION" ]; then
+            echo "Version mismatch between release tag and package.json"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build plugin
+        run: yarn build
+
+      - name: Run tests
+        run: yarn test
+
+      - name: Run linter
+        run: yarn lint
+
+      - name: Verify lib directory exists
+        run: |
+          if [ ! -d "lib" ]; then
+            echo "lib/ directory not found"
+            exit 1
+          fi
+          test -f lib/commands/start.js
+          test -f lib/commands/analyze.js
+          test -f lib/commands/validate.js
+          test -f lib/commands/status.js
+          test -f lib/commands/resume.js
+          test -f lib/commands/config.js
+
+      - name: Verify package contents
+        run: |
+          PACK_OUTPUT="$(npm pack --dry-run 2>&1)"
+          echo "$PACK_OUTPUT"
+          echo "$PACK_OUTPUT" | grep -q "lib/commands/start.js" || {
+            echo "Tarball is missing lib/commands/start.js"
+            exit 1
+          }
+          echo "$PACK_OUTPUT" | grep -q "lib/commands/analyze.js" || {
+            echo "Tarball is missing lib/commands/analyze.js"
+            exit 1
+          }
+          echo "$PACK_OUTPUT" | grep -q "lib/commands/validate.js" || {
+            echo "Tarball is missing lib/commands/validate.js"
+            exit 1
+          }
+
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify publication
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MAX_ATTEMPTS=10
+          DELAY_SECONDS=10
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $i of $MAX_ATTEMPTS: verifying ${PKG_NAME}@${PKG_VERSION}"
+            if npm view "${PKG_NAME}@${PKG_VERSION}" version; then
+              exit 0
+            fi
+            sleep $DELAY_SECONDS
+          done
+          echo "Published package could not be verified on npm"
+          exit 1
+
+      - name: Summary
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "## Published ${PKG_NAME}@${PKG_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag:** ${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **npm:** https://www.npmjs.com/package/${PKG_NAME}/v/${PKG_VERSION}" >> "$GITHUB_STEP_SUMMARY"

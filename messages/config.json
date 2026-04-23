@@ -1,0 +1,29 @@
+{
+  "summary": "Manage deployment configuration",
+  "description": "Configure repository deployment settings, metadata priorities, and AI provider defaults.",
+  "examples": [
+    "<%= config.bin %> <%= command.id %> --set testLevel=RunLocalTests",
+    "<%= config.bin %> <%= command.id %> --get testLevel",
+    "<%= config.bin %> <%= command.id %> --set-priority ApexClass:CriticalClass=100",
+    "<%= config.bin %> <%= command.id %> --get-priority ApexClass:CriticalClass",
+    "<%= config.bin %> <%= command.id %> --set-llm-provider openai",
+    "<%= config.bin %> <%= command.id %> --set-llm-model gpt-4o-mini",
+    "<%= config.bin %> <%= command.id %> --list"
+  ],
+  "flags.source-path.summary": "Path to the Salesforce project containing deployment config",
+  "flags.set.summary": "Set a config key=value pair",
+  "flags.set.description": "Set a configuration value such as testLevel=RunLocalTests",
+  "flags.get.summary": "Get a config value by key",
+  "flags.get.description": "Get a configuration value from repository config",
+  "flags.get-priority.summary": "Get priority for specific metadata",
+  "flags.get-priority.description": "Get deployment priority for a metadata component such as ApexClass:MyClass",
+  "flags.set-priority.summary": "Set priority for specific metadata",
+  "flags.set-priority.description": "Set deployment priority using MetadataType:Name=priority, for example ApexClass:Critical=100",
+  "flags.set-llm-provider.summary": "Set the default LLM provider for AI services",
+  "flags.set-llm-model.summary": "Set the default LLM model for AI services",
+  "flags.set-llm-endpoint.summary": "Set the default LLM API endpoint",
+  "flags.set-llm-timeout.summary": "Set the default LLM timeout in milliseconds",
+  "flags.get-llm.summary": "Show the current LLM configuration",
+  "flags.list.summary": "List all configuration values",
+  "errors.invalidLlmTimeout": "LLM timeout must be greater than or equal to 1 millisecond"
+}

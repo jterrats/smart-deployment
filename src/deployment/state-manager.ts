@@ -14,10 +14,20 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { getLogger } from '../utils/logger.js';
+import type { CycleSourceEditRecord } from './cycle-source-editor.js';
 
 const logger = getLogger('StateManager');
 
-export interface DeploymentState {
+export type CycleRemediationState = {
+  cycleId: string;
+  strategy: 'comment-reference' | 'manual';
+  activePhase: 1 | 2;
+  startedAt: string;
+  completedPhases: Array<1 | 2>;
+  editRecords: CycleSourceEditRecord[];
+};
+
+export type DeploymentState = {
   deploymentId: string;
   targetOrg: string;
   timestamp: string;
@@ -29,12 +39,13 @@ export interface DeploymentState {
     error: string;
     timestamp: string;
   };
+  cycleRemediation?: CycleRemediationState;
   metadata?: Record<string, unknown>;
-}
+};
 
-export interface StateManagerOptions {
+export type StateManagerOptions = {
   baseDir?: string;
-}
+};
 
 /**
  * @ac US-089-AC-1: Save state after each wave
@@ -66,7 +77,7 @@ export class StateManager {
       const content = await fs.readFile(this.stateFile, 'utf-8');
       const state = JSON.parse(content) as DeploymentState;
       logger.info('Loaded deployment state', { state });
-      return state;
+      return this.normalizeState(state);
     } catch {
       logger.info('No previous deployment state found');
       return null;
@@ -92,5 +103,20 @@ export class StateManager {
 
   public getStateFilePath(): string {
     return this.stateFile;
+  }
+
+  private normalizeState(state: DeploymentState): DeploymentState {
+    if (state.cycleRemediation === undefined) {
+      return state;
+    }
+
+    return {
+      ...state,
+      cycleRemediation: {
+        ...state.cycleRemediation,
+        completedPhases: [...state.cycleRemediation.completedPhases],
+        editRecords: [...state.cycleRemediation.editRecords],
+      },
+    };
   }
 }

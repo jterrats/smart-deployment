@@ -11,27 +11,27 @@
  * @issue #72
  */
 
-import { getLogger } from './logger.js';
-import { RetryHandler } from '../deployment/retry-handler.js';
 import { NetworkError, TimeoutError, ConnectionError, HttpError } from '../errors/network-error.js';
+import { RetryHandler } from '../deployment/retry-handler.js';
+import { getLogger } from './logger.js';
 
 const logger = getLogger('NetworkHandler');
 
-export interface NetworkRequestOptions {
+export type NetworkRequestOptions = {
   url: string;
   method?: string;
   headers?: Record<string, string>;
   body?: unknown;
   timeout?: number;
   retries?: number;
-}
+};
 
-export interface NetworkResponse<T> {
+export type NetworkResponse<T> = {
   data: T;
   statusCode: number;
   headers: Record<string, string>;
   executionTime: number;
-}
+};
 
 /**
  * @ac US-072-AC-1: Detect network errors
@@ -42,16 +42,16 @@ export class NetworkHandler {
   private readonly defaultTimeout: number;
 
   public constructor(options?: { timeout?: number; maxRetries?: number }) {
-    this.defaultTimeout = options?.timeout || 30000; // 30s default
+    this.defaultTimeout = options?.timeout ?? 30_000;
     this.retryHandler = new RetryHandler({
-      maxRetries: options?.maxRetries || 3,
+      maxRetries: options?.maxRetries ?? 3,
       initialDelay: 1000,
-      maxDelay: 10000,
+      maxDelay: 10_000,
     });
 
     logger.info('Network handler initialized', {
       timeout: this.defaultTimeout,
-      maxRetries: options?.maxRetries || 3,
+      maxRetries: options?.maxRetries ?? 3,
     });
   }
 
@@ -70,7 +70,7 @@ export class NetworkHandler {
         // Transform to specific network error
         throw this.transformError(error, options);
       }
-    }, `network-${options.method || 'GET'}-${options.url}`);
+    }, `network-${options.method ?? 'GET'}-${options.url}`);
   }
 
   /**
@@ -78,7 +78,7 @@ export class NetworkHandler {
    * Execute request with timeout
    */
   private async executeRequest<T>(options: NetworkRequestOptions): Promise<NetworkResponse<T>> {
-    const timeout = options.timeout || this.defaultTimeout;
+    const timeout = options.timeout ?? this.defaultTimeout;
     const controller = new AbortController();
 
     // Setup timeout
@@ -88,7 +88,7 @@ export class NetworkHandler {
 
     try {
       const response = await fetch(options.url, {
-        method: options.method || 'GET',
+        method: options.method ?? 'GET',
         headers: options.headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
         signal: controller.signal,
@@ -139,7 +139,7 @@ export class NetworkHandler {
 
       // Check for timeout
       if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
-        return new TimeoutError(options.url, options.timeout || this.defaultTimeout);
+        return new TimeoutError(options.url, options.timeout ?? this.defaultTimeout);
       }
 
       // Check for connection refused

@@ -15,16 +15,16 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('PromptBuilder');
 
-export interface PromptTemplate {
+export type PromptTemplate = {
   name: string;
   version: string;
   systemPrompt: string;
   userPromptTemplate: string;
   maxTokens: number;
   temperature: number;
-}
+};
 
-export interface PromptContext {
+export type PromptContext = {
   components?: unknown[];
   waves?: unknown[];
   dependencies?: unknown[];
@@ -33,13 +33,13 @@ export interface PromptContext {
     maxComponents?: number;
     maxSnippetLength?: number;
   };
-}
+};
 
-export interface BuildPromptOptions {
+export type BuildPromptOptions = {
   template: string;
   context: PromptContext;
   variant?: 'A' | 'B';
-}
+};
 
 /**
  * @ac US-058-AC-4: Template-based prompts
@@ -170,11 +170,11 @@ export class PromptBuilder {
    */
   private optimizeContext(context: PromptContext): Record<string, unknown> {
     const optimized: Record<string, unknown> = {};
-    const limits = context.limits || {};
+    const limits = context.limits ?? {};
 
     // Limit components
     if (context.components) {
-      const maxComponents = limits.maxComponents || 20;
+      const maxComponents = limits.maxComponents ?? 20;
       optimized.components = Array.isArray(context.components)
         ? context.components.slice(0, maxComponents)
         : context.components;

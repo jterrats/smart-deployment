@@ -1,0 +1,9 @@
+{
+  "summary": "Resume a failed deployment",
+  "examples": [
+    "<%= config.bin %> <%= command.id %> --source-path force-app",
+    "<%= config.bin %> <%= command.id %> --source-path force-app --retry-strategy quick"
+  ],
+  "flags.source-path.summary": "Path to the Salesforce project containing deployment state",
+  "flags.retry-strategy.summary": "Retry strategy to use when resuming the deployment"
+}

@@ -60,7 +60,7 @@ export class PriorityWaveGenerator {
 
   public constructor(options: PriorityOptions = {}) {
     this.options = {
-      userPriorities: options.userPriorities ?? new Map(),
+      userPriorities: options.userPriorities ?? new Map<NodeId, number>(),
       respectDependencyOrder: options.respectDependencyOrder ?? true,
     };
   }

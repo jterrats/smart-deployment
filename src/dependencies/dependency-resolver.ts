@@ -182,7 +182,7 @@ export class DependencyResolver {
         }
 
         // Handle optional dependencies
-        if (this.isOptionalDependency(nodeId, dep)) {
+        if (this.isOptionalDependency()) {
           if (this.options.includeOptional) {
             filteredDeps.add(dep);
           }
@@ -301,10 +301,7 @@ export class DependencyResolver {
   /**
    * Build resolved dependencies map with deployment order
    */
-  private buildResolvedMap(
-    deploymentOrder: NodeId[],
-    graph: DependencyGraph
-  ): Map<NodeId, ResolvedDependency> {
+  private buildResolvedMap(deploymentOrder: NodeId[], graph: DependencyGraph): Map<NodeId, ResolvedDependency> {
     const resolved = new Map<NodeId, ResolvedDependency>();
 
     for (let i = 0; i < deploymentOrder.length; i++) {
@@ -351,7 +348,7 @@ export class DependencyResolver {
    */
   private isManagedPackage(nodeId: NodeId): boolean {
     // Check for namespace prefix (e.g., "ns__ObjectName")
-    return nodeId.includes('__') || this.components.get(nodeId)?.name.includes('__') || false;
+    return nodeId.includes('__') || (this.components.get(nodeId)?.name.includes('__') ?? false);
   }
 
   /**
@@ -359,7 +356,7 @@ export class DependencyResolver {
    * Note: Current MetadataComponent uses Set<string> for dependencies
    * For now, we'll return false as type info is not available
    */
-  private isOptionalDependency(from: NodeId, to: NodeId): boolean {
+  private isOptionalDependency(): boolean {
     // TODO: When MetadataComponent includes dependency types, implement this properly
     return false;
   }
@@ -418,9 +415,6 @@ export class DependencyResolver {
     }
 
     // Sort by order
-    return nodeIds
-      .filter((id) => orderMap.has(id))
-      .sort((a, b) => (orderMap.get(a) ?? 0) - (orderMap.get(b) ?? 0));
+    return nodeIds.filter((id) => orderMap.has(id)).sort((a, b) => (orderMap.get(a) ?? 0) - (orderMap.get(b) ?? 0));
   }
 }
-

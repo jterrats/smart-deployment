@@ -15,7 +15,7 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('AgentforceErrorHandler');
 
-export interface AIUsageStats {
+export type AIUsageStats = {
   totalCalls: number;
   successfulCalls: number;
   failedCalls: number;
@@ -24,7 +24,7 @@ export interface AIUsageStats {
   errorsByType: Record<string, number>;
   lastFailure?: Date;
   lastSuccess?: Date;
-}
+};
 
 /**
  * @ac US-073-AC-1: Detect AI failures
@@ -123,7 +123,7 @@ export class AgentforceErrorHandler {
 
     // Categorize error
     const errorType = this.categorizeError(error);
-    this.stats.errorsByType[errorType] = (this.stats.errorsByType[errorType] || 0) + 1;
+    this.stats.errorsByType[errorType] = (this.stats.errorsByType[errorType] ?? 0) + 1;
 
     logger.error('AI call failed', {
       context,

@@ -14,44 +14,62 @@
 import { getLogger } from '../utils/logger.js';
 import type { MetadataComponent } from '../types/metadata.js';
 import type { DependencyGraph } from '../types/dependency.js';
-import { AgentforceService } from './agentforce-service.js';
+import type { LLMProvider } from './llm-provider.js';
+import { createLLMProvider } from './llm-provider-factory.js';
 
 const logger = getLogger('DependencyInferenceService');
 
-export interface InferredDependency {
+export type InferredDependency = {
   from: string;
   to: string;
   type: 'implicit' | 'dynamic' | 'runtime' | 'business-logic';
   confidence: number;
   reason: string;
   lineNumber?: number;
-}
+};
 
-export interface InferenceResult {
+export type InferenceResult = {
   dependencies: InferredDependency[];
   totalInferred: number;
   highConfidenceCount: number;
   executionTime: number;
   usedCache: boolean;
   fallbackToStatic: boolean;
-}
+};
+
+export type DependencyInferenceServiceOptions = {
+  baseDir?: string;
+};
 
 /**
  * @ac US-055-AC-1: Send component context to Agentforce
  * @ac US-055-AC-2: Receive dependency inferences
  */
 export class DependencyInferenceService {
-  private readonly agentforceService: AgentforceService;
+  private readonly llmProvider: LLMProvider;
   private readonly cache: Map<string, InferredDependency[]> = new Map();
   private readonly confidenceThreshold: number;
 
-  public constructor(agentforceService?: AgentforceService, confidenceThreshold: number = 0.7) {
-    this.agentforceService = agentforceService || new AgentforceService();
+  public constructor(
+    llmProviderOrOptions?: LLMProvider | DependencyInferenceServiceOptions,
+    confidenceThreshold: number = 0.7
+  ) {
+    this.llmProvider = this.resolveProvider(llmProviderOrOptions);
     this.confidenceThreshold = confidenceThreshold;
 
     logger.info('Dependency inference service initialized', {
       confidenceThreshold,
-      agentforceEnabled: this.agentforceService.isEnabled(),
+      agentforceEnabled: this.llmProvider.isEnabled(),
+    });
+  }
+
+  private resolveProvider(llmProviderOrOptions?: LLMProvider | DependencyInferenceServiceOptions): LLMProvider {
+    if (llmProviderOrOptions && 'sendRequest' in llmProviderOrOptions) {
+      return llmProviderOrOptions;
+    }
+
+    return createLLMProvider({
+      baseDir: llmProviderOrOptions?.baseDir,
     });
   }
 
@@ -76,7 +94,7 @@ export class DependencyInferenceService {
 
     try {
       // Check if Agentforce is enabled
-      if (!this.agentforceService.isEnabled()) {
+      if (!this.llmProvider.isEnabled()) {
         logger.info('Agentforce disabled, skipping inference');
         result.fallbackToStatic = true;
         return result;
@@ -98,8 +116,8 @@ export class DependencyInferenceService {
       }
 
       // Send to Agentforce
-      const response = await this.agentforceService.sendRequest({
-        model: this.agentforceService.getConfig().model,
+      const response = await this.llmProvider.sendRequest({
+        model: this.llmProvider.getConfig().model,
         prompt,
         temperature: 0.2, // Lower temperature for more consistent results
         maxTokens: 2000,

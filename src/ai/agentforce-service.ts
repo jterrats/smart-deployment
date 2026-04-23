@@ -13,43 +13,33 @@
 
 import { getLogger } from '../utils/logger.js';
 import { getErrorAggregator } from '../utils/error-aggregator.js';
+import type { LLMProvider, LLMProviderConfig, LLMRequest, LLMResponse } from './llm-provider.js';
 
 const logger = getLogger('AgentforceService');
 const errorAggregator = getErrorAggregator();
 
-export interface AgentforceConfig {
-  /** API endpoint URL */
+export type AgentforceFetch = typeof fetch;
+
+export type AgentforceConfig = LLMProviderConfig & {
+  provider: 'agentforce';
   endpoint: string;
+  /** API endpoint URL */
   /** API key or named credential */
   apiKey?: string;
-  /** Model to use (e.g., 'agentforce-1', 'gpt-4-turbo') */
   model: string;
-  /** Request timeout in milliseconds */
   timeout: number;
+  enabled: boolean;
+  rateLimit: number;
   /** Max retry attempts */
   maxRetries: number;
-  /** Enable/disable service */
-  enabled: boolean;
-  /** Rate limit: requests per minute */
-  rateLimit: number;
-}
+  /** Injectable fetch implementation for tests or alternate runtimes */
+  fetchFn?: AgentforceFetch;
+};
 
-export interface AgentforceRequest {
-  model: string;
-  prompt: string;
-  context?: Record<string, unknown>;
-  temperature?: number;
-  maxTokens?: number;
-}
+export type AgentforceRequest = LLMRequest;
+export type AgentforceResponse = LLMResponse;
 
-export interface AgentforceResponse {
-  content: string;
-  tokensUsed: number;
-  model: string;
-  executionTime: number;
-}
-
-export interface ApiUsageStats {
+export type ApiUsageStats = {
   totalRequests: number;
   successfulRequests: number;
   failedRequests: number;
@@ -57,14 +47,15 @@ export interface ApiUsageStats {
   averageResponseTime: number;
   rateLimitHits: number;
   lastRequestTime?: Date;
-}
+};
 
 /**
  * @ac US-054-AC-1: Configure API endpoint
  * @ac US-054-AC-2: Handle authentication
  */
-export class AgentforceService {
+export class AgentforceService implements LLMProvider {
   private readonly config: AgentforceConfig;
+  private readonly fetchFn?: AgentforceFetch;
   private readonly usageStats: ApiUsageStats = {
     totalRequests: 0,
     successfulRequests: 0,
@@ -78,14 +69,17 @@ export class AgentforceService {
 
   public constructor(config: Partial<AgentforceConfig> = {}) {
     this.config = {
-      endpoint: config.endpoint || process.env.AGENTFORCE_ENDPOINT || 'https://api.salesforce.com/ai/v1',
-      apiKey: config.apiKey || process.env.AGENTFORCE_API_KEY,
-      model: config.model || 'agentforce-1',
-      timeout: config.timeout || 30000, // 30 seconds
-      maxRetries: config.maxRetries || 3,
-      enabled: config.enabled !== undefined ? config.enabled : true,
-      rateLimit: config.rateLimit || 60, // 60 requests per minute
+      provider: 'agentforce',
+      endpoint: config.endpoint ?? process.env.AGENTFORCE_ENDPOINT ?? 'https://api.salesforce.com/ai/v1',
+      apiKey: config.apiKey ?? process.env.AGENTFORCE_API_KEY,
+      model: config.model ?? 'agentforce-1',
+      timeout: config.timeout ?? 30_000, // 30 seconds
+      maxRetries: config.maxRetries ?? 3,
+      enabled: config.enabled ?? true,
+      rateLimit: config.rateLimit ?? 60, // 60 requests per minute
+      fetchFn: config.fetchFn ?? globalThis.fetch,
     };
+    this.fetchFn = this.config.fetchFn;
 
     logger.info('Agentforce service initialized', {
       endpoint: this.config.endpoint,
@@ -106,7 +100,6 @@ export class AgentforceService {
     if (!this.config.apiKey) {
       throw new Error('Agentforce API key not configured');
     }
-
     // Rate limiting check
     this.enforceRateLimit();
 
@@ -170,7 +163,7 @@ export class AgentforceService {
       }
 
       // Calculate backoff delay (exponential)
-      const delay = Math.min(1000 * 2 ** (attempt - 1), 10000); // Max 10s
+      const delay = Math.min(1e3 * 2 ** (attempt - 1), 1e4); // Max 10s
 
       logger.warn(`Retrying Agentforce request (attempt ${attempt}/${this.config.maxRetries})`, {
         delay,
@@ -182,55 +175,65 @@ export class AgentforceService {
     }
   }
 
-  /**
-   * Execute actual API request (mock for now)
-   */
   private async executeRequest(request: AgentforceRequest): Promise<AgentforceResponse> {
     const startTime = Date.now();
-
-    // Mock response for now (TODO: Replace with actual API call)
     logger.debug('Executing Agentforce request', {
       model: request.model,
       promptLength: request.prompt.length,
     });
 
-    // Simulate API call
-    await this.sleep(500 + Math.random() * 1000);
-
-    // Mock response
-    const response: AgentforceResponse = {
-      content: this.generateMockResponse(request),
-      tokensUsed: Math.floor(request.prompt.length / 4) + 100,
-      model: request.model,
-      executionTime: Date.now() - startTime,
-    };
-
-    return response;
-  }
-
-  /**
-   * Generate mock response (for testing without real API)
-   */
-  private generateMockResponse(request: AgentforceRequest): string {
-    // Return mock JSON response based on prompt
-    if (request.prompt.includes('dependency')) {
-      return JSON.stringify({
-        dependencies: [
-          {
-            from: 'ComponentA',
-            to: 'ComponentB',
-            type: 'implicit',
-            confidence: 0.85,
-            reason: 'Dynamic reference in method call',
-          },
-        ],
-      });
+    if (!this.fetchFn) {
+      throw new Error('Fetch API is not available in this runtime');
+    }
+    const apiKey = this.config.apiKey;
+    if (!apiKey) {
+      throw new Error('Agentforce API key not configured');
     }
 
-    return JSON.stringify({
-      message: 'Mock response from Agentforce',
-      confidence: 0.9,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const response = await this.fetchFn(this.config.endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: request.model,
+          prompt: request.prompt,
+          context: request.context,
+          temperature: request.temperature ?? 0.2,
+          maxTokens: request.maxTokens ?? 2000,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Agentforce API error: ${response.status} ${response.statusText}`);
+      }
+
+      const rawPayload: unknown = await response.json();
+      if (typeof rawPayload !== 'object' || rawPayload === null) {
+        throw new Error('Agentforce response payload was not an object');
+      }
+      const payload = rawPayload as Record<string, unknown>;
+      return {
+        content: this.extractContent(payload),
+        tokensUsed: this.extractTokensUsed(payload, request.prompt),
+        model: this.extractModel(payload, request.model),
+        executionTime: Date.now() - startTime,
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Agentforce request timed out');
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /**
@@ -239,7 +242,7 @@ export class AgentforceService {
    */
   private enforceRateLimit(): void {
     const now = Date.now();
-    const oneMinuteAgo = now - 60000;
+    const oneMinuteAgo = now - 60_000;
 
     // Remove timestamps older than 1 minute
     this.requestTimestamps = this.requestTimestamps.filter((ts) => ts > oneMinuteAgo);
@@ -247,8 +250,8 @@ export class AgentforceService {
     // Check if we exceeded rate limit
     if (this.requestTimestamps.length >= this.config.rateLimit) {
       this.usageStats.rateLimitHits++;
-      const oldestTimestamp = this.requestTimestamps[0];
-      const waitTime = 60000 - (now - oldestTimestamp);
+      const oldestTimestamp = this.requestTimestamps[0] ?? now;
+      const waitTime = 60_000 - (now - oldestTimestamp);
 
       throw new Error(`Rate limit exceeded. Please wait ${Math.ceil(waitTime / 1000)}s before retrying.`);
     }
@@ -328,5 +331,48 @@ export class AgentforceService {
     this.usageStats.averageResponseTime = 0;
     this.usageStats.rateLimitHits = 0;
     this.requestTimestamps = [];
+  }
+
+  private extractContent(payload: Record<string, unknown>): string {
+    const content = payload.content;
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    const choices = payload.choices;
+    if (Array.isArray(choices) && choices.length > 0) {
+      const [firstChoice] = choices as unknown[];
+      if (typeof firstChoice === 'object' && firstChoice !== null && 'message' in firstChoice) {
+        const message = (firstChoice as Record<string, unknown>).message;
+        if (typeof message === 'object' && message !== null && 'content' in message) {
+          const messageContent = (message as Record<string, unknown>).content;
+          if (typeof messageContent === 'string') {
+            return messageContent;
+          }
+        }
+      }
+    }
+
+    throw new Error('Agentforce response did not contain content');
+  }
+
+  private extractTokensUsed(payload: Record<string, unknown>, prompt: string): number {
+    const usage = payload.usage;
+    if (typeof usage === 'object' && usage !== null && 'total_tokens' in usage) {
+      const totalTokens = (usage as Record<string, unknown>).total_tokens;
+      if (typeof totalTokens === 'number' && Number.isFinite(totalTokens)) {
+        return totalTokens;
+      }
+    }
+
+    return Math.max(1, Math.ceil(prompt.length / 4));
+  }
+
+  private extractModel(payload: Record<string, unknown>, fallbackModel: string): string {
+    if (typeof payload.model === 'string') {
+      return payload.model;
+    }
+
+    return fallbackModel;
   }
 }

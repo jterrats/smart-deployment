@@ -1,0 +1,18 @@
+{
+  "summary": "Analyze metadata without deploying",
+  "description": "Scans project metadata, builds dependency waves, and can emit plans or reports without executing a deployment.",
+  "examples": [
+    "<%= config.bin %> <%= command.id %> --source-path force-app",
+    "<%= config.bin %> <%= command.id %> --save-plan --plan-path .smart-deployment/deployment-plan.json",
+    "<%= config.bin %> <%= command.id %> --output analysis.json --format json",
+    "<%= config.bin %> <%= command.id %> --use-ai --org-type Production --industry Fintech"
+  ],
+  "flags.source-path.summary": "Source path to analyze",
+  "flags.save-plan.summary": "Generate and save a deployment plan for CI/CD review",
+  "flags.plan-path.summary": "Path to save the deployment plan",
+  "flags.use-ai.summary": "Enable AI prioritization and dependency inference during analysis",
+  "flags.org-type.summary": "Organization type context for plan metadata",
+  "flags.industry.summary": "Industry context for plan metadata",
+  "flags.output.summary": "Output file path for the generated report",
+  "flags.format.summary": "Output report format (json|html)"
+}

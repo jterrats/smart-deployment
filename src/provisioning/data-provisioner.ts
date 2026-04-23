@@ -17,28 +17,28 @@ import type { MetadataComponent } from '../types/metadata.js';
 
 const logger = getLogger('DataProvisioner');
 
-export interface DataProvisioningRecord {
+export type DataProvisioningRecord = {
   type: 'CustomMetadata' | 'CustomSettings' | 'PicklistValue' | 'RecordType';
   name: string;
   filePath: string;
   metadata: Record<string, unknown>;
   dependsOn: string[];
-}
+};
 
-export interface DataProvisioningWave {
+export type DataProvisioningWave = {
   waveNumber: number;
   records: DataProvisioningRecord[];
   estimatedTime: number;
   dependencies: string[];
-}
+};
 
-export interface ProvisioningResult {
+export type ProvisioningResult = {
   success: boolean;
   recordsCreated: number;
   recordsFailed: number;
   errors: Array<{ record: string; error: string }>;
   executionTime: number;
-}
+};
 
 /**
  * @ac US-107-AC-1: Detect when data provisioning is needed
@@ -70,7 +70,7 @@ export class DataProvisioner {
         records.push({
           type: 'CustomSettings',
           name: component.name,
-          filePath: component.filePath || '',
+          filePath: component.filePath ?? '',
           metadata: {},
           dependsOn: [],
         });
@@ -81,9 +81,9 @@ export class DataProvisioner {
         records.push({
           type: 'RecordType',
           name: component.name,
-          filePath: component.filePath || '',
+          filePath: component.filePath ?? '',
           metadata: {},
-          dependsOn: [component.dependencies.values().next().value || ''],
+          dependsOn: [component.dependencies.values().next().value ?? ''],
         });
       }
     }
@@ -141,7 +141,7 @@ export class DataProvisioner {
     return {
       type: 'CustomSettings',
       name: component.name,
-      filePath: component.filePath || '',
+      filePath: component.filePath ?? '',
       metadata: data,
       dependsOn: [],
     };
@@ -151,10 +151,7 @@ export class DataProvisioner {
    * @ac US-107-AC-4: Queue data operations between waves
    * Create data provisioning wave
    */
-  public createProvisioningWave(
-    records: DataProvisioningRecord[],
-    waveNumber: number
-  ): DataProvisioningWave {
+  public createProvisioningWave(records: DataProvisioningRecord[], waveNumber: number): DataProvisioningWave {
     logger.info('Creating data provisioning wave', {
       waveNumber,
       recordCount: records.length,
@@ -189,26 +186,30 @@ export class DataProvisioner {
   ): Promise<{ valid: boolean; missing: string[] }> {
     logger.info('Validating data exists', { recordCount: records.length });
 
-    const missing: string[] = [];
+    const validationResults = await Promise.all(
+      records.map(async (record) => {
+        try {
+          if (record.type !== 'CustomMetadata') {
+            return undefined;
+          }
 
-    for (const record of records) {
-      try {
-        if (record.type === 'CustomMetadata') {
-          const soql = `SELECT Id FROM ${record.name.split('.').slice(0, -1).join('.')}__mdt WHERE DeveloperName = '${record.name.split('.').pop()}'`;
+          const developerName = record.name.split('.').pop() ?? '';
+          const metadataTypeName = record.name.split('.').slice(0, -1).join('.');
+          const soql = `SELECT Id FROM ${metadataTypeName}__mdt WHERE DeveloperName = '${developerName}'`;
           const results = await orgApi.query(soql);
 
-          if (!results || results.length === 0) {
-            missing.push(record.name);
-          }
+          return results.length === 0 ? record.name : undefined;
+        } catch (error) {
+          logger.warn('Failed to validate data existence', {
+            record: record.name,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return record.name;
         }
-      } catch (error) {
-        logger.warn('Failed to validate data existence', {
-          record: record.name,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        missing.push(record.name);
-      }
-    }
+      })
+    );
+
+    const missing = validationResults.filter((recordName): recordName is string => recordName !== undefined);
 
     const valid = missing.length === 0;
 
@@ -223,7 +224,7 @@ export class DataProvisioner {
   /**
    * Execute data provisioning
    */
-  public async executeProvisioning(
+  public executeProvisioning(
     wave: DataProvisioningWave,
     orgApi: { create: (type: string, records: unknown[]) => Promise<unknown[]> }
   ): Promise<ProvisioningResult> {
@@ -241,11 +242,11 @@ export class DataProvisioner {
       try {
         if (record.type === 'CustomMetadata') {
           // Create Custom Metadata record via Metadata API
-          await this.createCustomMetadataRecord(record, orgApi);
+          this.createCustomMetadataRecord(record, orgApi);
           recordsCreated++;
         } else if (record.type === 'CustomSettings') {
           // Create Custom Settings data
-          await this.createCustomSettingsData(record, orgApi);
+          this.createCustomSettingsData(record, orgApi);
           recordsCreated++;
         }
       } catch (error) {
@@ -270,22 +271,23 @@ export class DataProvisioner {
       executionTime,
     });
 
-    return {
+    return Promise.resolve({
       success: recordsFailed === 0,
       recordsCreated,
       recordsFailed,
       errors,
       executionTime,
-    };
+    });
   }
 
   /**
    * Create Custom Metadata record
    */
-  private async createCustomMetadataRecord(
+  private createCustomMetadataRecord(
     record: DataProvisioningRecord,
     orgApi: { create: (type: string, records: unknown[]) => Promise<unknown[]> }
-  ): Promise<void> {
+  ): void {
+    void orgApi;
     // This would use Metadata API to create CMT record
     // Simplified for now
     logger.debug('Creating Custom Metadata record', { name: record.name });
@@ -294,10 +296,11 @@ export class DataProvisioner {
   /**
    * Create Custom Settings data
    */
-  private async createCustomSettingsData(
+  private createCustomSettingsData(
     record: DataProvisioningRecord,
     orgApi: { create: (type: string, records: unknown[]) => Promise<unknown[]> }
-  ): Promise<void> {
+  ): void {
+    void orgApi;
     // This would use SOAP/REST API to create Custom Settings data
     logger.debug('Creating Custom Settings data', { name: record.name });
   }
@@ -326,4 +329,3 @@ export class DataProvisioner {
     return lines.join('\n');
   }
 }
-

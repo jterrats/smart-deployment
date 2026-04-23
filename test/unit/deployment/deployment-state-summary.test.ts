@@ -78,4 +78,69 @@ describe('deployment-state-summary', () => {
     expect(lines.join('\n')).to.include('Current Wave: 2/4');
     expect(lines.join('\n')).to.include('Estimated Time Remaining: 180s');
   });
+
+  it('includes active cycle remediation details in the summary and formatted status output', () => {
+    const state: DeploymentState = {
+      deploymentId: 'deploy-summary-4',
+      targetOrg: 'summary@example.com',
+      timestamp: '2026-04-22T00:00:00.000Z',
+      totalWaves: 3,
+      completedWaves: [1],
+      currentWave: 2,
+      cycleRemediation: {
+        cycleId: 'ApexClass:Alpha|ApexClass:Beta',
+        strategy: 'comment-reference',
+        activePhase: 2,
+        startedAt: '2026-04-22T00:00:00.000Z',
+        completedPhases: [1, 1],
+        editRecords: [
+          {
+            operation: 'comment-reference',
+            filePath: '/tmp/classes/Alpha.cls',
+            backupPath: '/tmp/classes/Alpha.cls.cycle-remediation.bak',
+            targetDescription: 'Temporarily comment the ApexClass:Alpha reference to ApexClass:Beta during phase 1.',
+            targetDependency: 'ApexClass:Beta',
+            sourceSnippet: 'Example.run();',
+            replacementSnippet:
+              '// cycle-remediation: comment-reference ApexClass:Beta | Temporarily comment the ApexClass:Alpha reference to ApexClass:Beta during phase 1.\n// Example.run();\n// cycle-remediation: end',
+            originalHash: 'original-hash',
+            editedHash: 'edited-hash',
+          },
+        ],
+      },
+    };
+
+    const summary = summarizeDeploymentState(state);
+
+    expect(summary.cycleRemediation).to.deep.equal({
+      cycleId: 'ApexClass:Alpha|ApexClass:Beta',
+      strategy: 'comment-reference',
+      activePhase: 2,
+      completedPhases: [1],
+      startedAt: '2026-04-22T00:00:00.000Z',
+      editCount: 1,
+      statusText: 'Phase 2 of 2: Restore original references and redeploy the same components.',
+    });
+
+    const lines = formatDeploymentStatus(summary).join('\n');
+    expect(lines).to.include(
+      'Cycle Remediation: Phase 2 of 2: Restore original references and redeploy the same components.'
+    );
+    expect(lines).to.include('Remediation Cycle: ApexClass:Alpha|ApexClass:Beta');
+    expect(lines).to.include('Remediation Completed Phases: 1');
+  });
+
+  it('keeps legacy summaries unchanged when cycle remediation is absent', () => {
+    const summary = summarizeDeploymentState({
+      deploymentId: 'deploy-summary-5',
+      targetOrg: 'summary@example.com',
+      timestamp: '2026-04-22T00:00:00.000Z',
+      totalWaves: 2,
+      completedWaves: [],
+      currentWave: 1,
+    });
+
+    expect(summary.cycleRemediation).to.equal(undefined);
+    expect(formatDeploymentStatus(summary).join('\n')).not.to.include('Cycle Remediation:');
+  });
 });

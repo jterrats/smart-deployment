@@ -1,21 +1,47 @@
 /**
  * Tests for Dependency Inference Service - US-055
  */
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { expect } from 'chai';
 import { describe, it, beforeEach } from 'mocha';
 import { DependencyInferenceService } from '../../../src/ai/dependency-inference-service.js';
-import { AgentforceService } from '../../../src/ai/agentforce-service.js';
+import { AgentforceService, type AgentforceFetch } from '../../../src/ai/agentforce-service.js';
 import type { MetadataComponent } from '../../../src/types/metadata.js';
 
 describe('DependencyInferenceService', () => {
   let service: DependencyInferenceService;
   let agentforceService: AgentforceService;
+  let fetchFn: AgentforceFetch;
 
   beforeEach(() => {
+    fetchFn = (async () =>
+      new Response(
+        JSON.stringify({
+          content: JSON.stringify([
+            {
+              from: 'TestClass',
+              to: 'UtilityClass',
+              type: 'implicit',
+              confidence: 0.91,
+              reason: 'Dynamic invocation found',
+            },
+          ]),
+          usage: { ['total_tokens']: 42 },
+          model: 'test-model',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )) as AgentforceFetch;
+
     agentforceService = new AgentforceService({
       enabled: true,
       apiKey: 'test-key',
       rateLimit: 100,
+      fetchFn,
     });
     service = new DependencyInferenceService(agentforceService, 0.7);
     service.clearCache();
@@ -148,6 +174,38 @@ describe('DependencyInferenceService', () => {
 
       expect(result.fallbackToStatic).to.be.true;
       expect(result.dependencies).to.be.empty;
+    });
+
+    it('uses repo-configured provider defaults when baseDir is supplied', async () => {
+      const tempDir = await mkdtemp(path.join(os.tmpdir(), 'smart-deployment-inference-config-'));
+
+      try {
+        await writeFile(
+          path.join(tempDir, '.smart-deployment.json'),
+          JSON.stringify({
+            llm: {
+              provider: 'openai',
+              model: 'gpt-4o-mini',
+              endpoint: 'https://api.openai.test/v1/chat/completions',
+            },
+          }),
+          'utf8'
+        );
+
+        const inferenceService = new DependencyInferenceService(
+          {
+            baseDir: tempDir,
+          },
+          0.7
+        );
+        const components = [createMockComponent('TestClass', 'ApexClass')];
+
+        const result = await inferenceService.inferDependencies(components);
+
+        expect(result.fallbackToStatic).to.be.true;
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });

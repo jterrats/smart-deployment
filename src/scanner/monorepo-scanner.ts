@@ -18,25 +18,25 @@ import { type SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('MonorepoScanner');
 
-export interface SfdxProject {
+export type SfdxProject = {
   name: string;
   path: string;
   sfdxProjectPath: string;
   packageDirectories: string[];
-}
+};
 
-export interface MonorepoStructure {
+export type MonorepoStructure = {
   isMonorepo: boolean;
   projects: SfdxProject[];
   sharedDependencies: string[];
   crossProjectRefs: Array<{ from: string; to: string; component: string }>;
-}
+};
 
-export interface MonorepoReport {
+export type MonorepoReport = {
   structure: MonorepoStructure;
   warnings: string[];
   recommendations: string[];
-}
+};
 
 /**
  * @ac US-082-AC-1: Detect multiple SFDX projects
@@ -59,12 +59,7 @@ export class MonorepoScanner {
   /**
    * Recursively scan directory for sfdx-project.json
    */
-  private async scanDirectory(
-    dir: string,
-    depth: number,
-    maxDepth: number,
-    projects: SfdxProject[]
-  ): Promise<void> {
+  private async scanDirectory(dir: string, depth: number, maxDepth: number, projects: SfdxProject[]): Promise<void> {
     if (depth > maxDepth) return;
 
     try {
@@ -79,12 +74,10 @@ export class MonorepoScanner {
           const content = await fs.readFile(sfdxProjectPath, 'utf-8');
           const config = JSON.parse(content) as SfdxProjectJson & { name?: string };
 
-          const packageDirs = config.packageDirectories
-            ? config.packageDirectories.map((p) => p.path)
-            : [];
+          const packageDirs = config.packageDirectories ? config.packageDirectories.map((p) => p.path) : [];
 
           projects.push({
-            name: config.name || path.basename(dir),
+            name: config.name ?? path.basename(dir),
             path: dir,
             sfdxProjectPath,
             packageDirectories: packageDirs,
@@ -99,14 +92,12 @@ export class MonorepoScanner {
 
       // Scan subdirectories (skip node_modules, .git, etc.)
       const dirsToScan = entries.filter(
-        (e) =>
-          e.isDirectory() &&
-          !['node_modules', '.git', '.sfdx', 'dist', 'build', 'coverage'].includes(e.name)
+        (e) => e.isDirectory() && !['node_modules', '.git', '.sfdx', 'dist', 'build', 'coverage'].includes(e.name)
       );
 
-      for (const entry of dirsToScan) {
-        await this.scanDirectory(path.join(dir, entry.name), depth + 1, maxDepth, projects);
-      }
+      await Promise.all(
+        dirsToScan.map(async (entry) => this.scanDirectory(path.join(dir, entry.name), depth + 1, maxDepth, projects))
+      );
     } catch (error) {
       logger.warn('Failed to scan directory', {
         dir,
@@ -122,27 +113,28 @@ export class MonorepoScanner {
   public async detectSharedDependencies(projects: SfdxProject[]): Promise<string[]> {
     const sharedDeps: Set<string> = new Set();
 
-    for (const project of projects) {
-      try {
-        const content = await fs.readFile(project.sfdxProjectPath, 'utf-8');
-        const config = JSON.parse(content) as SfdxProjectJson & { packageAliases?: Record<string, unknown> };
+    await Promise.all(
+      projects.map(async (project) => {
+        try {
+          const content = await fs.readFile(project.sfdxProjectPath, 'utf-8');
+          const config = JSON.parse(content) as SfdxProjectJson & { packageAliases?: Record<string, unknown> };
 
-        if (config.plugins) {
-          const plugins = config.plugins as Record<string, unknown>;
-          for (const plugin of Object.keys(plugins)) {
-            sharedDeps.add(plugin);
+          if (config.plugins) {
+            for (const plugin of Object.keys(config.plugins)) {
+              sharedDeps.add(plugin);
+            }
           }
-        }
 
-        if (config.packageAliases) {
-          for (const alias of Object.keys(config.packageAliases)) {
-            sharedDeps.add(alias);
+          if (config.packageAliases) {
+            for (const alias of Object.keys(config.packageAliases)) {
+              sharedDeps.add(alias);
+            }
           }
+        } catch {
+          // Skip errors
         }
-      } catch {
-        // Skip errors
-      }
-    }
+      })
+    );
 
     return Array.from(sharedDeps);
   }
@@ -151,9 +143,7 @@ export class MonorepoScanner {
    * @ac US-082-AC-4: Handle cross-project references
    * Detect cross-project references (simplified)
    */
-  public detectCrossProjectRefs(
-    projects: SfdxProject[]
-  ): Array<{ from: string; to: string; component: string }> {
+  public detectCrossProjectRefs(projects: SfdxProject[]): Array<{ from: string; to: string; component: string }> {
     const refs: Array<{ from: string; to: string; component: string }> = [];
 
     // Simplified: Check if projects reference each other in config
@@ -161,16 +151,10 @@ export class MonorepoScanner {
       for (const otherProject of projects) {
         if (project !== otherProject) {
           // Check if project path is mentioned in other project's package dirs
-          const isReferenced = otherProject.packageDirectories.some((dir) =>
-            dir.includes(path.basename(project.path))
-          );
+          const isReferenced = otherProject.packageDirectories.some((dir) => dir.includes(path.basename(project.path)));
 
           if (isReferenced) {
-            refs.push({
-              from: project.name,
-              to: otherProject.name,
-              component: 'package',
-            });
+            refs.push({ from: project.name, to: otherProject.name, component: 'package' });
           }
         }
       }

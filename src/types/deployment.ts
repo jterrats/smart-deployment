@@ -6,7 +6,7 @@ import { type MetadataComponent, type MetadataType } from './metadata.js';
 import { type NodeId } from './dependency.js';
 
 /** Set of components deployed together */
-export interface DeploymentWave {
+export type DeploymentWave = {
   number: number; // 1-based
   components: NodeId[];
   metadataTypes: Set<MetadataType>;
@@ -14,15 +14,15 @@ export interface DeploymentWave {
   testClasses: string[];
   description: string;
   size: number;
-}
+};
 
-export interface WaveGenerationResult {
+export type WaveGenerationResult = {
   waves: DeploymentWave[]; // Ordered by dependencies
   stats: WaveStats;
   warnings: string[];
-}
+};
 
-export interface WaveStats {
+export type WaveStats = {
   totalWaves: number;
   totalComponents: number;
   wavesWithTests: number;
@@ -30,9 +30,9 @@ export interface WaveStats {
   largestWave: { number: number; size: number };
   smallestWave: { number: number; size: number };
   estimatedTime: number; // minutes
-}
+};
 
-export interface DeploymentOptions {
+export type DeploymentOptions = {
   targetOrg: string;
   testLevel: TestLevel;
   failFast: boolean;
@@ -40,11 +40,11 @@ export interface DeploymentOptions {
   purgeOnDelete: boolean;
   dryRun: boolean; // Validate without deploying
   verbose: boolean;
-}
+};
 
 export type TestLevel = 'NoTestRun' | 'RunSpecifiedTests' | 'RunLocalTests' | 'RunAllTestsInOrg';
 
-export interface DeploymentResult {
+export type DeploymentResult = {
   status: DeploymentStatus;
   waves: WaveResult[];
   totalTime: number; // ms
@@ -55,11 +55,11 @@ export interface DeploymentResult {
   testsFailed: number;
   deployIds: string[]; // Salesforce deploy IDs
   errors: DeploymentError[];
-}
+};
 
 export type DeploymentStatus = 'Success' | 'PartialSuccess' | 'Failed' | 'Cancelled' | 'InProgress';
 
-export interface WaveResult {
+export type WaveResult = {
   waveNumber: number;
   status: DeploymentStatus;
   deployId?: string;
@@ -67,9 +67,9 @@ export interface WaveResult {
   deployTime: number; // ms
   testsRun: number;
   errors: DeploymentError[];
-}
+};
 
-export interface DeploymentError {
+export type DeploymentError = {
   component: string;
   componentDetails?: MetadataComponent; // For AI analysis
   type: MetadataType;
@@ -77,18 +77,18 @@ export interface DeploymentError {
   line?: number;
   severity: 'warning' | 'error';
   stackTrace?: string;
-}
+};
 
 /** Salesforce package.xml manifest */
-export interface Manifest {
+export type Manifest = {
   fileName: string;
   content: string; // XML
   components: Record<MetadataType, string[]>; // Grouped by type
   apiVersion: string;
-}
+};
 
-export interface ManifestGenerationOptions {
+export type ManifestGenerationOptions = {
   apiVersion: string;
   includeManagedPackages: boolean;
   prettyPrint: boolean;
-}
+};

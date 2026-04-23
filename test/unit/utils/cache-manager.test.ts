@@ -446,14 +446,12 @@ describe('CacheManager', () => {
       await cache.set('key1', 'value1');
       await cache.set('key2', 'value2');
       await cache.clear();
+      const dirExists = await fs
+        .access(testCacheDir)
+        .then(() => true)
+        .catch(() => false);
 
-      try {
-        await fs.access(testCacheDir);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (error) {
-        // Directory should not exist
-        expect(true).to.be.true;
-      }
+      expect(dirExists).to.equal(false);
     });
   });
 

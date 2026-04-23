@@ -13,36 +13,37 @@
 
 import { getLogger } from '../utils/logger.js';
 import type { Wave } from '../waves/wave-builder.js';
-import { AgentforceService } from './agentforce-service.js';
+import type { LLMProvider } from './llm-provider.js';
+import { createLLMProvider } from './llm-provider-factory.js';
 
 const logger = getLogger('WaveValidationService');
 
-export interface WaveValidationIssue {
+export type WaveValidationIssue = {
   waveNumber: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
   category: 'dependency' | 'business-logic' | 'performance' | 'risk';
   message: string;
   affectedComponents: string[];
   suggestion?: string;
-}
+};
 
-export interface WaveOptimization {
+export type WaveOptimization = {
   waveNumber: number;
   type: 'merge' | 'split' | 'reorder' | 'add-component' | 'remove-component';
   description: string;
   confidence: number;
   estimatedImprovement: string;
-}
+};
 
-export interface WaveRiskAssessment {
+export type WaveRiskAssessment = {
   waveNumber: number;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
   riskFactors: string[];
   mitigation: string[];
   recommendedActions: string[];
-}
+};
 
-export interface WaveValidationResult {
+export type WaveValidationResult = {
   isValid: boolean;
   issues: WaveValidationIssue[];
   optimizations: WaveOptimization[];
@@ -50,18 +51,32 @@ export interface WaveValidationResult {
   overallRisk: 'low' | 'medium' | 'high' | 'critical';
   executionTime: number;
   aiAnalyzed: boolean;
-}
+};
+
+export type WaveValidationServiceOptions = {
+  baseDir?: string;
+};
 
 /**
  * @ac US-056-AC-1: Send wave structure to Agentforce
  * @ac US-056-AC-2: Receive validation feedback
  */
 export class WaveValidationService {
-  private readonly agentforceService: AgentforceService;
+  private readonly llmProvider: LLMProvider;
 
-  public constructor(agentforceService?: AgentforceService) {
-    this.agentforceService = agentforceService || new AgentforceService();
+  public constructor(llmProviderOrOptions?: LLMProvider | WaveValidationServiceOptions) {
+    this.llmProvider = this.resolveProvider(llmProviderOrOptions);
     logger.info('Wave validation service initialized');
+  }
+
+  private resolveProvider(llmProviderOrOptions?: LLMProvider | WaveValidationServiceOptions): LLMProvider {
+    if (llmProviderOrOptions && 'sendRequest' in llmProviderOrOptions) {
+      return llmProviderOrOptions;
+    }
+
+    return createLLMProvider({
+      baseDir: llmProviderOrOptions?.baseDir,
+    });
   }
 
   /**
@@ -83,7 +98,7 @@ export class WaveValidationService {
 
     try {
       // Check if Agentforce is enabled
-      if (!this.agentforceService.isEnabled()) {
+      if (!this.llmProvider.isEnabled()) {
         logger.info('Agentforce disabled, skipping AI validation');
         return result;
       }
@@ -92,8 +107,8 @@ export class WaveValidationService {
       const prompt = this.buildValidationPrompt(waves);
 
       // Send to Agentforce
-      const response = await this.agentforceService.sendRequest({
-        model: this.agentforceService.getConfig().model,
+      const response = await this.llmProvider.sendRequest({
+        model: this.llmProvider.getConfig().model,
         prompt,
         temperature: 0.1, // Very low for consistent validation
         maxTokens: 3000,
@@ -214,9 +229,9 @@ Be conservative - only report issues with high confidence.`;
       };
 
       return {
-        issues: this.parseIssues(parsed.issues || []),
-        optimizations: this.parseOptimizations(parsed.optimizations || []),
-        riskAssessments: this.parseRiskAssessments(parsed.riskAssessments || []),
+        issues: this.parseIssues(parsed.issues ?? []),
+        optimizations: this.parseOptimizations(parsed.optimizations ?? []),
+        riskAssessments: this.parseRiskAssessments(parsed.riskAssessments ?? []),
       };
     } catch (error) {
       logger.error('Failed to parse validation response', {
@@ -358,6 +373,10 @@ Be conservative - only report issues with high confidence.`;
     return waves;
   }
 
+  public getProviderConfig(): Readonly<ReturnType<LLMProvider['getConfig']>> {
+    return this.llmProvider.getConfig();
+  }
+
   /**
    * Format validation report
    */
@@ -383,7 +402,7 @@ Be conservative - only report issues with high confidence.`;
 
       const bySeverity = new Map<string, WaveValidationIssue[]>();
       for (const issue of result.issues) {
-        const issues = bySeverity.get(issue.severity) || [];
+        const issues = bySeverity.get(issue.severity) ?? [];
         issues.push(issue);
         bySeverity.set(issue.severity, issues);
       }

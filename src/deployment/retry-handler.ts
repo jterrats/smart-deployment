@@ -23,11 +23,11 @@ const RETRYABLE_ERRORS = [
   'TIMEOUT',
 ];
 
-export interface RetryConfig {
+export type RetryConfig = {
   maxRetries: number;
   initialDelay: number;
   maxDelay: number;
-}
+};
 
 /**
  * @ac US-088-AC-1: Detect retryable errors
@@ -39,12 +39,12 @@ export class RetryHandler {
     this.config = {
       maxRetries: config.maxRetries ?? 3,
       initialDelay: config.initialDelay ?? 1000,
-      maxDelay: config.maxDelay ?? 30000,
+      maxDelay: config.maxDelay ?? 30_000,
     };
   }
 
   public isRetryable(error: string): boolean {
-    return RETRYABLE_ERRORS.some(pattern => error.includes(pattern));
+    return RETRYABLE_ERRORS.some((pattern) => error.includes(pattern));
   }
 
   /**
@@ -53,13 +53,10 @@ export class RetryHandler {
    * @ac US-088-AC-5: Report retry attempts
    * @ac US-088-AC-6: Fail after max retries
    */
-  public async executeWithRetry<T>(
-    fn: () => Promise<T>,
-    context: string
-  ): Promise<T> {
+  public async executeWithRetry<T>(fn: () => Promise<T>, context: string): Promise<T> {
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+    const attemptExecution = async (attempt: number): Promise<T> => {
       try {
         if (attempt > 0) {
           const delay = this.calculateDelay(attempt);
@@ -82,10 +79,17 @@ export class RetryHandler {
         }
 
         logger.warn('Retryable error, will retry', { context, attempt, error: lastError.message });
+        return attemptExecution(attempt + 1);
       }
-    }
+    };
 
-    throw lastError ?? new Error('Retry failed');
+    return attemptExecution(0).catch((error: unknown) => {
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw lastError ?? new Error('Retry failed');
+    });
   }
 
   /**
@@ -97,7 +101,6 @@ export class RetryHandler {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

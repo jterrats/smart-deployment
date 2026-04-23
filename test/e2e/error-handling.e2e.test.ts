@@ -1,5 +1,6 @@
 /**
  * E2E Tests for Error Handling - US-067
+ *
  * @ac US-067-AC-6: 8 error handling scenarios
  * @issue #67
  */
@@ -170,4 +171,3 @@ describe('E2E: Error Handling - US-067', () => {
     expect(waveResult.waves.length).to.be.greaterThan(0);
   });
 });
-

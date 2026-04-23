@@ -10,32 +10,56 @@
  * @issue #48
  */
 
-import { SfCommand, requiredOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
+import { type Interfaces } from '@oclif/core';
+import { Messages } from '@salesforce/core';
+import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { DeploymentValidationService } from '../deployment/deployment-validation-service.js';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ValidateCommand');
+Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
+const messages = Messages.loadMessages('smart-deployment', 'validate');
 
-interface ValidateResult {
+type ValidateResult = {
   success: boolean;
   components: number;
   waves: number;
   issueCount: number;
-}
+  ai?: {
+    analyzed: boolean;
+    provider?: string;
+    model?: string;
+    fallback?: boolean;
+    overallRisk?: 'low' | 'medium' | 'high' | 'critical';
+  };
+};
 
 export default class Validate extends SfCommand<ValidateResult> {
-  public static readonly summary = 'Validate deployment without executing';
-  public static readonly flags = {
-    'target-org': requiredOrgFlagWithDeprecations,
+  public static readonly summary = messages.getMessage('summary');
+  public static readonly examples = messages.getMessages('examples');
+  public static readonly flags: Interfaces.FlagInput = {
+    'target-org': optionalOrgFlagWithDeprecations,
+    'source-path': Flags.directory({
+      summary: messages.getMessage('flags.source-path.summary'),
+      exists: true,
+    }),
+    'use-ai': Flags.boolean({
+      summary: messages.getMessage('flags.use-ai.summary'),
+      default: false,
+    }),
   };
 
   public async run(): Promise<ValidateResult> {
     const { flags } = await this.parse(Validate);
     const validationService = new DeploymentValidationService();
+    const sourcePath = typeof flags['source-path'] === 'string' ? flags['source-path'] : undefined;
+    const useAI = flags['use-ai'] === true;
 
     logger.info('Validating deployment', { flags });
 
-    const summary = await validationService.validateProject();
+    const summary = await validationService.validateProject(sourcePath, {
+      useAI,
+    });
     this.log(validationService.formatSummary(summary));
 
     if (!summary.valid) {
@@ -49,6 +73,15 @@ export default class Validate extends SfCommand<ValidateResult> {
       components: summary.components,
       waves: summary.totalWaves,
       issueCount: summary.issues.length,
+      ai: useAI
+        ? {
+            analyzed: summary.aiAnalyzed ?? false,
+            provider: summary.aiProvider,
+            model: summary.aiModel,
+            fallback: summary.aiFallback,
+            overallRisk: summary.overallRisk,
+          }
+        : undefined,
     };
   }
 }

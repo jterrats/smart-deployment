@@ -21,19 +21,19 @@ const logger = getLogger('WaveBuilder');
 /**
  * Wave of independent components
  */
-export interface Wave {
+export type Wave = {
   /** Wave number (1-based) */
   number: number;
   /** Components in this wave */
   components: NodeId[];
   /** Metadata about the wave */
   metadata: WaveMetadata;
-}
+};
 
 /**
  * Wave metadata
  */
-export interface WaveMetadata {
+export type WaveMetadata = {
   /** Number of components */
   componentCount: number;
   /** Component types in this wave */
@@ -44,12 +44,12 @@ export interface WaveMetadata {
   hasCircularDeps: boolean;
   /** Estimated deployment time (seconds) */
   estimatedTime: number;
-}
+};
 
 /**
  * Wave generation result
  */
-export interface WaveResult {
+export type WaveResult = {
   /** Generated waves */
   waves: Wave[];
   /** Total number of components */
@@ -60,12 +60,12 @@ export interface WaveResult {
   circularDependencies: CircularDependency[];
   /** Statistics */
   stats: WaveStats;
-}
+};
 
 /**
  * Wave statistics
  */
-export interface WaveStats {
+export type WaveStats = {
   /** Total number of waves */
   totalWaves: number;
   /** Average components per wave */
@@ -76,19 +76,19 @@ export interface WaveStats {
   smallestWaveSize: number;
   /** Total estimated time (seconds) */
   totalEstimatedTime: number;
-}
+};
 
 /**
  * Wave builder options
  */
-export interface WaveBuilderOptions {
+export type WaveBuilderOptions = {
   /** Maximum components per wave (0 = unlimited) */
   maxComponentsPerWave?: number;
   /** Respect metadata type deployment order */
   respectTypeOrder?: boolean;
   /** Handle circular dependencies */
   handleCircularDeps?: boolean;
-}
+};
 
 /**
  * Metadata type deployment order (Salesforce recommended)
@@ -178,27 +178,7 @@ export class WaveBuilder {
 
       // No progress - circular dependency
       if (currentWave.length === 0) {
-        // Detect circular dependencies
-        const remaining: NodeId[] = [];
-        for (const nodeId of graph.keys()) {
-          if (!processed.has(nodeId)) {
-            remaining.push(nodeId);
-            unplacedComponents.push(nodeId);
-          }
-        }
-
-        logger.warn('Circular dependencies detected', {
-          remaining: remaining.length,
-        });
-
-        if (this.options.handleCircularDeps) {
-          // Add remaining to final wave (will need manual resolution)
-          waves.push({
-            number: waveNumber,
-            components: remaining,
-            metadata: this.generateWaveMetadata(remaining, true),
-          });
-        }
+        this.handleCircularWave(graph, processed, unplacedComponents, waves, waveNumber);
 
         break;
       }
@@ -294,12 +274,47 @@ export class WaveBuilder {
     return inDegree;
   }
 
+  private handleCircularWave(
+    graph: DependencyGraph,
+    processed: Set<NodeId>,
+    unplacedComponents: NodeId[],
+    waves: Wave[],
+    waveNumber: number
+  ): void {
+    const remaining = this.collectRemainingNodes(graph, processed);
+    unplacedComponents.push(...remaining);
+
+    logger.warn('Circular dependencies detected', {
+      remaining: remaining.length,
+    });
+
+    if (this.options.handleCircularDeps) {
+      waves.push({
+        number: waveNumber,
+        components: remaining,
+        metadata: this.generateWaveMetadata(remaining, true),
+      });
+    }
+  }
+
+  private collectRemainingNodes(graph: DependencyGraph, processed: Set<NodeId>): NodeId[] {
+    const remaining: NodeId[] = [];
+
+    for (const nodeId of graph.keys()) {
+      if (!processed.has(nodeId)) {
+        remaining.push(nodeId);
+      }
+    }
+
+    return remaining;
+  }
+
   /**
    * @ac US-038-AC-6: Generate wave metadata
    */
   private generateWaveMetadata(components: NodeId[], hasCircularDeps: boolean): WaveMetadata {
     const types = new Set<MetadataType>();
-    let maxDepth = 0;
+    const maxDepth = 0;
 
     for (const component of components) {
       const [type] = component.split(':');
@@ -392,4 +407,3 @@ export class WaveBuilder {
     return undefined;
   }
 }
-

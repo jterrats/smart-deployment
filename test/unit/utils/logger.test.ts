@@ -68,15 +68,35 @@ describe('Logger', () => {
     });
 
     it('should filter logs below configured level', () => {
+      logger.configure({ logToConsole: true });
       logger.configure({ level: LogLevel.WARN });
+      const captured: string[] = [];
+      const consoleRef = Reflect.get(globalThis, 'console');
+      const originalWarn = consoleRef.warn.bind(consoleRef);
+      const originalError = consoleRef.error.bind(consoleRef);
 
-      // These shouldn't throw even if they're filtered
-      logger.debug('Should be filtered');
-      logger.info('Should be filtered');
-      logger.warn('Should not be filtered');
-      logger.error('Should not be filtered');
+      consoleRef.warn = (message?: unknown) => {
+        captured.push(String(message));
+      };
+      consoleRef.error = (message?: unknown) => {
+        captured.push(String(message));
+      };
 
-      expect(true).to.be.true; // If we got here, filtering works
+      try {
+        logger.debug('Should be filtered');
+        logger.info('Should be filtered');
+        logger.warn('Should not be filtered');
+        logger.error('Should not be filtered');
+      } finally {
+        consoleRef.warn = originalWarn;
+        consoleRef.error = originalError;
+      }
+
+      expect(captured).to.have.lengthOf(2);
+      expect(captured[0]).to.include('"level":"WARN"');
+      expect(captured[0]).to.include('Should not be filtered');
+      expect(captured[1]).to.include('"level":"ERROR"');
+      expect(captured[1]).to.include('Should not be filtered');
     });
   });
 

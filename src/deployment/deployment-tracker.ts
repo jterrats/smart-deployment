@@ -16,7 +16,7 @@ import type { DeploymentResult } from './sf-cli-integration.js';
 
 const logger = getLogger('DeploymentTracker');
 
-export interface DeploymentProgress {
+export type DeploymentProgress = {
   deploymentId: string;
   waveNumber: number;
   totalWaves: number;
@@ -24,7 +24,7 @@ export interface DeploymentProgress {
   currentComponent?: string;
   eta?: number;
   status: string;
-}
+};
 
 /**
  * @ac US-086-AC-1: Track deployment ID
@@ -102,4 +102,3 @@ export class DeploymentTracker {
     return lines.join(' | ');
   }
 }
-

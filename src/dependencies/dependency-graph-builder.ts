@@ -1,22 +1,19 @@
 /**
  * Dependency Graph Builder
  * Builds a dependency graph from parsed metadata components
- * 
+ *
  * @ac US-028-AC-1: Add nodes for each component
  * @ac US-028-AC-2: Add edges for each dependency
  * @ac US-028-AC-3: Handle bidirectional dependencies
  * @ac US-028-AC-4: Track dependency types (hard, soft)
  * @ac US-028-AC-5: Support incremental graph building
  * @ac US-028-AC-6: Validate graph structure
- * 
+ *
  * @issue #28
  */
 
 import { getLogger } from '../utils/logger.js';
-import type {
-  MetadataComponent,
-  MetadataType,
-} from '../types/metadata.js';
+import type { MetadataComponent, MetadataType } from '../types/metadata.js';
 import type {
   NodeId,
   DependencyGraph,
@@ -36,33 +33,33 @@ export type DependencyType = 'hard' | 'soft' | 'inferred';
 /**
  * Extended edge information
  */
-export interface DependencyEdge {
+export type DependencyEdge = {
   from: NodeId;
   to: NodeId;
   type: DependencyType;
   reason?: string; // Why this dependency exists
-}
+};
 
 /**
  * Options for building the dependency graph
  */
-export interface GraphBuilderOptions {
+export type GraphBuilderOptions = {
   /** Track dependency types (hard/soft/inferred) */
   trackDependencyTypes?: boolean;
   /** Validate graph structure during build */
   validateStructure?: boolean;
   /** Max nodes before warning (performance) */
   maxNodes?: number;
-}
+};
 
 /**
  * Dependency Graph Builder
- * 
+ *
  * Performance optimized for 10,000+ nodes:
  * - Uses Map/Set for O(1) lookups
  * - Lazy validation
  * - Incremental building support
- * 
+ *
  * @example
  * const builder = new DependencyGraphBuilder();
  * builder.addComponent(apexClassComponent);
@@ -117,7 +114,7 @@ export class DependencyGraphBuilder {
   // Public methods
   /**
    * Add a metadata component to the graph
-   * 
+   *
    * @ac US-028-AC-1: Add nodes for each component
    * @ac US-028-AC-5: Support incremental graph building
    */
@@ -156,12 +153,12 @@ export class DependencyGraphBuilder {
 
   /**
    * Add multiple components at once
-   * 
+   *
    * @ac US-028-AC-5: Support incremental graph building
    */
   public addComponents(components: MetadataComponent[]): void {
     const startTime = Date.now();
-    
+
     for (const component of components) {
       this.addComponent(component);
     }
@@ -176,17 +173,12 @@ export class DependencyGraphBuilder {
 
   /**
    * Add a dependency edge between two nodes
-   * 
+   *
    * @ac US-028-AC-2: Add edges for each dependency
    * @ac US-028-AC-3: Handle bidirectional dependencies
    * @ac US-028-AC-4: Track dependency types
    */
-  public addEdge(
-    from: NodeId,
-    to: NodeId,
-    type: DependencyType = 'hard',
-    reason?: string
-  ): void {
+  public addEdge(from: NodeId, to: NodeId, type: DependencyType = 'hard', reason?: string): void {
     // Add forward edge (A depends on B)
     if (!this.graph.has(from)) {
       this.graph.set(from, new Set());
@@ -264,7 +256,7 @@ export class DependencyGraphBuilder {
 
   /**
    * Build the final dependency analysis result
-   * 
+   *
    * @ac US-028-AC-6: Validate graph structure
    */
   public build(): DependencyAnalysisResult {
@@ -322,7 +314,7 @@ export class DependencyGraphBuilder {
   // Private methods
   /**
    * Validate graph structure
-   * 
+   *
    * @ac US-028-AC-6: Validate graph structure
    */
   private validate(): void {
@@ -520,4 +512,3 @@ export class DependencyGraphBuilder {
     return count;
   }
 }
-

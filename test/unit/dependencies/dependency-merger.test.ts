@@ -6,22 +6,19 @@ import { expect } from 'chai';
 import { describe, it } from 'mocha';
 import { DependencyMerger } from '../../../src/dependencies/dependency-merger.js';
 import type { MetadataComponent } from '../../../src/types/metadata.js';
+import type { MetadataType } from '../../../src/types/metadata.js';
 import type { InferredDependency } from '../../../src/types/dependency.js';
 
 describe('DependencyMerger', () => {
   /**
    * Helper to create test components
    */
-  function createComponent(
-    type: string,
-    name: string,
-    deps: string[]
-  ): [string, MetadataComponent] {
+  function createComponent(type: MetadataType, name: string, deps: string[]): [string, MetadataComponent] {
     const nodeId = `${type}:${name}`;
     return [
       nodeId,
       {
-        type: type as any,
+        type,
         name,
         filePath: `/path/to/${nodeId}`,
         dependencies: new Set(deps),
@@ -95,10 +92,7 @@ describe('DependencyMerger', () => {
     });
 
     it('US-037-AC-2: should filter low confidence inferences', () => {
-      const components = new Map([
-        createComponent('ApexClass', 'A', []),
-        createComponent('ApexClass', 'B', []),
-      ]);
+      const components = new Map([createComponent('ApexClass', 'A', []), createComponent('ApexClass', 'B', [])]);
 
       const inferences: InferredDependency[] = [
         {
@@ -116,10 +110,7 @@ describe('DependencyMerger', () => {
     });
 
     it('US-037-AC-2: should include low confidence if configured', () => {
-      const components = new Map([
-        createComponent('ApexClass', 'A', []),
-        createComponent('ApexClass', 'B', []),
-      ]);
+      const components = new Map([createComponent('ApexClass', 'A', []), createComponent('ApexClass', 'B', [])]);
 
       const inferences: InferredDependency[] = [
         {
@@ -130,9 +121,9 @@ describe('DependencyMerger', () => {
         },
       ];
 
-      const merger = new DependencyMerger({ 
+      const merger = new DependencyMerger({
         minConfidence: 0.5,
-        includeLowConfidence: true 
+        includeLowConfidence: true,
       });
       const result = merger.merge(components, inferences);
 
@@ -162,9 +153,7 @@ describe('DependencyMerger', () => {
       const merger = new DependencyMerger({ preferStatic: true });
       const result = merger.merge(components, inferences);
 
-      const dep = result.dependencies.find(
-        (d) => d.from === 'ApexClass:A' && d.to === 'ApexClass:B'
-      );
+      const dep = result.dependencies.find((d) => d.from === 'ApexClass:A' && d.to === 'ApexClass:B');
 
       expect(dep?.source).to.equal('static');
       expect(dep?.confidence).to.equal(1.0);
@@ -189,9 +178,7 @@ describe('DependencyMerger', () => {
       const merger = new DependencyMerger({ preferStatic: false });
       const result = merger.merge(components, inferences);
 
-      const dep = result.dependencies.find(
-        (d) => d.from === 'ApexClass:A' && d.to === 'ApexClass:B'
-      );
+      const dep = result.dependencies.find((d) => d.from === 'ApexClass:A' && d.to === 'ApexClass:B');
 
       expect(dep?.source).to.equal('merged');
       expect(dep?.reasons).to.include('Explicit reference in metadata');
@@ -222,12 +209,8 @@ describe('DependencyMerger', () => {
       const merger = new DependencyMerger();
       const result = merger.merge(components, inferences);
 
-      const staticDep = result.dependencies.find(
-        (d) => d.from === 'ApexClass:A' && d.to === 'ApexClass:B'
-      );
-      const inferredDep = result.dependencies.find(
-        (d) => d.from === 'ApexClass:B' && d.to === 'ApexClass:C'
-      );
+      const staticDep = result.dependencies.find((d) => d.from === 'ApexClass:A' && d.to === 'ApexClass:B');
+      const inferredDep = result.dependencies.find((d) => d.from === 'ApexClass:B' && d.to === 'ApexClass:C');
 
       expect(staticDep?.source).to.equal('static');
       expect(inferredDep?.source).to.equal('inferred');
@@ -362,10 +345,7 @@ describe('DependencyMerger', () => {
     });
 
     it('US-037-AC-6: should identify low confidence dependencies', () => {
-      const components = new Map([
-        createComponent('ApexClass', 'A', []),
-        createComponent('ApexClass', 'B', []),
-      ]);
+      const components = new Map([createComponent('ApexClass', 'A', []), createComponent('ApexClass', 'B', [])]);
 
       const inferences: InferredDependency[] = [
         {
@@ -440,7 +420,7 @@ describe('DependencyMerger', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty components', () => {
-      const components = new Map();
+      const components = new Map<string, MetadataComponent>();
       const inferences: InferredDependency[] = [];
 
       const merger = new DependencyMerger();
@@ -451,10 +431,7 @@ describe('DependencyMerger', () => {
     });
 
     it('should handle components with no dependencies', () => {
-      const components = new Map([
-        createComponent('ApexClass', 'A', []),
-        createComponent('ApexClass', 'B', []),
-      ]);
+      const components = new Map([createComponent('ApexClass', 'A', []), createComponent('ApexClass', 'B', [])]);
 
       const merger = new DependencyMerger();
       const result = merger.merge(components, []);
@@ -515,4 +492,3 @@ describe('DependencyMerger', () => {
     });
   });
 });
-

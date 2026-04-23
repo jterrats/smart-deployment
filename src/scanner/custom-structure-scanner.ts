@@ -18,19 +18,19 @@ import { type SfdxProjectJson } from './sfdx-project-detector.js';
 
 const logger = getLogger('CustomStructureScanner');
 
-export interface CustomStructure {
+export type CustomStructure = {
   packageDirs: string[];
   namingConvention: 'standard' | 'custom';
   isNested: boolean;
   isLegacy: boolean;
   customPaths: Record<string, string>;
-}
+};
 
-export interface StructureReport {
+export type StructureReport = {
   structure: CustomStructure;
   warnings: string[];
   recommendations: string[];
-}
+};
 
 /**
  * @ac US-081-AC-1: Detect custom package directories
@@ -61,15 +61,21 @@ export class CustomStructureScanner {
 
       // Also scan for common patterns
       const commonDirs = ['force-app', 'src', 'main', 'apps', 'packages'];
-      for (const dir of commonDirs) {
-        const fullPath = path.join(projectRoot, dir);
-        try {
-          await fs.access(fullPath);
-          if (!customDirs.includes(dir)) {
-            customDirs.push(dir);
+      const existingCommonDirs = await Promise.all(
+        commonDirs.map(async (dir) => {
+          const fullPath = path.join(projectRoot, dir);
+          try {
+            await fs.access(fullPath);
+            return dir;
+          } catch {
+            return undefined;
           }
-        } catch {
-          // Directory doesn't exist, skip
+        })
+      );
+
+      for (const dir of existingCommonDirs) {
+        if (dir && !customDirs.includes(dir)) {
+          customDirs.push(dir);
         }
       }
     } catch (error) {
@@ -88,9 +94,7 @@ export class CustomStructureScanner {
    */
   public detectNamingConvention(directories: string[]): 'standard' | 'custom' {
     const standardPatterns = ['force-app', 'main/default', 'src'];
-    const hasStandard = directories.some((dir) =>
-      standardPatterns.some((pattern) => dir.includes(pattern))
-    );
+    const hasStandard = directories.some((dir) => standardPatterns.some((pattern) => dir.includes(pattern)));
 
     return hasStandard ? 'standard' : 'custom';
   }
@@ -100,36 +104,36 @@ export class CustomStructureScanner {
    * Check if structure is nested
    */
   public async isNestedStructure(projectRoot: string, packageDirs: string[]): Promise<boolean> {
-    for (const dir of packageDirs) {
-      const fullPath = path.join(projectRoot, dir);
-      try {
-        const entries = await fs.readdir(fullPath, { withFileTypes: true });
-        const subDirs = entries.filter((e) => e.isDirectory());
+    const nestedResults = await Promise.all(
+      packageDirs.map(async (dir) => {
+        const fullPath = path.join(projectRoot, dir);
+        try {
+          const entries = await fs.readdir(fullPath, { withFileTypes: true });
+          const subDirs = entries.filter((e) => e.isDirectory());
+          const hasMetadataSubdirs = subDirs.some((d) =>
+            ['classes', 'triggers', 'objects', 'lwc', 'aura'].includes(d.name)
+          );
 
-        // Check if has metadata subdirectories
-        const hasMetadataSubdirs = subDirs.some((d) =>
-          ['classes', 'triggers', 'objects', 'lwc', 'aura'].includes(d.name)
-        );
-
-        if (!hasMetadataSubdirs) {
-          // Might be nested, check deeper
-          for (const subDir of subDirs) {
-            const subPath = path.join(fullPath, subDir.name);
-            const subEntries = await fs.readdir(subPath, { withFileTypes: true });
-            const hasMetadata = subEntries.some((e) =>
-              ['classes', 'triggers', 'objects'].includes(e.name)
-            );
-            if (hasMetadata) {
-              return true; // Found nested structure
-            }
+          if (hasMetadataSubdirs) {
+            return false;
           }
-        }
-      } catch {
-        // Skip errors
-      }
-    }
 
-    return false;
+          const nestedMatches = await Promise.all(
+            subDirs.map(async (subDir) => {
+              const subPath = path.join(fullPath, subDir.name);
+              const subEntries = await fs.readdir(subPath, { withFileTypes: true });
+              return subEntries.some((e) => ['classes', 'triggers', 'objects'].includes(e.name));
+            })
+          );
+
+          return nestedMatches.some(Boolean);
+        } catch {
+          return false;
+        }
+      })
+    );
+
+    return nestedResults.some(Boolean);
   }
 
   /**
@@ -165,14 +169,19 @@ export class CustomStructureScanner {
   ): Promise<{ valid: boolean; errors: string[] }> {
     const errors: string[] = [];
 
-    for (const [key, customPath] of Object.entries(customPaths)) {
-      const fullPath = path.join(projectRoot, customPath);
-      try {
-        await fs.access(fullPath);
-      } catch {
-        errors.push(`Custom path not found: ${key} -> ${customPath}`);
-      }
-    }
+    const validationResults = await Promise.all(
+      Object.entries(customPaths).map(async ([key, customPath]) => {
+        const fullPath = path.join(projectRoot, customPath);
+        try {
+          await fs.access(fullPath);
+          return undefined;
+        } catch {
+          return `Custom path not found: ${key} -> ${customPath}`;
+        }
+      })
+    );
+
+    errors.push(...validationResults.filter((result): result is string => result !== undefined));
 
     return {
       valid: errors.length === 0,

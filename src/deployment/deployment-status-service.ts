@@ -4,7 +4,7 @@ import { StateManager } from './state-manager.js';
 
 const logger = getLogger('DeploymentStatusService');
 
-export interface DeploymentStatusSummary {
+export type DeploymentStatusSummary = {
   hasState: boolean;
   status: 'not-started' | 'in-progress' | 'failed' | 'completed';
   deploymentId?: string;
@@ -19,9 +19,9 @@ export interface DeploymentStatusSummary {
   testStatus: 'unknown' | 'pending' | 'not-run';
   timestamp?: string;
   stateFilePath: string;
-}
+};
 
-export interface ResumeSummary {
+export type ResumeSummary = {
   success: boolean;
   reason?: string;
   resumeWave?: number;
@@ -29,7 +29,7 @@ export interface ResumeSummary {
   remainingWaves: number[];
   targetOrg?: string;
   deploymentId?: string;
-}
+};
 
 export class DeploymentStatusService {
   public constructor(private readonly stateManager: StateManager = new StateManager()) {}
@@ -112,10 +112,7 @@ export class DeploymentStatusService {
 
   public formatStatus(summary: DeploymentStatusSummary): string {
     if (!summary.hasState) {
-      return [
-        'No deployment state found.',
-        `Expected state file: ${summary.stateFilePath}`,
-      ].join('\n');
+      return ['No deployment state found.', `Expected state file: ${summary.stateFilePath}`].join('\n');
     }
 
     const lines = [
@@ -142,11 +139,13 @@ export class DeploymentStatusService {
 
   private expandRemainingWaves(currentWave: number, remainingCount: number, totalWaves: number): number[] {
     return Array.from({ length: remainingCount }, (_, index) => currentWave + index).filter(
-      (wave) => wave <= totalWaves,
+      (wave) => wave <= totalWaves
     );
   }
 
-  private normalizeStatus(status: 'Not Started' | 'In Progress' | 'Failed' | 'Completed'): DeploymentStatusSummary['status'] {
+  private normalizeStatus(
+    status: 'Not Started' | 'In Progress' | 'Failed' | 'Completed'
+  ): DeploymentStatusSummary['status'] {
     switch (status) {
       case 'Not Started':
         return 'not-started';

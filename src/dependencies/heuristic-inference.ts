@@ -26,28 +26,28 @@ export type ConfidenceLevel = 'high' | 'medium' | 'low';
 /**
  * Inferred dependency with confidence score
  */
-export interface InferredDependency {
+export type InferredDependency = {
   from: NodeId;
   to: NodeId;
   reason: string;
   confidence: ConfidenceLevel;
   pattern: string;
   score: number; // 0-100
-}
+};
 
 /**
  * Heuristic pattern configuration
  */
-interface HeuristicPattern {
+type HeuristicPattern = {
   name: string;
   test: (component: MetadataComponent, components: Map<NodeId, MetadataComponent>) => InferredDependency[];
   enabled: boolean;
-}
+};
 
 /**
  * Options for heuristic inference
  */
-export interface HeuristicInferenceOptions {
+export type HeuristicInferenceOptions = {
   /** Minimum confidence score (0-100) */
   minConfidence?: number;
   /** Enable test class inference */
@@ -60,7 +60,7 @@ export interface HeuristicInferenceOptions {
   enableControllerPattern?: boolean;
   /** Enable naming convention analysis */
   enableNamingConventions?: boolean;
-}
+};
 
 /**
  * Heuristic Dependency Inference
@@ -244,11 +244,7 @@ export class HeuristicInference {
     // Pattern: AccountHandler → AccountService
     if (className.endsWith('Handler')) {
       const baseName = className.slice(0, -7); // Remove 'Handler'
-      const serviceNames = [
-        `${baseName}Service`,
-        `${baseName}_Service`,
-        `${baseName}Svc`,
-      ];
+      const serviceNames = [`${baseName}Service`, `${baseName}_Service`, `${baseName}Svc`];
 
       for (const serviceName of serviceNames) {
         const serviceNodeId = `ApexClass:${serviceName}`;
@@ -268,10 +264,7 @@ export class HeuristicInference {
     // Pattern: Account_Handler → Account_Service
     if (className.includes('Handler')) {
       const baseName = className.replace(/Handler$/, '').replace(/_Handler$/, '');
-      const serviceNames = [
-        `${baseName}Service`,
-        `${baseName}_Service`,
-      ];
+      const serviceNames = [`${baseName}Service`, `${baseName}_Service`];
 
       for (const serviceName of serviceNames) {
         const serviceNodeId = `ApexClass:${serviceName}`;
@@ -362,11 +355,7 @@ export class HeuristicInference {
         .replace(/^LWC_/, '')
         .replace(/^VF_/, '');
 
-      const serviceNames = [
-        `${baseName}Service`,
-        `${baseName}_Service`,
-        `${baseName}Svc`,
-      ];
+      const serviceNames = [`${baseName}Service`, `${baseName}_Service`, `${baseName}Svc`];
 
       for (const serviceName of serviceNames) {
         const serviceNodeId = `ApexClass:${serviceName}`;
@@ -565,4 +554,3 @@ export class HeuristicInference {
     ];
   }
 }
-

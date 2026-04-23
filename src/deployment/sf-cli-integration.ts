@@ -20,15 +20,15 @@ const logger = getLogger('SfCliIntegration');
 
 export type TestLevel = 'NoTestRun' | 'RunSpecifiedTests' | 'RunLocalTests' | 'RunAllTestsInOrg';
 
-export interface DeploymentOptions {
+export type DeploymentOptions = {
   manifestPath: string;
   targetOrg: string;
   testLevel?: TestLevel;
   tests?: string[];
   checkOnly?: boolean;
-}
+};
 
-export interface DeploymentResult {
+export type DeploymentResult = {
   success: boolean;
   deploymentId?: string;
   status: string;
@@ -37,7 +37,7 @@ export interface DeploymentResult {
   testsRun?: number;
   testFailures?: number;
   output: string;
-}
+};
 
 /**
  * @ac US-085-AC-1: Execute sf project deploy start
@@ -146,4 +146,3 @@ export class SfCliIntegration {
     }
   }
 }
-

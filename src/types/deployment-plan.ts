@@ -3,24 +3,24 @@
  * Pre-approved deployment plans for CI/CD pipelines
  */
 
-import type { MetadataType } from './metadata.js';
 import type { Wave } from '../waves/wave-builder.js';
+import type { MetadataType } from './metadata.js';
 
 /**
  * Priority override from AI or manual configuration
  */
-export interface PriorityOverride {
+export type PriorityOverride = {
   priority: number;
   source: 'ai' | 'manual' | 'static';
   confidence?: number;
   reason?: string;
   appliedAt?: string;
-}
+};
 
 /**
  * Deployment plan metadata
  */
-export interface DeploymentPlanMetadata {
+export type DeploymentPlanMetadata = {
   version: string;
   generatedAt: string;
   generatedBy?: string;
@@ -31,23 +31,23 @@ export interface DeploymentPlanMetadata {
   totalComponents: number;
   totalWaves: number;
   estimatedTime: number;
-}
+};
 
 /**
  * Deployment plan - serializable, version-controlled
  */
-export interface DeploymentPlan {
+export type DeploymentPlan = {
   metadata: DeploymentPlanMetadata;
   priorityOverrides: Record<string, PriorityOverride>;
   waves: Wave[];
   componentsByType: Record<MetadataType, string[]>;
   checksums?: Record<string, string>; // File checksums for validation
-}
+};
 
 /**
  * Plan validation result
  */
-export interface PlanValidationResult {
+export type PlanValidationResult = {
   valid: boolean;
   errors: string[];
   warnings: string[];
@@ -61,12 +61,12 @@ export interface PlanValidationResult {
       diffPercentage: number;
     }>;
   };
-}
+};
 
 /**
  * Plan comparison result
  */
-export interface PlanComparison {
+export type PlanComparison = {
   identical: boolean;
   diffPercentage: number;
   componentDiff: {
@@ -84,4 +84,4 @@ export interface PlanComparison {
     currentWaves: number;
     difference: number;
   };
-}
+};
