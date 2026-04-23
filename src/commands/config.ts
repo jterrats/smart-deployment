@@ -173,11 +173,12 @@ export default class Config extends SfCommand<{ success: boolean }> {
     flags: Awaited<ReturnType<Config['parse']>>['flags'],
     baseDir: string
   ): Promise<{ success: boolean }> {
+    const nextLlmConfig = {
+      ...(config.llm ?? {}),
+    };
     const nextConfig: DeploymentConfig = {
       ...config,
-      llm: {
-        ...(config.llm ?? {}),
-      },
+      llm: nextLlmConfig,
     };
     const llmProvider =
       typeof flags['set-llm-provider'] === 'string' ? (flags['set-llm-provider'] as LLMProviderName) : undefined;
@@ -186,15 +187,15 @@ export default class Config extends SfCommand<{ success: boolean }> {
     const llmTimeout = typeof flags['set-llm-timeout'] === 'number' ? flags['set-llm-timeout'] : undefined;
 
     if (llmProvider) {
-      nextConfig.llm.provider = llmProvider;
+      nextLlmConfig.provider = llmProvider;
     }
 
     if (llmModel) {
-      nextConfig.llm.model = llmModel;
+      nextLlmConfig.model = llmModel;
     }
 
     if (llmEndpoint) {
-      nextConfig.llm.endpoint = llmEndpoint;
+      nextLlmConfig.endpoint = llmEndpoint;
     }
 
     if (llmTimeout !== undefined) {
@@ -202,7 +203,7 @@ export default class Config extends SfCommand<{ success: boolean }> {
         this.error(messages.getMessage('errors.invalidLlmTimeout'));
       }
 
-      nextConfig.llm.timeout = llmTimeout;
+      nextLlmConfig.timeout = llmTimeout;
     }
 
     await saveRepoConfig(nextConfig, baseDir);
