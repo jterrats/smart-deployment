@@ -26,7 +26,7 @@ describe('AgentforcePriorityService', () => {
             },
           ],
         }),
-        usage: { total_tokens: 120 },
+        usage: { ['total_tokens']: 120 },
         model: 'priority-test-model',
       }),
       {

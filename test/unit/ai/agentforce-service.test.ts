@@ -24,7 +24,7 @@ describe('AgentforceService', () => {
             message: 'AI response',
             confidence: 0.95,
           }),
-          usage: { total_tokens: 123 },
+          usage: { ['total_tokens']: 123 },
           model: 'test-model',
         }),
         {
@@ -214,7 +214,7 @@ describe('AgentforceService', () => {
         return new Response(
           JSON.stringify({
             content: '{"message":"Recovered"}',
-            usage: { total_tokens: 10 },
+            usage: { ['total_tokens']: 10 },
             model: 'retry-model',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }

@@ -264,7 +264,7 @@ Respond ONLY with valid JSON (no markdown):
         },
       ],
       usage: {
-        total_tokens: 500,
+        ['total_tokens']: 500,
       },
     };
   }

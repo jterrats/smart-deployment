@@ -52,11 +52,13 @@ export default class Validate extends SfCommand<ValidateResult> {
   public async run(): Promise<ValidateResult> {
     const { flags } = await this.parse(Validate);
     const validationService = new DeploymentValidationService();
+    const sourcePath = typeof flags['source-path'] === 'string' ? flags['source-path'] : undefined;
+    const useAI = flags['use-ai'] === true;
 
     logger.info('Validating deployment', { flags });
 
-    const summary = await validationService.validateProject(flags['source-path'], {
-      useAI: flags['use-ai'],
+    const summary = await validationService.validateProject(sourcePath, {
+      useAI,
     });
     this.log(validationService.formatSummary(summary));
 
@@ -71,7 +73,7 @@ export default class Validate extends SfCommand<ValidateResult> {
       components: summary.components,
       waves: summary.totalWaves,
       issueCount: summary.issues.length,
-      ai: flags['use-ai']
+      ai: useAI
         ? {
             analyzed: summary.aiAnalyzed ?? false,
             provider: summary.aiProvider,

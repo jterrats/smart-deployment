@@ -52,11 +52,12 @@ export default class Status extends SfCommand<StatusResult> {
 
   public async run(): Promise<StatusResult> {
     const { flags } = await this.parse(Status);
+    const sourcePath = typeof flags['source-path'] === 'string' ? flags['source-path'] : undefined;
 
     try {
       logger.info('Getting status', { flags });
 
-      const stateManager = new StateManager({ baseDir: flags['source-path'] });
+      const stateManager = new StateManager({ baseDir: sourcePath });
       const state = await stateManager.loadState();
 
       if (!state) {

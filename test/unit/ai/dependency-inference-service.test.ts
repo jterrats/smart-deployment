@@ -28,7 +28,7 @@ describe('DependencyInferenceService', () => {
               reason: 'Dynamic invocation found',
             },
           ]),
-          usage: { total_tokens: 42 },
+          usage: { ['total_tokens']: 42 },
           model: 'test-model',
         }),
         {

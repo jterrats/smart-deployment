@@ -73,7 +73,7 @@ export class OpenAIService implements LLMProvider {
             },
           ],
           temperature: request.temperature ?? 0.2,
-          max_tokens: request.maxTokens ?? 2000,
+          ['max_tokens']: request.maxTokens ?? 2000,
         }),
         signal: controller.signal,
       });

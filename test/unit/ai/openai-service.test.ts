@@ -20,7 +20,7 @@ describe('OpenAIService', () => {
         JSON.stringify({
           id: 'chatcmpl-test',
           model: 'gpt-4o-mini',
-          usage: { total_tokens: 77 },
+          usage: { ['total_tokens']: 77 },
           choices: [
             {
               message: {

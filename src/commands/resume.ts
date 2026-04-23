@@ -46,11 +46,12 @@ export default class Resume extends SfCommand<ResumeResult> {
 
   public async run(): Promise<ResumeResult> {
     const { flags } = await this.parse(Resume);
+    const sourcePath = typeof flags['source-path'] === 'string' ? flags['source-path'] : undefined;
 
     try {
       logger.info('Resuming deployment', { flags });
 
-      const stateManager = new StateManager({ baseDir: flags['source-path'] });
+      const stateManager = new StateManager({ baseDir: sourcePath });
       const state = await stateManager.loadState();
 
       if (!state?.failedWave) {
