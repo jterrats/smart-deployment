@@ -14,14 +14,10 @@ jobs:
   linux-unit-tests:
     needs: yarn-lockfile-check
     uses: salesforcecli/github-workflows/.github/workflows/unitTestsLinux.yml@main
-    with:
-      nodeVersion: '24'
 
   windows-unit-tests:
     needs: linux-unit-tests
     uses: salesforcecli/github-workflows/.github/workflows/unitTestsWindows.yml@main
-    with:
-      nodeVersion: '24'
 
   nuts:
     needs: linux-unit-tests
