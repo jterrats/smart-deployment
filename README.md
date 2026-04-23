@@ -1,276 +1,180 @@
-# SF Smart Deployment Plugin - Development
+# Smart Deployment
 
-This directory contains the base files for developing the `@salesforce/plugin-smart-deployment` plugin.
+Smart Deployment is a Salesforce CLI plugin that analyzes metadata, builds deployment waves, validates project state, and executes staged deployments with optional AI assistance.
 
-## 📁 Current Structure
+The current codebase supports:
 
-```
-smart-deployment/
-├── docs/
-│   ├── ARCHITECTURE.md                          # Layered architecture design
-│   ├── AGENTFORCE_INTEGRATION.md               # AI-powered dependency inference
-│   ├── PROJECT_AGNOSTIC_DESIGN.md              # Structure-agnostic scanning
-│   ├── TESTING_STRATEGY.md                     # TDD & BDD approach
-│   ├── ERROR_DRIVEN_DEVELOPMENT.md             # EDD methodology
-│   └── SF_SMART_DEPLOYMENT_PLUGIN_PROPOSAL.md  # Complete plugin proposal
-├── sf_dependency_analyzer.py                    # Core logic (Python - base for TypeScript)
-├── cleanup_old_flow_versions.py                 # Flow version management
-├── deploy_custom_metadata_smart_batches.py      # CMT batch deployment
-├── src/
-│   ├── commands/                                # CLI commands
-│   ├── core/                                    # Business logic
-│   ├── services/                                # Operations
-│   ├── parsers/                                 # Metadata analysis
-│   ├── generators/                              # Output creation
-│   ├── utils/                                   # Helpers
-│   ├── types/                                   # Type definitions
-│   └── constants/                               # Configuration
-├── test/
-│   ├── unit/                                    # Unit tests (TDD)
-│   ├── integration/                             # Integration tests
-│   └── e2e/                                     # E2E tests (BDD)
-└── README.md                                     # This file
-```
+- metadata scanning and dependency graph generation
+- wave generation with circular dependency detection
+- conservative circular dependency remediation for supported `ApexClass` cycles
+- real CLI flows for `start`, `analyze`, `validate`, `status`, `resume`, and `config`
+- AI-assisted dependency inference, priority weighting, and validation
+- multiple LLM providers through a shared provider abstraction
 
-## ✅ Implementation Progress
+## Current Status
 
-### Phase 1: Foundation (2/11 completed - 3/40 pts)
+This repository is in active development, but the command surface is now usable as a first working version.
 
-- ✅ **Issue #4**: Salesforce Limits Constants (1 pt) - [PR #91](https://github.com/jterrats/smart-deployment/pull/91)
-- ✅ **Issue #5**: Deployment Order Constants (2 pts) - Current branch
-- ⏳ **Issue #6**: Metadata Type Definitions (2 pts)
-- ⏳ **Issue #1**: Functional Utilities (3 pts)
-- ⏳ **Issue #2**: Graph Algorithms (5 pts)
-- ⏳ **Issue #3**: File System Utilities (3 pts)
+What is working today:
 
-**Next**: Continue with remaining Phase 1 issues
+- `sf smart-deployment analyze`
+- `sf smart-deployment start`
+- `sf smart-deployment validate`
+- `sf smart-deployment status`
+- `sf smart-deployment resume`
+- `sf smart-deployment config`
+- JSON and HTML analysis reports
+- repo-level AI configuration via `.smart-deployment.json`
 
-## 🎯 Current Implementation
+What is still partial:
 
-### 1. ✅ Constants (2/3 completed)
+- full live deployment validation against real Salesforce orgs across all flows
+- broader automatic circular dependency remediation beyond simple supported cases
+- richer deployment resume/polling semantics against remote deployment backends
+- broader provider ecosystem beyond the currently implemented adapters
+
+## Installation
 
 ```bash
-src/constants/
-├── ✅ salesforce-limits.ts      # API limits and constraints
-├── ✅ deployment-order.ts       # 78 metadata types prioritized
-└── ⏳ metadata-types.ts         # Type-specific configurations
-```
-
-### 2. ⏳ Functional Utils
-
-```bash
-# Create functional programming utilities
-src/utils/
-├── functional.ts         # pipe, compose, curry, memoize
-├── graph-algorithms.ts   # topological sort, cycle detection
-├── fs-utils.ts          # File system operations
-└── xml-utils.ts         # XML parsing/generation
-```
-
-### 3. ⏳ Parsers (Phase 2)
-
-```bash
-# Create metadata parsers (50+ types)
-src/parsers/
-├── apex-parser.ts
-├── flow-parser.ts
-├── lwc-parser.ts
-├── permission-set-parser.ts
-└── ... (more parsers)
-```
-
-### 4. ⏳ Services (Phase 3-4)
-
-```bash
-# Create service layer
-src/services/
-├── metadata-scanner.ts
-├── dependency-resolver.ts
-├── wave-generator.ts
-└── deployment-executor.ts
-```
-
-### 5. ⏳ Core Engine (Phase 3-4)
-
-```bash
-# Create business logic
-src/core/
-├── dependency-engine.ts
-├── deployment-orchestrator.ts
-└── test-optimizer.ts
-```
-
-### 6. ⏳ CLI Commands (Phase 5)
-
-```bash
-src/commands/smart-deployment/
-├── start.ts      # Main deployment command
-├── analyze.ts    # Analysis only
-├── validate.ts   # Dry-run
-├── status.ts     # Progress check
-└── resume.ts     # Resume from failure
-```
-
-### 7. Testing
-
-```bash
-npm test                    # Unit tests
-npm run test:integration    # Integration tests
-npm run test:e2e           # E2E tests (BDD)
-npm run test:coverage      # Coverage report
-```
-
-### 8. Publication
-
-```bash
-npm publish --access public
-```
-
----
-
-## 🏗️ Architecture
-
-The plugin follows a **layered architecture** with functional programming principles:
-
-```
-Commands → Core → Services → Parsers → Utils
-    ↓                ↓
-Generators      AI Services (Agentforce)
-```
-
-### Key Principles
-
-- **Functional Programming**: Pure functions, immutability, composition
-- **Modularity**: Small, testable, reusable components
-- **Type Safety**: Strict TypeScript
-- **Project Agnostic**: Works with any Salesforce project structure
-- **AI-Enhanced**: Agentforce for intelligent dependency inference
-
----
-
-## 🤖 Agentforce Integration
-
-The plugin uses **Agentforce** (Salesforce's LLM) for:
-
-1. **Dependency Inference**: Detect non-obvious dependencies
-2. **Priority Weighting**: Suggest optimal deployment order
-3. **Wave Validation**: Validate generated deployment waves
-4. **Test Optimization**: Suggest relevant tests per wave
-5. **Risk Assessment**: Evaluate deployment risk
-
----
-
-## 🔑 Key Concepts
-
-### Hardcoded Limits (NOT user-configurable)
-
-- **Max components per wave**: 300 (avoids UNKNOWN_EXCEPTION)
-- **Max CMT records per wave**: 200 (proven SF limit)
-- **Max files per deployment**: ~400-500 (API limit)
-
-These should NOT be public flags - they are technical Salesforce limits.
-
-### Metadata Type Mapping
-
-The analyzer must use exact names expected by SF CLI in package.xml:
-
-- `Translations` (not `Translation`)
-- `CustomNotificationType` (not `NotificationType`)
-- `Settings` (not `OrgSettings`)
-- Documents: `FolderName/DocumentName`
-- DigitalExperienceBundle: `site/SiteName`
-
----
-
-## 🧪 Testing Strategy
-
-### Test Coverage Goals
-
-| Layer      | Unit Tests | Integration Tests | E2E Tests | Coverage Goal |
-| ---------- | ---------- | ----------------- | --------- | ------------- |
-| Utils      | 61         | 0                 | 0         | 100%          |
-| Parsers    | 100        | 5                 | 0         | 95%           |
-| Services   | 57         | 10                | 3         | 90%           |
-| Core       | 22         | 8                 | 5         | 90%           |
-| Generators | 14         | 2                 | 0         | 95%           |
-| Commands   | 0          | 5                 | 28        | 85%           |
-| **TOTAL**  | **254**    | **30**            | **36**    | **92%**       |
-
-**Total Tests: 320**
-
-### Testing Approaches
-
-- **TDD (Test-Driven Development)**: Write tests before implementation
-- **BDD (Behavior-Driven Development)**: User-centric scenarios with Gherkin
-- **EDD (Error-Driven Development)**: Negative scenarios and error handling
-
----
-
-## 📚 References
-
-- [Salesforce CLI Plugin Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_plugins.meta/sfdx_cli_plugins/)
-- [Salesforce Metadata API](https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/)
-- [Agentforce DX Documentation](https://developer.salesforce.com/docs/einstein/genai/guide/agent-dx.html)
-- [OCLIF Framework](https://oclif.io/)
-
----
-
-## 🎓 Key Learnings
-
-1. **Component vs File count**: Some components generate multiple files (CustomObject with fields)
-2. **CMT limits**: CustomMetadataRecords have lower limits than general metadata
-3. **Path formatting**: Documents and DigitalExperience require full path in member name
-4. **Test optimization**: Running tests only in waves with Apex/Flow saves 40-60% time
-5. **Fail-fast vs retry**: Production = fail-fast, Sandbox = retry without tests
-
----
-
-## 📊 Project Status
-
-**Status**: 🟡 Initial development
-**Owner**: @jterrats
-**Created**: Dec 1, 2025
-**Language**: TypeScript
-**Framework**: OCLIF (Salesforce CLI Plugin Framework)
-**Testing**: Jest + Cucumber
-**CI/CD**: GitHub Actions (coming soon)
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Clone repository
-git clone git@github.com:jterrats/smart-deployment.git
-cd smart-deployment
-
-# Install dependencies
 yarn install
-
-# Build plugin
 yarn build
-
-# Link plugin to SF CLI
 sf plugins link .
-
-# Run command
-sf smart-deployment start --help
 ```
 
----
+## Quick Start
 
-## 🤝 Contributing
+Analyze a project:
 
-Contributions are welcome! Please:
+```bash
+sf smart-deployment analyze --source-path force-app
+```
 
-1. Read the architecture documentation in `docs/`
-2. Follow TDD/BDD/EDD testing approaches
-3. Maintain test coverage >90%
-4. Use functional programming principles
-5. Add documentation for new features
+Generate a saved plan and JSON report:
 
----
+```bash
+sf smart-deployment analyze \
+  --source-path force-app \
+  --use-ai \
+  --save-plan \
+  --output analysis.json \
+  --format json
+```
 
-## 📝 License
+Run a dry deployment:
 
-MIT License - see LICENSE file for details
+```bash
+sf smart-deployment start \
+  --source-path force-app \
+  --dry-run
+```
+
+Run with AI and allow conservative cycle remediation:
+
+```bash
+sf smart-deployment start \
+  --source-path force-app \
+  --use-ai \
+  --allow-cycle-remediation
+```
+
+Validate without executing deployment:
+
+```bash
+sf smart-deployment validate \
+  --source-path force-app \
+  --use-ai
+```
+
+Show persisted deployment state:
+
+```bash
+sf smart-deployment status --source-path force-app
+```
+
+Resume a failed deployment from local state:
+
+```bash
+sf smart-deployment resume \
+  --source-path force-app \
+  --retry-strategy standard
+```
+
+Configure the default AI provider for a repo:
+
+```bash
+sf smart-deployment config \
+  --source-path . \
+  --set-llm-provider openai \
+  --set-llm-model gpt-4o-mini
+```
+
+## Commands
+
+See:
+
+- [CLI reference](docs/cli-reference.md)
+- [AI configuration](docs/ai-configuration.md)
+- [Known limitations](docs/known-limitations.md)
+- [Documentation index](docs/README.md)
+
+## AI Providers
+
+The AI layer is no longer Agentforce-only.
+
+Current provider model:
+
+- shared provider abstraction in `src/ai/llm-provider.ts`
+- provider factory in `src/ai/llm-provider-factory.ts`
+- concrete adapters currently implemented for:
+  - `agentforce`
+  - `openai`
+
+AI is optional. When unavailable, supported flows fall back to deterministic heuristics where possible.
+
+## Repo Configuration
+
+Repo-scoped configuration is stored in:
+
+```text
+.smart-deployment.json
+```
+
+Example:
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "timeout": 30000
+  },
+  "priorities": {
+    "ApexClass:CriticalService": 100
+  }
+}
+```
+
+Deployment runtime state is stored separately under `.smart-deployment/` and should not be committed.
+
+## Testing
+
+Main commands:
+
+```bash
+yarn test
+yarn test:compile
+yarn test:only
+yarn lint
+```
+
+The suite currently includes unit, integration-style, and NUT coverage for the main CLI flows.
+
+## Documentation Policy
+
+The repository contains both active documentation and historical design/planning material.
+
+- active docs live in `docs/`
+- archived historical docs live in `docs/archive/`
+
+If a document describes flags or workflows that do not exist in the current command layer, treat the archived version as historical only.
