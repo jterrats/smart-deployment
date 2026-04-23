@@ -1,12 +1,6 @@
 name: Tests
 
 on:
-  workflow_call:
-    inputs:
-      skip_coverage_check:
-        required: false
-        type: boolean
-        default: false
   push:
     branches:
       - main
