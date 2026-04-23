@@ -37,6 +37,12 @@ import type { DependencyAnalysisResult } from '../types/dependency.js';
 
 const logger = getLogger('MetadataScannerService');
 
+function toNodeIds(dependencies: Iterable<string>, defaultType: string): Set<string> {
+  return new Set(
+    [...dependencies].map((dependency) => (dependency.includes(':') ? dependency : `${defaultType}:${dependency}`))
+  );
+}
+
 export interface ScanOptions {
   sourcePath?: string;
   includeIgnored?: boolean;
@@ -102,7 +108,12 @@ export class MetadataScannerService {
     }
 
     // Scan and parse metadata
-    const components = await this.scanMetadata(projectInfo.projectRoot, projectInfo.packageDirectories, errors, warnings);
+    const components = await this.scanMetadata(
+      projectInfo.projectRoot,
+      projectInfo.packageDirectories,
+      errors,
+      warnings
+    );
 
     // Build dependency graph
     const graphBuilder = new DependencyGraphBuilder();
@@ -143,7 +154,7 @@ export class MetadataScannerService {
     const components: MetadataComponent[] = [];
 
     for (const packageDir of packageDirs) {
-      const packagePath = path.join(projectRoot, packageDir);
+      const packagePath = path.isAbsolute(packageDir) ? packageDir : path.join(projectRoot, packageDir);
       if (!(await this.fileExists(packagePath))) {
         logger.warn('Package directory not found', { packagePath });
         warnings.push(`Package directory not found: ${packagePath}`);
@@ -182,12 +193,17 @@ export class MetadataScannerService {
           name: parsed.className,
           type: 'ApexClass',
           filePath,
-          dependencies: new Set<string>(parsed.dependencies.map((d) => d.className)),
+          dependencies: toNodeIds(
+            parsed.dependencies.map((d) => d.className),
+            'ApexClass'
+          ),
           dependents: new Set<string>(),
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Apex class ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Apex class ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -207,12 +223,17 @@ export class MetadataScannerService {
           name: parsed.triggerName,
           type: 'ApexTrigger',
           filePath,
-          dependencies: new Set<string>(parsed.dependencies.map((d) => d.className)),
+          dependencies: toNodeIds(
+            parsed.dependencies.map((d) => d.className),
+            'ApexClass'
+          ),
           dependents: new Set<string>(),
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Apex trigger ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Apex trigger ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -240,15 +261,14 @@ export class MetadataScannerService {
           name: componentName,
           type: 'LightningComponentBundle',
           filePath: codeFile,
-          dependencies: new Set<string>([
-            ...parsed.apexImports,
-            ...parsed.lwcImports.map((imp) => `c:${imp}`),
-          ]),
+          dependencies: new Set<string>([...parsed.apexImports, ...parsed.lwcImports.map((imp) => `c:${imp}`)]),
           dependents: new Set<string>(),
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse LWC ${componentName}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse LWC ${componentName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -282,7 +302,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Aura component ${componentName}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Aura component ${componentName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -348,7 +370,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Custom Object ${objectName}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Custom Object ${objectName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -376,7 +400,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Custom Metadata Type ${typeName}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Custom Metadata Type ${typeName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -405,7 +431,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Profile ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Profile ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -434,7 +462,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Permission Set ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Permission Set ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -463,7 +493,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse FlexiPage ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse FlexiPage ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -492,7 +524,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Layout ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Layout ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -524,7 +558,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Email Template ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Email Template ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -581,7 +617,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse GenAI Prompt ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse GenAI Prompt ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -614,7 +652,9 @@ export class MetadataScannerService {
           priorityBoost: 0,
         });
       } catch (error) {
-        const errorMsg = `Failed to parse Visualforce ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse Visualforce ${filePath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         logger.warn(errorMsg);
         errors.push(errorMsg);
       }
@@ -642,7 +682,7 @@ export class MetadataScannerService {
     const allMatches = await globAsync(fullPattern, {
       ignore: ['**/node_modules/**', '**/.git/**'],
     });
-    
+
     // Filter to only directories
     const dirs: string[] = [];
     for (const match of allMatches) {

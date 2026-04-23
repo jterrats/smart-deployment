@@ -1,7 +1,7 @@
 /**
  * AI-Enhanced Priority Wave Generator - US-042 + US-057
  * Extends priority wave generation with Agentforce AI
- * 
+ *
  * @ac US-042-AC-1: Use deployment order constants
  * @ac US-042-AC-2: Objects before classes before triggers
  * @ac US-042-AC-3: Break ties using priorities
@@ -10,7 +10,7 @@
  * @ac US-042-AC-6: Validate no dependency violations
  * @ac US-057-AC-5: Merge with static priorities
  * @ac US-057-AC-6: Report AI decisions
- * 
+ *
  * @issue #42, #57
  */
 
@@ -18,6 +18,7 @@ import { getLogger } from '../utils/logger.js';
 import { DEPLOYMENT_ORDER } from '../constants/deployment-order.js';
 import { PriorityWaveGenerator, type PriorityOptions } from './priority-wave-generator.js';
 import type { AgentforcePriorityService, PriorityAnalysisResult } from '../ai/agentforce-priority-service.js';
+import type { PriorityOverride } from '../types/deployment-plan.js';
 import type { NodeId } from '../types/dependency.js';
 import type { MetadataComponent } from '../types/metadata.js';
 import type { Wave } from './wave-builder.js';
@@ -33,10 +34,10 @@ export interface AIEnhancedOptions extends PriorityOptions {
 
 /**
  * AI-Enhanced Priority Wave Generator
- * 
+ *
  * Combines static priority rules with AI-powered recommendations
  * for intelligent deployment ordering.
- * 
+ *
  * @example
  * const aiService = new AgentforcePriorityService({ apiKey: 'xxx' });
  * const generator = new AIEnhancedPriorityWaveGenerator({
@@ -44,7 +45,7 @@ export interface AIEnhancedOptions extends PriorityOptions {
  *   orgType: 'Production',
  *   industry: 'Fintech'
  * });
- * 
+ *
  * const waves = await generator.applyPriorityWavesAsync(baseWaves, components);
  */
 export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
@@ -67,10 +68,7 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
    * @ac US-057-AC-5: Merge with static priorities
    * @ac US-042-AC-4: User-defined priority overrides
    */
-  public async applyPriorityWavesAsync(
-    waves: Wave[],
-    components: Map<NodeId, MetadataComponent>
-  ): Promise<Wave[]> {
+  public async applyPriorityWavesAsync(waves: Wave[], components: Map<NodeId, MetadataComponent>): Promise<Wave[]> {
     // Detect unknown metadata types
     const unknownComponents = this.detectUnknownTypes(components);
 
@@ -94,11 +92,12 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
     // Get AI recommendations if available
     if (this.agentforceService) {
       const componentList = Array.from(components.values());
-      
+
       // Prioritize unknown types in AI analysis
-      const componentsToAnalyze = this.autoAIForUnknown && unknownComponents.length > 0
-        ? unknownComponents // Focus on unknowns first
-        : componentList;
+      const componentsToAnalyze =
+        this.autoAIForUnknown && unknownComponents.length > 0
+          ? unknownComponents // Focus on unknowns first
+          : componentList;
 
       this.aiAnalysisResult = await this.agentforceService.analyzePriorities(componentsToAnalyze, {
         orgType: this.orgType,
@@ -186,6 +185,7 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
         tokensUsed?: number;
         unknownTypesDetected: number;
         unknownTypes: string[];
+        usedFallback: boolean;
       }
     | undefined {
     if (!this.aiAnalysisResult) return undefined;
@@ -196,7 +196,32 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
       tokensUsed: this.aiAnalysisResult.tokensUsed,
       unknownTypesDetected: this.unknownTypesDetected.size,
       unknownTypes: Array.from(this.unknownTypesDetected),
+      usedFallback: this.aiAnalysisResult.usedFallback,
     };
+  }
+
+  public getAIPriorityOverrides(components: Map<NodeId, MetadataComponent>): Record<string, PriorityOverride> {
+    if (!this.aiAnalysisResult) {
+      return {};
+    }
+
+    const overrides: Record<string, PriorityOverride> = {};
+
+    for (const recommendation of this.aiAnalysisResult.recommendations) {
+      const nodeId = Array.from(components.keys()).find((id) => id.endsWith(`:${recommendation.componentName}`));
+
+      if (nodeId && recommendation.confidence > 0.8) {
+        overrides[nodeId] = {
+          priority: recommendation.priority,
+          source: 'ai',
+          confidence: recommendation.confidence,
+          reason: recommendation.reason,
+          appliedAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    return overrides;
   }
 
   /**
@@ -208,10 +233,11 @@ export class AIEnhancedPriorityWaveGenerator extends PriorityWaveGenerator {
     }
 
     if (!this.agentforceService) {
-      return `⚠️  Found ${this.unknownTypesDetected.size} unknown metadata type(s): ${Array.from(this.unknownTypesDetected).join(', ')}\n💡 Tip: Use --use-ai for intelligent prioritization of unknown types`;
+      return `⚠️  Found ${this.unknownTypesDetected.size} unknown metadata type(s): ${Array.from(
+        this.unknownTypesDetected
+      ).join(', ')}\n💡 Tip: Use --use-ai for intelligent prioritization of unknown types`;
     }
 
     return undefined;
   }
 }
-

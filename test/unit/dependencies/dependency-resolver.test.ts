@@ -73,9 +73,7 @@ describe('DependencyResolver', () => {
     });
 
     it('US-033-AC-1: should place dependencies before dependents', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const resolver = new DependencyResolver(graph, components);
       const result = resolver.resolve();
@@ -122,9 +120,7 @@ describe('DependencyResolver', () => {
 
       // All components should be in the order
       expect(result.deploymentOrder).to.have.lengthOf(4);
-      expect(result.deploymentOrder).to.include.members([
-        'ApexClass:A', 'ApexClass:B', 'ApexClass:C', 'ApexClass:D'
-      ]);
+      expect(result.deploymentOrder).to.include.members(['ApexClass:A', 'ApexClass:B', 'ApexClass:C', 'ApexClass:D']);
     });
   });
 
@@ -141,16 +137,14 @@ describe('DependencyResolver', () => {
       const resolver = new DependencyResolver(graph, components, {
         includeOptional: false,
       });
-      resolver.resolve();
+      const result = resolver.resolve();
 
-      // Note: Current implementation doesn't track optional deps (Set<string> vs typed deps)
-      expect(true).to.be.true;
+      expect(result.optional).to.deep.equal([]);
+      expect(result.deploymentOrder).to.include.members(['ApexClass:B', 'ApexClass:C']);
     });
 
     it('US-033-AC-3: should include optional deps when configured', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B', 'soft'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B', 'soft']]);
 
       const resolver = new DependencyResolver(graph, components, {
         includeOptional: true,
@@ -183,9 +177,7 @@ describe('DependencyResolver', () => {
     });
 
     it('US-033-AC-4: should include managed packages when not skipping', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:ns__Managed'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:ns__Managed']]);
 
       const resolver = new DependencyResolver(graph, components, {
         skipManaged: false,
@@ -201,9 +193,7 @@ describe('DependencyResolver', () => {
      * @ac US-033-AC-5: Report unresolved dependencies
      */
     it('US-033-AC-5: should report unresolved dependencies', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       // Remove Missing from components to simulate missing dependency
       components.delete('ApexClass:Missing');
@@ -218,9 +208,7 @@ describe('DependencyResolver', () => {
     });
 
     it('US-033-AC-5: should identify missing dependencies', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:Missing'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:Missing']]);
 
       components.delete('ApexClass:Missing');
       // Don't delete from graph
@@ -274,11 +262,13 @@ describe('DependencyResolver', () => {
         ['ApexClass:B', 'ApexClass:A'],
       ]);
 
-      const circular: CircularDependency[] = [{
-        cycle: ['ApexClass:A', 'ApexClass:B'],
-        severity: 'error',
-        message: 'Circular dependency detected',
-      }];
+      const circular: CircularDependency[] = [
+        {
+          cycle: ['ApexClass:A', 'ApexClass:B'],
+          severity: 'error',
+          message: 'Circular dependency detected',
+        },
+      ];
 
       const resolver = new DependencyResolver(graph, components, {
         circularDependencies: circular,
@@ -292,19 +282,15 @@ describe('DependencyResolver', () => {
 
   describe('Manual Ordering Constraints', () => {
     it('should apply manual ordering constraints', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const resolver = new DependencyResolver(graph, components, {
-        orderingConstraints: [
-          { before: 'ApexClass:B', after: 'ApexClass:A' },
-        ],
+        orderingConstraints: [{ before: 'ApexClass:B', after: 'ApexClass:A' }],
       });
-      resolver.resolve();
+      const result = resolver.resolve();
 
-      // Test passed if no errors thrown
-      expect(true).to.be.true;
+      expect(result.deploymentOrder).to.deep.equal([]);
+      expect(result.unresolved.map((entry) => entry.nodeId)).to.have.members(['ApexClass:A', 'ApexClass:B']);
     });
 
     it('should support multiple constraints', () => {
@@ -319,10 +305,14 @@ describe('DependencyResolver', () => {
           { before: 'ApexClass:B', after: 'ApexClass:A' },
         ],
       });
-      resolver.resolve();
+      const result = resolver.resolve();
 
-      // Test passed if no errors thrown
-      expect(true).to.be.true;
+      expect(result.deploymentOrder).to.deep.equal([]);
+      expect(result.unresolved.map((entry) => entry.nodeId)).to.have.members([
+        'ApexClass:A',
+        'ApexClass:B',
+        'ApexClass:C',
+      ]);
     });
   });
 
@@ -340,7 +330,10 @@ describe('DependencyResolver', () => {
       // All components should be in the order
       expect(result.deploymentOrder).to.have.lengthOf(4);
       expect(result.deploymentOrder).to.include.members([
-        'ApexClass:Model', 'ApexClass:Repository', 'ApexClass:Service', 'ApexClass:Controller'
+        'ApexClass:Model',
+        'ApexClass:Repository',
+        'ApexClass:Service',
+        'ApexClass:Controller',
       ]);
     });
 
@@ -362,9 +355,7 @@ describe('DependencyResolver', () => {
 
   describe('Helper Methods', () => {
     it('should get resolution for specific component', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const resolver = new DependencyResolver(graph, components);
       const resolution = resolver.getResolution('ApexClass:A');
@@ -375,9 +366,7 @@ describe('DependencyResolver', () => {
     });
 
     it('should check if component can be resolved', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const resolver = new DependencyResolver(graph, components);
 
@@ -475,9 +464,7 @@ describe('DependencyResolver', () => {
 
   describe('Resolution Status', () => {
     it('should mark components with correct status', () => {
-      const { graph, components } = createTestData([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
 
       const resolver = new DependencyResolver(graph, components);
       const result = resolver.resolve();
@@ -507,4 +494,3 @@ describe('DependencyResolver', () => {
     });
   });
 });
-

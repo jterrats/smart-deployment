@@ -62,11 +62,7 @@ export class ProjectFixtures {
       sourceApiVersion: '61.0',
     };
 
-    await fs.writeFile(
-      path.join(projectPath, 'sfdx-project.json'),
-      JSON.stringify(sfdxProject, null, 2),
-      'utf-8'
-    );
+    await fs.writeFile(path.join(projectPath, 'sfdx-project.json'), JSON.stringify(sfdxProject, null, 2), 'utf-8');
 
     // Create basic structure
     const forceAppPath = path.join(projectPath, 'force-app/main/default');
@@ -217,6 +213,19 @@ export class ProjectFixtures {
     await fs.mkdir(projectPath, { recursive: true });
 
     const metadataFiles: string[] = [];
+
+    const sfdxProject = {
+      packageDirectories: [
+        {
+          path: 'force-app',
+          default: true,
+        },
+      ],
+      sourceApiVersion: '61.0',
+    };
+
+    await fs.writeFile(path.join(projectPath, 'sfdx-project.json'), JSON.stringify(sfdxProject, null, 2), 'utf-8');
+
     const forceAppPath = path.join(projectPath, 'force-app/main/default');
     await fs.mkdir(path.join(forceAppPath, 'classes'), { recursive: true });
 
@@ -262,26 +271,30 @@ export class ProjectFixtures {
     const projectPath = path.join(this.fixturesDir, name);
     await fs.mkdir(projectPath, { recursive: true });
 
+    const sfdxProject = {
+      packageDirectories: [
+        {
+          path: 'force-app',
+          default: true,
+        },
+      ],
+      sourceApiVersion: '61.0',
+    };
+
+    await fs.writeFile(path.join(projectPath, 'sfdx-project.json'), JSON.stringify(sfdxProject, null, 2), 'utf-8');
+
     const metadataFiles: string[] = [];
     const forceAppPath = path.join(projectPath, 'force-app/main/default');
     await fs.mkdir(path.join(forceAppPath, 'classes'), { recursive: true });
 
     // Class A depends on Class B
     const classAPath = path.join(forceAppPath, 'classes/ClassA.cls');
-    await fs.writeFile(
-      classAPath,
-      'public class ClassA { public ClassB b; }',
-      'utf-8'
-    );
+    await fs.writeFile(classAPath, 'public class ClassA { public ClassB b; }', 'utf-8');
     metadataFiles.push(classAPath);
 
     // Class B depends on Class A (circular!)
     const classBPath = path.join(forceAppPath, 'classes/ClassB.cls');
-    await fs.writeFile(
-      classBPath,
-      'public class ClassB { public ClassA a; }',
-      'utf-8'
-    );
+    await fs.writeFile(classBPath, 'public class ClassB { public ClassA a; }', 'utf-8');
     metadataFiles.push(classBPath);
 
     // Class C → Class D → Class E → Class C (3-way cycle)
@@ -343,11 +356,7 @@ export class ProjectFixtures {
         sourceApiVersion: '61.0',
       };
 
-      await fs.writeFile(
-        path.join(projectDir, 'sfdx-project.json'),
-        JSON.stringify(sfdxProject, null, 2),
-        'utf-8'
-      );
+      await fs.writeFile(path.join(projectDir, 'sfdx-project.json'), JSON.stringify(sfdxProject, null, 2), 'utf-8');
 
       // Create sample class
       const forceAppPath = path.join(projectDir, 'force-app/main/default/classes');
@@ -398,4 +407,3 @@ export class ProjectFixtures {
     return path.join(this.fixturesDir, fixtureName);
   }
 }
-

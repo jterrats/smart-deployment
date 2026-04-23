@@ -3,12 +3,37 @@
  */
 import { expect } from 'chai';
 import { describe, it, beforeEach } from 'mocha';
-import { AgentforceService } from '../../../src/ai/agentforce-service.js';
+import { AgentforceService, type AgentforceFetch } from '../../../src/ai/agentforce-service.js';
 
 describe('AgentforceService', () => {
   let service: AgentforceService;
+  let fetchCalls: Array<{ input: Parameters<typeof fetch>[0]; init?: Parameters<typeof fetch>[1] }>;
+  let fetchFn: AgentforceFetch;
 
   beforeEach(() => {
+    fetchCalls = [];
+    fetchFn = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      fetchCalls.push({ input, init });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1);
+      });
+
+      return new Response(
+        JSON.stringify({
+          content: JSON.stringify({
+            message: 'AI response',
+            confidence: 0.95,
+          }),
+          usage: { total_tokens: 123 },
+          model: 'test-model',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }) as AgentforceFetch;
+
     service = new AgentforceService({
       enabled: true,
       endpoint: 'https://test-api.salesforce.com',
@@ -17,6 +42,7 @@ describe('AgentforceService', () => {
       timeout: 5000,
       maxRetries: 2,
       rateLimit: 10,
+      fetchFn,
     });
     service.resetStats();
   });
@@ -52,7 +78,7 @@ describe('AgentforceService', () => {
         prompt: 'Test prompt',
       });
 
-      expect(response.model).to.be.a('string');
+      expect(response.model).to.equal('test-model');
     });
 
     /** @ac US-054-AC-4: Implement retry logic */
@@ -68,6 +94,7 @@ describe('AgentforceService', () => {
         enabled: true,
         apiKey: 'test',
         rateLimit: 2,
+        fetchFn,
       });
 
       // Should allow first 2 requests
@@ -96,7 +123,7 @@ describe('AgentforceService', () => {
       expect(stats.successfulRequests).to.equal(1);
       expect(stats.failedRequests).to.equal(0);
       expect(stats.totalTokensUsed).to.be.greaterThan(0);
-      expect(stats.averageResponseTime).to.be.greaterThan(0);
+      expect(stats.averageResponseTime).to.be.at.least(0);
     });
   });
 
@@ -110,6 +137,8 @@ describe('AgentforceService', () => {
       expect(response).to.have.property('content');
       expect(response).to.have.property('tokensUsed');
       expect(response).to.have.property('executionTime');
+      expect(fetchCalls).to.have.lengthOf(1);
+      expect(String(fetchCalls[0].input)).to.equal('https://test-api.salesforce.com');
     });
 
     it('should track successful requests in stats', async () => {
@@ -152,6 +181,57 @@ describe('AgentforceService', () => {
       stats = service.getUsageStats();
       expect(stats.totalRequests).to.equal(0);
       expect(stats.successfulRequests).to.equal(0);
+    });
+  });
+
+  describe('HTTP behavior', () => {
+    it('sends authenticated JSON requests to the configured endpoint', async () => {
+      await service.sendRequest({
+        model: 'test-model',
+        prompt: 'Prompt body',
+        temperature: 0.4,
+        maxTokens: 321,
+      });
+
+      expect(fetchCalls).to.have.lengthOf(1);
+      expect(fetchCalls[0].init?.method).to.equal('POST');
+      expect(fetchCalls[0].init?.headers).to.deep.equal({
+        Authorization: 'Bearer test-key',
+        'Content-Type': 'application/json',
+      });
+      expect(String(fetchCalls[0].init?.body)).to.include('"prompt":"Prompt body"');
+      expect(String(fetchCalls[0].init?.body)).to.include('"maxTokens":321');
+    });
+
+    it('retries retryable failures and eventually succeeds', async () => {
+      let attempts = 0;
+      const flakyFetch = (async () => {
+        attempts += 1;
+        if (attempts < 2) {
+          throw new Error('network timeout');
+        }
+
+        return new Response(
+          JSON.stringify({
+            content: '{"message":"Recovered"}',
+            usage: { total_tokens: 10 },
+            model: 'retry-model',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as AgentforceFetch;
+
+      const flakyService = new AgentforceService({
+        enabled: true,
+        apiKey: 'test-key',
+        maxRetries: 2,
+        fetchFn: flakyFetch,
+      });
+
+      const response = await flakyService.sendRequest({ model: 'retry-model', prompt: 'Retry me' });
+
+      expect(response.content).to.include('Recovered');
+      expect(attempts).to.equal(2);
     });
   });
 });

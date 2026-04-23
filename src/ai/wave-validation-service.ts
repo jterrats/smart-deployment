@@ -13,7 +13,8 @@
 
 import { getLogger } from '../utils/logger.js';
 import type { Wave } from '../waves/wave-builder.js';
-import { AgentforceService } from './agentforce-service.js';
+import type { LLMProvider } from './llm-provider.js';
+import { createLLMProvider } from './llm-provider-factory.js';
 
 const logger = getLogger('WaveValidationService');
 
@@ -52,16 +53,30 @@ export interface WaveValidationResult {
   aiAnalyzed: boolean;
 }
 
+export interface WaveValidationServiceOptions {
+  baseDir?: string;
+}
+
 /**
  * @ac US-056-AC-1: Send wave structure to Agentforce
  * @ac US-056-AC-2: Receive validation feedback
  */
 export class WaveValidationService {
-  private readonly agentforceService: AgentforceService;
+  private readonly llmProvider: LLMProvider;
 
-  public constructor(agentforceService?: AgentforceService) {
-    this.agentforceService = agentforceService || new AgentforceService();
+  public constructor(llmProviderOrOptions?: LLMProvider | WaveValidationServiceOptions) {
+    this.llmProvider = this.resolveProvider(llmProviderOrOptions);
     logger.info('Wave validation service initialized');
+  }
+
+  private resolveProvider(llmProviderOrOptions?: LLMProvider | WaveValidationServiceOptions): LLMProvider {
+    if (llmProviderOrOptions && 'sendRequest' in llmProviderOrOptions) {
+      return llmProviderOrOptions;
+    }
+
+    return createLLMProvider({
+      baseDir: llmProviderOrOptions?.baseDir,
+    });
   }
 
   /**
@@ -83,7 +98,7 @@ export class WaveValidationService {
 
     try {
       // Check if Agentforce is enabled
-      if (!this.agentforceService.isEnabled()) {
+      if (!this.llmProvider.isEnabled()) {
         logger.info('Agentforce disabled, skipping AI validation');
         return result;
       }
@@ -92,8 +107,8 @@ export class WaveValidationService {
       const prompt = this.buildValidationPrompt(waves);
 
       // Send to Agentforce
-      const response = await this.agentforceService.sendRequest({
-        model: this.agentforceService.getConfig().model,
+      const response = await this.llmProvider.sendRequest({
+        model: this.llmProvider.getConfig().model,
         prompt,
         temperature: 0.1, // Very low for consistent validation
         maxTokens: 3000,
@@ -356,6 +371,10 @@ Be conservative - only report issues with high confidence.`;
     });
 
     return waves;
+  }
+
+  public getProviderConfig(): Readonly<ReturnType<LLMProvider['getConfig']>> {
+    return this.llmProvider.getConfig();
   }
 
   /**

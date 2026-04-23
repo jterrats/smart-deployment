@@ -1,80 +1,180 @@
-/**
- * Unit tests for start command
- */
-
 import { expect } from 'chai';
-import { describe, it } from 'mocha';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, beforeEach, describe, it } from 'mocha';
+import Start from '../../../src/commands/start.js';
+
+type ParseResult = {
+  flags: Record<string, unknown>;
+  args: Record<string, unknown>;
+  argv: string[];
+  raw: unknown[];
+  metadata: {
+    flags: Record<string, unknown>;
+    args: Record<string, unknown>;
+  };
+  nonExistentFlags: string[];
+  _runtime: unknown;
+};
+
+type StartCommandTestDouble = {
+  parse: () => Promise<ParseResult>;
+  log: (message?: string) => void;
+  warn: (message?: string | Error) => void;
+  error: (message: string) => never;
+};
+
+async function createCircularProject(rootDir: string): Promise<{
+  projectRoot: string;
+  alphaPath: string;
+  betaPath: string;
+}> {
+  const projectRoot = path.join(rootDir, 'project');
+  const classesDir = path.join(projectRoot, 'force-app/main/default/classes');
+  await rm(projectRoot, { recursive: true, force: true });
+  await mkdir(classesDir, { recursive: true });
+  await writeFile(
+    path.join(projectRoot, 'sfdx-project.json'),
+    JSON.stringify(
+      {
+        packageDirectories: [{ path: 'force-app', default: true }],
+        sourceApiVersion: '61.0',
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  await writeFile(path.join(projectRoot, '.forceignore'), '', 'utf8');
+
+  const alphaPath = path.join(classesDir, 'Alpha.cls');
+  const betaPath = path.join(classesDir, 'Beta.cls');
+  const alphaSource = [
+    'public class Alpha {',
+    '  public static void execute() {}',
+    '  public void run() {',
+    '    Beta.execute();',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+  const betaSource = [
+    'public class Beta {',
+    '  public static void execute() {',
+    '    Alpha.execute();',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+
+  await writeFile(alphaPath, alphaSource, 'utf8');
+  await writeFile(betaPath, betaSource, 'utf8');
+
+  return { projectRoot, alphaPath, betaPath };
+}
 
 describe('StartCommand', () => {
-  /**
-   * @ac US-046-AC-1: Analyzes metadata automatically
-   */
-  it('US-046-AC-1: should analyze metadata automatically', () => {
-    expect(true).to.be.true;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), 'start-command-'));
   });
 
-  /**
-   * @ac US-046-AC-2: Generates deployment waves
-   */
-  it('US-046-AC-2: should generate deployment waves', () => {
-    expect(true).to.be.true;
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
   });
 
-  /**
-   * @ac US-046-AC-3: Executes deployment sequentially
-   */
-  it('US-046-AC-3: should execute deployment sequentially', () => {
-    expect(true).to.be.true;
+  it('fails fast on circular dependencies unless remediation is explicitly enabled', async () => {
+    const { projectRoot } = await createCircularProject(tempDir);
+    const command = new Start([], {} as never);
+
+    (command as unknown as StartCommandTestDouble).parse = async () => ({
+      flags: {
+        'target-org': 'test-org',
+        'dry-run': false,
+        'validate-only': false,
+        'skip-tests': true,
+        'use-ai': false,
+        'allow-cycle-remediation': false,
+        'source-path': projectRoot,
+      },
+      args: {},
+      argv: [],
+      raw: [],
+      metadata: { flags: {}, args: {} },
+      nonExistentFlags: [],
+      _runtime: {},
+    });
+    (command as unknown as StartCommandTestDouble).log = () => undefined;
+    (command as unknown as StartCommandTestDouble).warn = () => undefined;
+    (command as unknown as StartCommandTestDouble).error = (message: string) => {
+      throw new Error(message);
+    };
+
+    let thrownError: Error | undefined;
+
+    try {
+      await command.run();
+    } catch (error) {
+      thrownError = error as Error;
+    }
+
+    expect(thrownError).to.be.instanceOf(Error);
+    expect(thrownError?.message).to.include('Circular dependencies detected');
+    expect(thrownError?.message).to.include('--allow-cycle-remediation');
   });
 
-  /**
-   * @ac US-046-AC-4: Supports --target-org flag
-   */
-  it('US-046-AC-4: should support --target-org flag', () => {
-    expect(true).to.be.true;
-  });
+  it('applies and restores conservative remediation edits for a simple ApexClass cycle', async () => {
+    const { projectRoot, alphaPath, betaPath } = await createCircularProject(tempDir);
+    const originalAlpha = await readFile(alphaPath, 'utf8');
+    const originalBeta = await readFile(betaPath, 'utf8');
+    const command = new Start([], {} as never);
+    const logs: string[] = [];
 
-  /**
-   * @ac US-046-AC-5: Supports --dry-run flag
-   */
-  it('US-046-AC-5: should support --dry-run flag', () => {
-    expect(true).to.be.true;
-  });
+    (command as unknown as StartCommandTestDouble).parse = async () => ({
+      flags: {
+        'target-org': 'test-org',
+        'dry-run': false,
+        'validate-only': false,
+        'skip-tests': true,
+        'use-ai': false,
+        'allow-cycle-remediation': true,
+        'source-path': projectRoot,
+      },
+      args: {},
+      argv: [],
+      raw: [],
+      metadata: { flags: {}, args: {} },
+      nonExistentFlags: [],
+      _runtime: {},
+    });
+    (command as unknown as StartCommandTestDouble).log = (message?: string) => {
+      if (message) logs.push(message);
+    };
+    (command as unknown as StartCommandTestDouble).warn = () => undefined;
+    (command as unknown as StartCommandTestDouble).error = (message: string) => {
+      throw new Error(message);
+    };
 
-  /**
-   * @ac US-046-AC-6: Supports --validate-only flag
-   */
-  it('US-046-AC-6: should support --validate-only flag', () => {
-    expect(true).to.be.true;
-  });
+    const result = await command.run();
+    const restoredAlpha = await readFile(alphaPath, 'utf8');
+    const restoredBeta = await readFile(betaPath, 'utf8');
 
-  /**
-   * @ac US-046-AC-7: Supports --skip-tests flag
-   */
-  it('US-046-AC-7: should support --skip-tests flag', () => {
-    expect(true).to.be.true;
-  });
+    expect(result.success).to.equal(true);
+    expect(restoredAlpha).to.equal(originalAlpha);
+    expect(restoredBeta).to.equal(originalBeta);
+    expect(logs.some((message) => message.includes('Phase 1/2'))).to.equal(true);
+    expect(logs.some((message) => message.includes('Phase 2/2'))).to.equal(true);
 
-  /**
-   * @ac US-046-AC-8: Shows progress bar
-   */
-  it('US-046-AC-8: should show progress bar', () => {
-    expect(true).to.be.true;
-  });
+    let stateFileExists = true;
+    try {
+      await access(path.join(projectRoot, '.smart-deployment/deployment-state.json'), fsConstants.F_OK);
+    } catch {
+      stateFileExists = false;
+    }
 
-  /**
-   * @ac US-046-AC-9: Generates deployment report
-   */
-  it('US-046-AC-9: should generate deployment report', () => {
-    expect(true).to.be.true;
-  });
-
-  /**
-   * @ac US-046-AC-10: Handles failures gracefully
-   */
-  it('US-046-AC-10: should handle failures gracefully', () => {
-    expect(true).to.be.true;
+    expect(stateFileExists).to.equal(false);
   });
 });
-
-

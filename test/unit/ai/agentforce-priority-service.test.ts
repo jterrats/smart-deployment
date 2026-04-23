@@ -2,11 +2,39 @@
  * Tests for Agentforce Priority Service - US-057
  */
 import { expect } from 'chai';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { describe, it } from 'mocha';
 import { AgentforcePriorityService } from '../../../src/ai/agentforce-priority-service.js';
+import type { AgentforceFetch } from '../../../src/ai/agentforce-service.js';
 import type { MetadataComponent } from '../../../src/types/metadata.js';
 
 describe('AgentforcePriorityService', () => {
+  const fetchFn: AgentforceFetch = (async () =>
+    new Response(
+      JSON.stringify({
+        content: JSON.stringify({
+          recommendations: [
+            {
+              componentName: 'PaymentHandler',
+              priority: 95,
+              reason: 'Critical payment path',
+              confidence: 0.93,
+              businessCriticality: 'critical',
+              failureImpact: 'critical',
+            },
+          ],
+        }),
+        usage: { total_tokens: 120 },
+        model: 'priority-test-model',
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    )) as AgentforceFetch;
+
   const createMockComponent = (name: string, type: string): MetadataComponent => ({
     name,
     type: type as MetadataComponent['type'],
@@ -19,7 +47,7 @@ describe('AgentforcePriorityService', () => {
   describe('US-057: AI Priority Weighting', () => {
     /** @ac US-057-AC-1: Send component list to Agentforce */
     it('US-057-AC-1: should send component list to Agentforce', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [
         createMockComponent('PaymentHandler', 'ApexClass'),
         createMockComponent('LogService', 'ApexClass'),
@@ -33,7 +61,7 @@ describe('AgentforcePriorityService', () => {
 
     /** @ac US-057-AC-2: Receive priority recommendations */
     it('US-057-AC-2: should receive priority recommendations', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [createMockComponent('PaymentHandler', 'ApexClass')];
 
       const result = await service.analyzePriorities(components);
@@ -50,7 +78,7 @@ describe('AgentforcePriorityService', () => {
 
     /** @ac US-057-AC-3: Consider business criticality */
     it('US-057-AC-3: should consider business criticality', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [createMockComponent('PaymentHandler', 'ApexClass')];
 
       const result = await service.analyzePriorities(components, {
@@ -68,7 +96,7 @@ describe('AgentforcePriorityService', () => {
 
     /** @ac US-057-AC-4: Consider failure impact */
     it('US-057-AC-4: should consider failure impact', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [createMockComponent('PaymentHandler', 'ApexClass')];
 
       const result = await service.analyzePriorities(components);
@@ -83,7 +111,7 @@ describe('AgentforcePriorityService', () => {
 
     /** @ac US-057-AC-5: Merge with static priorities */
     it('US-057-AC-5: should support merging with static priorities', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [
         createMockComponent('PaymentHandler', 'ApexClass'),
         createMockComponent('LogService', 'ApexClass'),
@@ -98,7 +126,7 @@ describe('AgentforcePriorityService', () => {
 
     /** @ac US-057-AC-6: Report AI decisions */
     it('US-057-AC-6: should report AI decisions', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [createMockComponent('PaymentHandler', 'ApexClass')];
 
       const result = await service.analyzePriorities(components);
@@ -133,13 +161,60 @@ describe('AgentforcePriorityService', () => {
     });
 
     it('should handle timeout gracefully', async () => {
-      const service = new AgentforcePriorityService({ enabled: true, timeout: 1 }); // 1ms timeout
+      const slowFetch = (async () => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10);
+        });
+
+        return new Response(JSON.stringify({ content: '{"recommendations":[]}' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }) as AgentforceFetch;
+
+      const service = new AgentforcePriorityService({
+        enabled: true,
+        timeout: 1,
+        apiKey: 'test-key',
+        fetchFn: slowFetch,
+      });
       const components = [createMockComponent('TestClass', 'ApexClass')];
 
       const result = await service.analyzePriorities(components);
 
       // Should fallback gracefully
       expect(result).to.have.property('totalComponents', 1);
+    });
+
+    it('uses repo-configured provider defaults when baseDir is supplied', async () => {
+      const tempDir = await mkdtemp(path.join(os.tmpdir(), 'smart-deployment-priority-config-'));
+
+      try {
+        await writeFile(
+          path.join(tempDir, '.smart-deployment.json'),
+          JSON.stringify({
+            llm: {
+              provider: 'openai',
+              model: 'gpt-4o-mini',
+              endpoint: 'https://api.openai.test/v1/chat/completions',
+            },
+          }),
+          'utf8'
+        );
+
+        const service = new AgentforcePriorityService({
+          baseDir: tempDir,
+          apiKey: 'openai-test-key',
+          fetchFn,
+        });
+        const components = [createMockComponent('PaymentHandler', 'ApexClass')];
+        const result = await service.analyzePriorities(components);
+
+        expect(result.recommendations).to.not.be.empty;
+        expect(result.totalComponents).to.equal(1);
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
     });
   });
 
@@ -163,7 +238,7 @@ describe('AgentforcePriorityService', () => {
     });
 
     it('should assign appropriate confidence scores', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [createMockComponent('TestClass', 'ApexClass')];
 
       const result = await service.analyzePriorities(components);
@@ -178,7 +253,7 @@ describe('AgentforcePriorityService', () => {
 
   describe('Report Formatting', () => {
     it('should format comprehensive report', async () => {
-      const service = new AgentforcePriorityService({ enabled: true });
+      const service = new AgentforcePriorityService({ enabled: true, apiKey: 'test-key', fetchFn });
       const components = [
         createMockComponent('PaymentHandler', 'ApexClass'),
         createMockComponent('CacheService', 'ApexClass'),
@@ -204,4 +279,3 @@ describe('AgentforcePriorityService', () => {
     });
   });
 });
-

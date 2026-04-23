@@ -13,6 +13,9 @@
 
 import { getLogger } from '../utils/logger.js';
 import type { MetadataComponent } from '../types/metadata.js';
+import type { AgentforceFetch } from './agentforce-service.js';
+import { createLLMProvider } from './llm-provider-factory.js';
+import type { LLMProvider, LLMProviderName } from './llm-provider.js';
 
 const logger = getLogger('AgentforcePriorityService');
 
@@ -26,11 +29,17 @@ export interface PriorityRecommendation {
 }
 
 export interface AgentforceConfig {
+  baseDir?: string;
+  provider?: LLMProviderName;
   endpoint?: string;
   apiKey?: string;
   model?: string;
   timeout?: number;
   enabled?: boolean;
+  maxRetries?: number;
+  rateLimit?: number;
+  fetchFn?: AgentforceFetch;
+  llmProvider?: LLMProvider;
 }
 
 export interface PriorityAnalysisResult {
@@ -39,6 +48,7 @@ export interface PriorityAnalysisResult {
   aiAdjustments: number;
   executionTime: number;
   tokensUsed?: number;
+  usedFallback: boolean;
 }
 
 /**
@@ -46,16 +56,25 @@ export interface PriorityAnalysisResult {
  * @ac US-057-AC-2: Receive priority recommendations
  */
 export class AgentforcePriorityService {
-  private readonly endpoint: string;
-  private readonly model: string;
-  private readonly timeout: number;
+  private readonly llmProvider: LLMProvider;
   private readonly enabled: boolean;
 
-  constructor(private config: AgentforceConfig = {}) {
-    this.endpoint = config.endpoint || 'https://api.salesforce.com/services/einstein/llm/v1';
-    this.model = config.model || 'claude-sonnet';
-    this.timeout = config.timeout || 30000;
-    this.enabled = config.enabled ?? true;
+  public constructor(config: AgentforceConfig = {}) {
+    this.llmProvider =
+      config.llmProvider ??
+      createLLMProvider({
+        baseDir: config.baseDir,
+        provider: config.provider,
+        endpoint: config.endpoint,
+        apiKey: config.apiKey,
+        model: config.model,
+        timeout: config.timeout,
+        maxRetries: config.maxRetries,
+        enabled: config.enabled,
+        rateLimit: config.rateLimit,
+        fetchFn: config.fetchFn,
+      });
+    this.enabled = this.llmProvider.isEnabled();
   }
 
   /**
@@ -69,6 +88,7 @@ export class AgentforcePriorityService {
     context?: { orgType?: string; industry?: string }
   ): Promise<PriorityAnalysisResult> {
     const startTime = Date.now();
+    const prompt = this.buildPriorityPrompt(components, context);
 
     if (!this.enabled) {
       logger.info('Agentforce disabled, returning empty recommendations');
@@ -77,6 +97,7 @@ export class AgentforcePriorityService {
         totalComponents: components.length,
         aiAdjustments: 0,
         executionTime: 0,
+        usedFallback: false,
       };
     }
 
@@ -87,14 +108,14 @@ export class AgentforcePriorityService {
     });
 
     try {
-      // Build prompt with business context
-      const prompt = this.buildPriorityPrompt(components, context);
+      const response = await this.llmProvider.sendRequest({
+        model: this.llmProvider.getConfig().model,
+        prompt,
+        temperature: 0.2,
+        maxTokens: 4000,
+      });
 
-      // Call Agentforce API
-      const response = await this.callAgentforce(prompt);
-
-      // Parse recommendations
-      const recommendations = this.parseResponse(response);
+      const recommendations = this.parseResponse(response.content);
 
       const executionTime = Date.now() - startTime;
 
@@ -108,16 +129,15 @@ export class AgentforcePriorityService {
         totalComponents: components.length,
         aiAdjustments: recommendations.filter((r) => r.confidence > 0.8).length,
         executionTime,
-        tokensUsed: response.usage?.total_tokens,
+        tokensUsed: response.tokensUsed,
+        usedFallback: false,
       };
     } catch (error) {
-      logger.error('Agentforce analysis failed, falling back to static', { error });
-      return {
-        recommendations: [],
-        totalComponents: components.length,
-        aiAdjustments: 0,
-        executionTime: Date.now() - startTime,
-      };
+      logger.warn('LLM priority analysis failed, falling back to static recommendations', {
+        error: error instanceof Error ? error.message : String(error),
+        provider: this.llmProvider.getConfig().provider,
+      });
+      return this.createFallbackResult(components, prompt, startTime);
     }
   }
 
@@ -172,68 +192,13 @@ Respond ONLY with valid JSON (no markdown):
   /**
    * @ac US-057-AC-1: Send component list to Agentforce
    */
-  private async callAgentforce(prompt: string): Promise<AgentforceResponse> {
-    logger.debug('Calling Agentforce API');
-
-    // Mock response for testing (when no API key)
-    if (!this.config.apiKey) {
-      logger.warn('No API key configured, using mock response');
-      return this.getMockResponse(prompt);
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
+  private parseResponse(content: string): PriorityRecommendation[] {
     try {
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert Salesforce deployment analyst. Respond only with valid JSON.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.2, // Low for consistent recommendations
-          max_tokens: 4000,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`Agentforce API error: ${response.status} ${response.statusText}`);
-      }
-
-      return (await response.json()) as AgentforceResponse;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Agentforce request timed out');
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * @ac US-057-AC-2: Receive priority recommendations
-   */
-  private parseResponse(response: AgentforceResponse): PriorityRecommendation[] {
-    try {
-      const content = response.choices?.[0]?.message?.content || '{}';
-
       // Remove markdown code blocks if present
-      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
 
       const parsed = JSON.parse(cleanContent) as { recommendations: PriorityRecommendation[] };
 
@@ -304,6 +269,25 @@ Respond ONLY with valid JSON (no markdown):
     };
   }
 
+  private createFallbackResult(
+    components: MetadataComponent[],
+    prompt: string,
+    startTime: number
+  ): PriorityAnalysisResult {
+    const response = this.getMockResponse(prompt);
+    const content = response.choices?.[0]?.message?.content ?? '{}';
+    const recommendations = this.parseResponse(content);
+
+    return {
+      recommendations,
+      totalComponents: components.length,
+      aiAdjustments: recommendations.filter((recommendation) => recommendation.confidence > 0.8).length,
+      executionTime: Date.now() - startTime,
+      tokensUsed: response.usage?.total_tokens,
+      usedFallback: true,
+    };
+  }
+
   /**
    * @ac US-057-AC-6: Report AI decisions
    */
@@ -327,7 +311,9 @@ Respond ONLY with valid JSON (no markdown):
       for (const rec of sorted.slice(0, 10)) {
         // Top 10
         lines.push(
-          `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(30)} | ${rec.businessCriticality.toUpperCase()}`
+          `  ${rec.priority.toString().padStart(3)} | ${rec.componentName.padEnd(
+            30
+          )} | ${rec.businessCriticality.toUpperCase()}`
         );
         lines.push(`      ${rec.reason}`);
       }
@@ -340,6 +326,10 @@ Respond ONLY with valid JSON (no markdown):
     }
 
     return lines.join('\n');
+  }
+
+  public getProviderConfig(): Readonly<ReturnType<LLMProvider['getConfig']>> {
+    return this.llmProvider.getConfig();
   }
 }
 
@@ -354,4 +344,3 @@ interface AgentforceResponse {
     total_tokens?: number;
   };
 }
-

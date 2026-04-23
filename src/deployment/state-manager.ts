@@ -13,9 +13,19 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { CycleSourceEditRecord } from './cycle-source-editor.js';
 import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('StateManager');
+
+export interface CycleRemediationState {
+  cycleId: string;
+  strategy: 'comment-reference' | 'manual';
+  activePhase: 1 | 2;
+  startedAt: string;
+  completedPhases: Array<1 | 2>;
+  editRecords: CycleSourceEditRecord[];
+}
 
 export interface DeploymentState {
   deploymentId: string;
@@ -29,7 +39,12 @@ export interface DeploymentState {
     error: string;
     timestamp: string;
   };
+  cycleRemediation?: CycleRemediationState;
   metadata?: Record<string, unknown>;
+}
+
+export interface StateManagerOptions {
+  baseDir?: string;
 }
 
 /**
@@ -38,8 +53,14 @@ export interface DeploymentState {
  * @ac US-089-AC-3: Include failed wave details
  */
 export class StateManager {
-  private readonly stateDir = path.join(process.cwd(), '.smart-deployment');
-  private readonly stateFile = path.join(this.stateDir, 'deployment-state.json');
+  private readonly stateDir: string;
+  private readonly stateFile: string;
+
+  public constructor(options: StateManagerOptions = {}) {
+    const baseDir = options.baseDir ?? process.cwd();
+    this.stateDir = path.join(baseDir, '.smart-deployment');
+    this.stateFile = path.join(this.stateDir, 'deployment-state.json');
+  }
 
   public async saveState(state: DeploymentState): Promise<void> {
     logger.info('Saving deployment state', { state });
@@ -56,7 +77,7 @@ export class StateManager {
       const content = await fs.readFile(this.stateFile, 'utf-8');
       const state = JSON.parse(content) as DeploymentState;
       logger.info('Loaded deployment state', { state });
-      return state;
+      return this.normalizeState(state);
     } catch {
       logger.info('No previous deployment state found');
       return null;
@@ -79,5 +100,23 @@ export class StateManager {
     const state = await this.loadState();
     return state?.failedWave !== undefined;
   }
-}
 
+  public getStateFilePath(): string {
+    return this.stateFile;
+  }
+
+  private normalizeState(state: DeploymentState): DeploymentState {
+    if (state.cycleRemediation === undefined) {
+      return state;
+    }
+
+    return {
+      ...state,
+      cycleRemediation: {
+        ...state.cycleRemediation,
+        completedPhases: [...state.cycleRemediation.completedPhases],
+        editRecords: [...state.cycleRemediation.editRecords],
+      },
+    };
+  }
+}

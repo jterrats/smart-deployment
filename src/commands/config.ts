@@ -12,36 +12,30 @@
 import { Flags } from '@oclif/core';
 import { SfCommand } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
+import { loadRepoConfig, saveRepoConfig, type DeploymentConfig } from '../config/repo-config.js';
+import type { LLMProviderName } from '../ai/llm-provider.js';
 
 const logger = getLogger('ConfigCommand');
 
-interface UserPriorities {
-  [metadataId: string]: number;
-}
-
-interface DeploymentConfig {
-  priorities?: UserPriorities;
-  testLevel?: string;
-  timeout?: number;
-  retryStrategy?: string;
-}
-
 export default class Config extends SfCommand<{ success: boolean }> {
   public static readonly summary = 'Manage deployment configuration';
-  public static readonly description = 'Configure deployment settings, including metadata priorities for wave generation';
-  
+  public static readonly description =
+    'Configure deployment settings, including metadata priorities for wave generation';
+
   public static readonly flags = {
-    set: Flags.string({ 
-      summary: 'Set config key=value', 
-      char: 's',
-      description: 'Set a configuration value (e.g., testLevel=RunLocalTests)'
+    'source-path': Flags.directory({
+      summary: 'Path to the Salesforce project containing the deployment config',
+      exists: true,
     }),
-    get: Flags.string({ 
-      summary: 'Get config key', 
+    set: Flags.string({
+      summary: 'Set config key=value',
+      char: 's',
+      description: 'Set a configuration value (e.g., testLevel=RunLocalTests)',
+    }),
+    get: Flags.string({
+      summary: 'Get config key',
       char: 'g',
-      description: 'Get a configuration value'
+      description: 'Get a configuration value',
     }),
     'get-priority': Flags.string({
       summary: 'Get priority for specific metadata',
@@ -50,6 +44,24 @@ export default class Config extends SfCommand<{ success: boolean }> {
     'set-priority': Flags.string({
       summary: 'Set priority for specific metadata',
       description: 'Set deployment priority (format: MetadataType:Name=priority, e.g., ApexClass:Critical=100)',
+    }),
+    'set-llm-provider': Flags.string({
+      summary: 'Set the default LLM provider for AI services',
+      options: ['agentforce', 'openai'],
+    }),
+    'set-llm-model': Flags.string({
+      summary: 'Set the default LLM model for AI services',
+    }),
+    'set-llm-endpoint': Flags.string({
+      summary: 'Set the default LLM API endpoint',
+    }),
+    'set-llm-timeout': Flags.integer({
+      summary: 'Set the default LLM timeout in milliseconds',
+      min: 1,
+    }),
+    'get-llm': Flags.boolean({
+      summary: 'Show the current LLM configuration',
+      default: false,
     }),
     list: Flags.boolean({
       summary: 'List all configuration',
@@ -63,16 +75,17 @@ export default class Config extends SfCommand<{ success: boolean }> {
     '<%= config.bin %> <%= command.id %> --get testLevel',
     '<%= config.bin %> <%= command.id %> --set-priority ApexClass:CriticalClass=100',
     '<%= config.bin %> <%= command.id %> --get-priority ApexClass:CriticalClass',
+    '<%= config.bin %> <%= command.id %> --set-llm-provider openai',
+    '<%= config.bin %> <%= command.id %> --set-llm-model gpt-4o-mini',
     '<%= config.bin %> <%= command.id %> --list',
   ];
 
-  private configPath = path.join(process.cwd(), '.smart-deployment.json');
-
   public async run(): Promise<{ success: boolean }> {
     const { flags } = await this.parse(Config);
-    
+    const baseDir = flags['source-path'] ?? process.cwd();
+
     try {
-      const config = await this.loadConfig();
+      const config = await loadRepoConfig(baseDir);
 
       // Handle --list flag
       if (flags.list) {
@@ -80,10 +93,46 @@ export default class Config extends SfCommand<{ success: boolean }> {
         return { success: true };
       }
 
+      if (flags['get-llm']) {
+        const llmConfig = config.llm ?? {};
+        this.log(`llm: ${JSON.stringify(llmConfig)}`);
+        return { success: true };
+      }
+
       // Handle --get-priority
       if (flags['get-priority']) {
         const priority = config.priorities?.[flags['get-priority']] ?? 0;
         this.log(`Priority for ${flags['get-priority']}: ${priority}`);
+        return { success: true };
+      }
+
+      if (
+        flags['set-llm-provider'] ||
+        flags['set-llm-model'] ||
+        flags['set-llm-endpoint'] ||
+        flags['set-llm-timeout']
+      ) {
+        config.llm ??= {};
+
+        if (flags['set-llm-provider']) {
+          config.llm.provider = flags['set-llm-provider'] as LLMProviderName;
+        }
+
+        if (flags['set-llm-model']) {
+          config.llm.model = flags['set-llm-model'];
+        }
+
+        if (flags['set-llm-endpoint']) {
+          config.llm.endpoint = flags['set-llm-endpoint'];
+        }
+
+        if (flags['set-llm-timeout']) {
+          config.llm.timeout = flags['set-llm-timeout'];
+        }
+
+        await saveRepoConfig(config, baseDir);
+        this.log(`✅ Updated LLM configuration: ${JSON.stringify(config.llm)}`);
+        logger.info('LLM config updated', { llm: config.llm });
         return { success: true };
       }
 
@@ -95,13 +144,13 @@ export default class Config extends SfCommand<{ success: boolean }> {
         }
         const [, metadataId, priorityStr] = match;
         const priority = parseInt(priorityStr, 10);
-        
+
         if (!config.priorities) {
           config.priorities = {};
         }
         config.priorities[metadataId] = priority;
-        
-        await this.saveConfig(config);
+
+        await saveRepoConfig(config, baseDir);
         this.log(`✅ Set priority for ${metadataId} = ${priority}`);
         logger.info('Priority updated', { metadataId, priority });
         return { success: true };
@@ -124,8 +173,8 @@ export default class Config extends SfCommand<{ success: boolean }> {
         }
         const [, key, value] = match;
         (config as Record<string, unknown>)[key] = value;
-        
-        await this.saveConfig(config);
+
+        await saveRepoConfig(config, baseDir);
         this.log(`✅ Set ${key} = ${value}`);
         logger.info('Config updated', { key, value });
         return { success: true };
@@ -134,31 +183,16 @@ export default class Config extends SfCommand<{ success: boolean }> {
       // No flags - show help
       this.log('Use --help to see available options');
       return { success: true };
-      
     } catch (error) {
       logger.error('Config management failed', { error });
       this.error(`Configuration failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  private async loadConfig(): Promise<DeploymentConfig> {
-    try {
-      const content = await fs.readFile(this.configPath, 'utf-8');
-      return JSON.parse(content) as DeploymentConfig;
-    } catch {
-      // Config file doesn't exist yet
-      return {};
-    }
-  }
-
-  private async saveConfig(config: DeploymentConfig): Promise<void> {
-    await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
-  }
-
   private displayConfig(config: DeploymentConfig): void {
     this.log('📋 Current Configuration:');
     this.log('');
-    
+
     if (Object.keys(config).length === 0) {
       this.log('  (no configuration set)');
       return;
@@ -174,11 +208,13 @@ export default class Config extends SfCommand<{ success: boolean }> {
     }
 
     // Display other config
-    const { priorities, ...otherConfig } = config;
+    const { priorities: _priorities, ...otherConfig } = config;
     if (Object.keys(otherConfig).length > 0) {
       this.log('  Other Settings:');
       for (const [key, value] of Object.entries(otherConfig)) {
-        this.log(`    ${key}: ${value}`);
+        const displayValue =
+          typeof value === 'string' || typeof value === 'number' ? String(value) : JSON.stringify(value);
+        this.log(`    ${key}: ${displayValue}`);
       }
     }
   }
