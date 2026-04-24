@@ -99,16 +99,18 @@ jobs:
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
-          MAX_ATTEMPTS=10
-          DELAY_SECONDS=10
+          MAX_ATTEMPTS=30
+          DELAY_SECONDS=20
           for i in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $i of $MAX_ATTEMPTS: verifying ${PKG_NAME}@${PKG_VERSION}"
             if NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm view "${PKG_NAME}@${PKG_VERSION}" version; then
+              echo "Verified ${PKG_NAME}@${PKG_VERSION} is available on npm."
               exit 0
             fi
+            echo "Package not visible yet. Waiting ${DELAY_SECONDS}s before retry..."
             sleep $DELAY_SECONDS
           done
-          echo "Published package could not be verified on npm"
+          echo "Package publish step succeeded, but ${PKG_NAME}@${PKG_VERSION} was not visible in npm within the verification window."
           exit 1
 
       - name: Summary
