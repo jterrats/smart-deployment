@@ -8,6 +8,7 @@ import {
   createNutContext,
   createSalesforceProject,
   execNutCommand,
+  parseJsonStdout,
 } from './helpers/nut-helpers.js';
 
 describe('NUT: validate, status, and resume commands', () => {
@@ -37,9 +38,13 @@ describe('NUT: validate, status, and resume commands', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
-    expect(result.shellOutput.stdout).to.include('"components": 1');
-    expect(result.shellOutput.stdout).to.include('"issueCount": 0');
+    const output = parseJsonStdout<{ success: boolean; components: number; issueCount: number }>(
+      result.shellOutput.stdout
+    );
+
+    expect(output.success).to.equal(true);
+    expect(output.components).to.equal(1);
+    expect(output.issueCount).to.equal(0);
   });
 
   it('validate can run with AI validation enabled and report AI summary fields', async () => {
@@ -62,13 +67,19 @@ describe('NUT: validate, status, and resume commands', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
-    expect(result.shellOutput.stdout).to.include('"components": 1');
-    expect(result.shellOutput.stdout).to.include('"issueCount": 0');
-    expect(result.shellOutput.stdout).to.include('"ai"');
-    expect(result.shellOutput.stdout).to.include('"analyzed"');
-    expect(result.shellOutput.stdout).to.include('"provider"');
-    expect(result.shellOutput.stdout).to.include('"fallback"');
+    const output = parseJsonStdout<{
+      success: boolean;
+      components: number;
+      issueCount: number;
+      ai?: { analyzed?: boolean; provider?: string; fallback?: boolean };
+    }>(result.shellOutput.stdout);
+
+    expect(output.success).to.equal(true);
+    expect(output.components).to.equal(1);
+    expect(output.issueCount).to.equal(0);
+    expect(output.ai?.analyzed).to.be.a('boolean');
+    expect(output.ai?.provider).to.be.a('string');
+    expect(output.ai?.fallback).to.be.a('boolean');
   });
 
   it('validate help exposes AI validation flags clearly', async () => {
@@ -99,7 +110,10 @@ describe('NUT: validate, status, and resume commands', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"success": false');
+    const output = parseJsonStdout<{ success: boolean; issueCount: number }>(result.shellOutput.stdout);
+
+    expect(output.success).to.equal(false);
+    expect(output.issueCount).to.be.greaterThan(0);
   });
 
   it('status reports not-started when no deployment state exists', async () => {
@@ -114,8 +128,10 @@ describe('NUT: validate, status, and resume commands', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"status": "Not Started"');
-    expect(result.shellOutput.stdout).to.include('"canResume": false');
+    const output = parseJsonStdout<{ status: string; canResume: boolean }>(result.shellOutput.stdout);
+
+    expect(output.status).to.equal('Not Started');
+    expect(output.canResume).to.equal(false);
   });
 
   it('status reports resumable failed state for a project', async () => {
@@ -155,12 +171,18 @@ describe('NUT: validate, status, and resume commands', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"status": "Failed"');
-    expect(result.shellOutput.stdout).to.include('"canResume": true');
-    expect(result.shellOutput.stdout).to.include('"currentWave": 2');
-    expect(result.shellOutput.stdout).to.include('"ai"');
-    expect(result.shellOutput.stdout).to.include('"provider": "openai"');
-    expect(result.shellOutput.stdout).to.include('"fallback": true');
+    const output = parseJsonStdout<{
+      status: string;
+      canResume: boolean;
+      currentWave: number;
+      ai?: { provider?: string; fallback?: boolean };
+    }>(result.shellOutput.stdout);
+
+    expect(output.status).to.equal('Failed');
+    expect(output.canResume).to.equal(true);
+    expect(output.currentWave).to.equal(2);
+    expect(output.ai?.provider).to.equal('openai');
+    expect(output.ai?.fallback).to.equal(true);
   });
 
   it('resume updates persisted state from the failed wave', async () => {
@@ -200,8 +222,10 @@ describe('NUT: validate, status, and resume commands', () => {
       metadata?: Record<string, unknown>;
     };
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
-    expect(result.shellOutput.stdout).to.include('"resumedFromWave": 3');
+    const output = parseJsonStdout<{ success: boolean; resumedFromWave: number }>(result.shellOutput.stdout);
+
+    expect(output.success).to.equal(true);
+    expect(output.resumedFromWave).to.equal(3);
     expect(persistedState.failedWave).to.equal(undefined);
     expect(persistedState.metadata).to.deep.include({
       retryStrategy: 'quick',

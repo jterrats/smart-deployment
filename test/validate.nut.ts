@@ -5,6 +5,7 @@ import {
   cleanupNutWorkspace,
   createCorruptedProject,
   createNutWorkspace,
+  parseJsonStdout,
   createStandardProject,
   stateFileExists,
 } from './nut/command-fixtures.js';
@@ -33,9 +34,13 @@ describe('NUT: validate command', () => {
       }
     );
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
-    expect(result.shellOutput.stdout).to.include('"components": 1');
-    expect(result.shellOutput.stdout).to.include('"issueCount": 0');
+    const output = parseJsonStdout<{ success: boolean; components: number; issueCount: number }>(
+      result.shellOutput.stdout
+    );
+
+    expect(output.success).to.equal(true);
+    expect(output.components).to.equal(1);
+    expect(output.issueCount).to.equal(0);
     expect(await stateFileExists(projectRoot)).to.equal(false);
   });
 
@@ -51,8 +56,10 @@ describe('NUT: validate command', () => {
       env: { ...process.env, HOME: workspace.homeDir, TESTKIT_HOMEDIR: workspace.homeDir },
     });
 
-    expect(result.shellOutput.stdout).to.include('"success": false');
-    expect(result.shellOutput.stdout).to.match(/"issueCount":\s*[1-9]/);
+    const output = parseJsonStdout<{ success: boolean; issueCount: number }>(result.shellOutput.stdout);
+
+    expect(output.success).to.equal(false);
+    expect(output.issueCount).to.be.greaterThan(0);
     expect(await stateFileExists(projectRoot)).to.equal(false);
   });
 });

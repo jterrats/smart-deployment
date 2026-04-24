@@ -93,6 +93,51 @@ export async function stateFileExists(projectRoot: string): Promise<boolean> {
   }
 }
 
+export function parseJsonStdout<T>(stdout: string): T {
+  const trimmed = stdout.trim();
+  const lastObjectStart = Math.max(trimmed.lastIndexOf('\n{'), trimmed.lastIndexOf('\r\n{'));
+
+  if (lastObjectStart >= 0) {
+    const jsonBlock = trimmed.slice(trimmed[lastObjectStart] === '{' ? lastObjectStart : lastObjectStart + 1);
+
+    try {
+      const parsed = JSON.parse(jsonBlock) as { result?: T };
+      return parsed.result ?? (parsed as T);
+    } catch {
+      // Fall back to line-based parsing below.
+    }
+  }
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  let fallbackLogObject: T | undefined;
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      const parsed = JSON.parse(lines[index]) as Record<string, unknown> & { result?: T };
+      const looksLikeLogRecord =
+        'timestamp' in parsed && 'level' in parsed && 'component' in parsed && 'message' in parsed;
+
+      if (!looksLikeLogRecord) {
+        return parsed.result ?? (parsed as T);
+      }
+
+      fallbackLogObject = parsed as T;
+    } catch {
+      continue;
+    }
+  }
+
+  if (fallbackLogObject !== undefined) {
+    return fallbackLogObject;
+  }
+
+  throw new Error(`No parseable JSON object found in stdout:\n${stdout}`);
+}
+
 function writeProjectConfig(projectRoot: string): Promise<void> {
   return writeFile(
     path.join(projectRoot, 'sfdx-project.json'),
