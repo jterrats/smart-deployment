@@ -203,8 +203,12 @@ class PerformanceMonitor {
     const totalDuration = operations.reduce((sum, op) => sum + (op.duration ?? 0), 0);
     const averageDuration = totalDuration / operations.length;
 
-    // Identify bottlenecks (operations > 2x average)
-    const bottlenecks = operations.filter((op) => (op.duration ?? 0) > averageDuration * 2);
+    // Ignore timer jitter for sub-5ms work; otherwise short operations with 0/1ms
+    // variance produce false bottlenecks in CI.
+    const bottlenecks = operations.filter((op) => {
+      const duration = op.duration ?? 0;
+      return duration >= 5 && duration > averageDuration * 2;
+    });
 
     // Memory statistics
     const memoryDeltas = operations.map((op) => op.memoryDelta ?? 0);

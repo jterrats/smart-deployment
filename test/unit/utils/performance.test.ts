@@ -263,7 +263,7 @@ describe('Performance Monitoring', () => {
 
       // Create a slow operation (bottleneck)
       performanceMonitor.track('bottleneck-op', () => {
-        const arr = Array.from({ length: 100_000 }, () => 0);
+        const arr = Array.from({ length: 2_000_000 }, () => 0);
         const result: number = arr.reduce((a, b) => a + b, 0);
         return result;
       });
