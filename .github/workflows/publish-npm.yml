@@ -14,13 +14,12 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  NPM_CONFIG_CACHE: ${{ runner.temp }}/.npm
-
 jobs:
   publish-npm:
     name: Publish to npm Registry
     runs-on: ubuntu-latest
+    env:
+      NPM_CONFIG_CACHE: ${{ runner.temp }}/.npm
 
     steps:
       - name: Checkout code
