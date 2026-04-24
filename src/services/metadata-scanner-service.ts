@@ -764,8 +764,11 @@ export class MetadataScannerService {
    * Find files matching a glob pattern
    */
   private async findFiles(rootPath: string, pattern: string): Promise<string[]> {
-    const fullPattern = path.join(rootPath, pattern);
-    const files = await globAsync(fullPattern, {
+    const files = await globAsync(pattern, {
+      cwd: rootPath,
+      absolute: true,
+      posix: false,
+      windowsPathsNoEscape: true,
       ignore: ['**/node_modules/**', '**/.git/**'],
     });
     return files;
@@ -775,8 +778,11 @@ export class MetadataScannerService {
    * Find directories matching a glob pattern
    */
   private async findDirectories(rootPath: string, pattern: string): Promise<string[]> {
-    const fullPattern = path.join(rootPath, pattern);
-    const allMatches = await globAsync(fullPattern, {
+    const allMatches = await globAsync(pattern, {
+      cwd: rootPath,
+      absolute: true,
+      posix: false,
+      windowsPathsNoEscape: true,
       ignore: ['**/node_modules/**', '**/.git/**'],
     });
 

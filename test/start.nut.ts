@@ -8,6 +8,7 @@ import {
   createNutContext,
   createSalesforceProject,
   execNutCommand,
+  parseJsonStdout,
 } from './helpers/nut-helpers.js';
 
 async function createStandardProject(rootDir: string): Promise<string> {
@@ -55,8 +56,10 @@ describe('NUT: start command', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
-    expect(result.shellOutput.stdout).to.include('"waves": 1');
+    const output = parseJsonStdout<{ success: boolean; waves: number }>(result.shellOutput.stdout);
+
+    expect(output.success).to.equal(true);
+    expect(output.waves).to.equal(1);
   });
 
   it('runs successfully in dry-run mode with AI prioritization enabled', async () => {
@@ -69,14 +72,25 @@ describe('NUT: start command', () => {
       homeDir
     );
 
-    expect(result.shellOutput.stdout).to.include('"success": true');
-    expect(result.shellOutput.stdout).to.include('"waves": 1');
-    expect(result.shellOutput.stdout).to.include('"ai"');
-    expect(result.shellOutput.stdout).to.include('"enabled": true');
-    expect(result.shellOutput.stdout).to.include('"provider"');
-    expect(result.shellOutput.stdout).to.include('"fallback"');
-    expect(result.shellOutput.stdout).to.include('"inferredDependencies"');
-    expect(result.shellOutput.stdout).to.include('"inferenceFallback"');
+    const output = parseJsonStdout<{
+      success: boolean;
+      waves: number;
+      ai?: {
+        enabled?: boolean;
+        provider?: string;
+        fallback?: boolean;
+        inferredDependencies?: number;
+        inferenceFallback?: boolean;
+      };
+    }>(result.shellOutput.stdout);
+
+    expect(output.success).to.equal(true);
+    expect(output.waves).to.equal(1);
+    expect(output.ai?.enabled).to.equal(true);
+    expect(output.ai?.provider).to.be.a('string');
+    expect(output.ai?.fallback).to.be.a('boolean');
+    expect(output.ai?.inferredDependencies).to.be.a('number');
+    expect(output.ai?.inferenceFallback).to.be.a('boolean');
   });
 
   it('start help exposes AI prioritization context flags', async () => {
@@ -97,7 +111,7 @@ describe('NUT: start command', () => {
 
     const result = execNutCommand(`start --source-path ${projectRoot}`, homeDir, 'nonZero');
 
-    expect(result.shellOutput.stderr).to.include('Circular dependencies detected');
+    expect(result.shellOutput.stderr).to.include('Circular dependencies detected.');
     expect(result.shellOutput.stderr).to.include('--allow-cycle-remediation');
   });
 
@@ -110,9 +124,8 @@ describe('NUT: start command', () => {
 
     const result = execNutCommand(`start --source-path ${projectRoot} --allow-cycle-remediation`, homeDir, 'nonZero');
 
-    expect(result.shellOutput.stderr).to.include(
-      'The --target-org flag is required for cycle remediation deployments.'
-    );
+    expect(result.shellOutput.stderr).to.include('--target-org');
+    expect(result.shellOutput.stderr).to.include('cycle remediation deployments');
     expect(await readFile(alphaPath, 'utf8')).to.equal(originalAlpha);
 
     let stateFileExists = true;
