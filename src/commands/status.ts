@@ -19,7 +19,7 @@ import { formatDeploymentStatus, summarizeDeploymentState } from '../deployment/
 
 const logger = getLogger('StatusCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
-const messages = Messages.loadMessages('smart-deployment', 'status');
+const messages = Messages.loadMessages('@jterrats/smart-deployment', 'status');
 
 type StatusResult = {
   currentWave: number;

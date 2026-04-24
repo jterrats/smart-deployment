@@ -18,7 +18,7 @@ import type { LLMProviderName } from '../ai/llm-provider.js';
 
 const logger = getLogger('ConfigCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
-const messages = Messages.loadMessages('smart-deployment', 'config');
+const messages = Messages.loadMessages('@jterrats/smart-deployment', 'config');
 
 export default class Config extends SfCommand<{ success: boolean }> {
   public static readonly summary = messages.getMessage('summary');

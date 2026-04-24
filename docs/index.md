@@ -16,8 +16,8 @@ permalink: /
     <img src="https://img.shields.io/github/actions/workflow/status/jterrats/smart-deployment/test.yml?branch=main&label=CI&logo=github" alt="CI status" />
     <img src="https://img.shields.io/github/license/jterrats/smart-deployment" alt="License" />
     <img src="https://img.shields.io/github/v/release/jterrats/smart-deployment?display_name=tag&label=latest%20release" alt="Latest release" />
-    <img src="https://img.shields.io/node/v/smart-deployment?logo=node.js" alt="Node version" />
-    <img src="https://img.shields.io/npm/v/smart-deployment?logo=npm&label=npm" alt="npm version" />
+    <img src="https://img.shields.io/node/v/@jterrats/smart-deployment?logo=node.js" alt="Node version" />
+    <img src="https://img.shields.io/npm/v/@jterrats/smart-deployment?logo=npm&label=npm" alt="npm version" />
   </div>
 
   <div class="hero-actions">

@@ -12,6 +12,9 @@ permissions:
   contents: write
   id-token: write
 
+env:
+  NPM_CONFIG_CACHE: ${{ runner.temp }}/.npm
+
 jobs:
   create-release:
     name: Create Release on Version Change
@@ -113,6 +116,77 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install dependencies
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: yarn install --frozen-lockfile
+
+      - name: Build plugin
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: yarn build
+
+      - name: Run tests
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: yarn test
+
+      - name: Run linter
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: yarn lint
+
+      - name: Verify lib directory exists
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: |
+          if [ ! -d "lib" ]; then
+            echo "lib/ directory not found"
+            exit 1
+          fi
+          test -f lib/commands/start.js
+          test -f lib/commands/analyze.js
+          test -f lib/commands/validate.js
+          test -f lib/commands/status.js
+          test -f lib/commands/resume.js
+          test -f lib/commands/config.js
+
+      - name: Verify package contents
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: |
+          PACK_OUTPUT="$(npm pack --dry-run 2>&1)"
+          echo "$PACK_OUTPUT"
+          echo "$PACK_OUTPUT" | grep -q "lib/commands/start.js" || {
+            echo "Tarball is missing lib/commands/start.js"
+            exit 1
+          }
+          echo "$PACK_OUTPUT" | grep -q "lib/commands/analyze.js" || {
+            echo "Tarball is missing lib/commands/analyze.js"
+            exit 1
+          }
+          echo "$PACK_OUTPUT" | grep -q "lib/commands/validate.js" || {
+            echo "Tarball is missing lib/commands/validate.js"
+            exit 1
+          }
+
+      - name: Publish to npm with provenance
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify publication
+        if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MAX_ATTEMPTS=10
+          DELAY_SECONDS=10
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $i of $MAX_ATTEMPTS: verifying ${PKG_NAME}@${PKG_VERSION}"
+            if npm view "${PKG_NAME}@${PKG_VERSION}" version; then
+              exit 0
+            fi
+            sleep $DELAY_SECONDS
+          done
+          echo "Published package could not be verified on npm"
+          exit 1
+
       - name: Summary
         run: |
           if [ "${{ steps.version_check.outputs.changed }}" = "true" ]; then
@@ -120,10 +194,11 @@ jobs:
               echo "## Release Skipped" >> "$GITHUB_STEP_SUMMARY"
               echo "Tag v${{ steps.current_version.outputs.version }} already exists." >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "## Release Created Successfully" >> "$GITHUB_STEP_SUMMARY"
+              echo "## Release And Publish Completed" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
               echo "**Version:** v${{ steps.current_version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
               echo "**Previous Version:** ${{ steps.previous_version.outputs.previous_version }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "**npm:** https://www.npmjs.com/package/@jterrats/smart-deployment/v/${{ steps.current_version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "## No Version Change" >> "$GITHUB_STEP_SUMMARY"

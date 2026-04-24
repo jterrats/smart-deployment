@@ -18,7 +18,7 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ValidateCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
-const messages = Messages.loadMessages('smart-deployment', 'validate');
+const messages = Messages.loadMessages('@jterrats/smart-deployment', 'validate');
 
 type ValidateResult = {
   success: boolean;

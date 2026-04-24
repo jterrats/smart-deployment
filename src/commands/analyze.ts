@@ -32,7 +32,7 @@ import type { NodeId } from '../types/dependency.js';
 
 const logger = getLogger('AnalyzeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
-const messages = Messages.loadMessages('smart-deployment', 'analyze');
+const messages = Messages.loadMessages('@jterrats/smart-deployment', 'analyze');
 
 type AnalyzeResult = {
   success: boolean;

@@ -43,7 +43,7 @@ import type { MetadataComponent, MetadataType } from '../types/metadata.js';
 import type { Wave } from '../waves/wave-builder.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
-const messages = Messages.loadMessages('smart-deployment', 'start');
+const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
 
 /**

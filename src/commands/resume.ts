@@ -19,7 +19,7 @@ import { createResumedState, summarizeDeploymentState } from '../deployment/depl
 
 const logger = getLogger('ResumeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
-const messages = Messages.loadMessages('smart-deployment', 'resume');
+const messages = Messages.loadMessages('@jterrats/smart-deployment', 'resume');
 
 type ResumeResult = {
   success: boolean;
