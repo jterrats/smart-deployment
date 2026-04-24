@@ -17,8 +17,6 @@ jobs:
     name: Create Release on Version Change
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    env:
-      NPM_CONFIG_CACHE: ${{ runner.temp }}/.npm
 
     steps:
       - name: Checkout code
@@ -148,7 +146,7 @@ jobs:
       - name: Verify package contents
         if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
         run: |
-          PACK_OUTPUT="$(npm pack --dry-run 2>&1)"
+          PACK_OUTPUT="$(NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm pack --dry-run 2>&1)"
           echo "$PACK_OUTPUT"
           echo "$PACK_OUTPUT" | grep -q "lib/commands/start.js" || {
             echo "Tarball is missing lib/commands/start.js"
@@ -165,7 +163,7 @@ jobs:
 
       - name: Publish to npm with provenance
         if: steps.version_check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
-        run: npm publish --provenance --access public
+        run: NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -178,7 +176,7 @@ jobs:
           DELAY_SECONDS=10
           for i in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $i of $MAX_ATTEMPTS: verifying ${PKG_NAME}@${PKG_VERSION}"
-            if npm view "${PKG_NAME}@${PKG_VERSION}" version; then
+            if NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm view "${PKG_NAME}@${PKG_VERSION}" version; then
               exit 0
             fi
             sleep $DELAY_SECONDS
