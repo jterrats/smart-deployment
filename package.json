@@ -1,7 +1,7 @@
 {
   "name": "@jterrats/smart-deployment",
   "description": "Intelligent Salesforce metadata deployment plugin that automatically analyzes dependencies, generates optimal deployment",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "dependencies": {
     "@oclif/core": "^4.10.5",
     "@salesforce/core": "^8.28.3",
@@ -38,10 +38,11 @@
     "node": ">=20.0.0"
   },
   "files": [
-    "/lib",
-    "/messages",
-    "/oclif.manifest.json",
-    "/oclif.lock"
+    "lib",
+    "messages",
+    "npm-shrinkwrap.json",
+    "oclif.lock",
+    "oclif.manifest.json"
   ],
   "keywords": [
     "force",
@@ -52,7 +53,13 @@
     "sfdx",
     "sfdx-plugin"
   ],
+  "homepage": "https://github.com/jterrats/smart-deployment",
   "license": "BSD-3-Clause",
+  "bugs": "https://github.com/jterrats/smart-deployment/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jterrats/smart-deployment"
+  },
   "oclif": {
     "commands": "./lib/commands",
     "bin": "sf",
@@ -74,8 +81,7 @@
     "link-check": "wireit",
     "lint": "wireit",
     "postinstall": "husky install || true",
-    "postpack": "sf-clean --ignore-signing-artifacts",
-    "prepack": "sf-prepack",
+    "prepack": "tsc -p . --pretty false --incremental false && oclif manifest && oclif lock && npm shrinkwrap",
     "release": "semantic-release",
     "test": "wireit",
     "test:nuts": "nyc mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
