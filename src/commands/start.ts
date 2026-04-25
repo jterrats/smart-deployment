@@ -16,8 +16,7 @@
  * @issue #46
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import * as path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
@@ -30,6 +29,7 @@ import {
 } from '../deployment/cycle-source-editor.js';
 import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
 import { TestPlanService } from '../deployment/test-plan-service.js';
+import { WaveManifestService } from '../deployment/wave-manifest-service.js';
 import {
   DeploymentContextService,
   type DeploymentContext,
@@ -47,6 +47,7 @@ const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
 const deploymentContextService = new DeploymentContextService();
 const testPlanService = new TestPlanService();
+const waveManifestService = new WaveManifestService();
 
 /**
  * @ac US-046-AC-1: Analyzes metadata automatically
@@ -253,7 +254,7 @@ export default class Start extends SfCommand<StartResult> {
 
       try {
         // Generate manifest for this wave
-        const manifestPath = await this.generateWaveManifest({
+        const manifestPath = await waveManifestService.generateManifest({
           baseDir: sourcePath ?? process.cwd(),
           waveNumber: wave.number,
           components: wave.components,
@@ -423,7 +424,7 @@ export default class Start extends SfCommand<StartResult> {
 
       tracker.startTracking(deploymentId, 1, 2);
       this.log('♻️ Phase 1/2: deploying temporarily cycle-broken metadata...');
-      const phaseOneManifestPath = await this.generateWaveManifest({
+      const phaseOneManifestPath = await waveManifestService.generateManifest({
         baseDir: sourcePath ?? process.cwd(),
         waveNumber: 1,
         components: phaseOneComponents,
@@ -502,7 +503,7 @@ export default class Start extends SfCommand<StartResult> {
 
       tracker.startTracking(deploymentId, 2, 2);
       this.log('♻️ Phase 2/2: redeploying restored metadata...');
-      const phaseTwoManifestPath = await this.generateWaveManifest({
+      const phaseTwoManifestPath = await waveManifestService.generateManifest({
         baseDir: sourcePath ?? process.cwd(),
         waveNumber: 2,
         components: phaseTwoComponents,
@@ -688,53 +689,5 @@ export default class Start extends SfCommand<StartResult> {
     }
 
     return undefined;
-  }
-
-  private async generateWaveManifest(params: {
-    baseDir: string;
-    waveNumber: number;
-    components: NodeId[];
-    componentMap: ReadonlyMap<NodeId, MetadataComponent>;
-  }): Promise<string> {
-    const manifestDir = path.join(params.baseDir, '.smart-deployment', 'manifests');
-    await mkdir(manifestDir, { recursive: true });
-
-    const grouped = new Map<MetadataType, Set<string>>();
-    for (const nodeId of params.components) {
-      const component = params.componentMap.get(nodeId);
-      if (!component) {
-        continue;
-      }
-
-      if (!grouped.has(component.type)) {
-        grouped.set(component.type, new Set());
-      }
-      grouped.get(component.type)!.add(component.name);
-    }
-
-    const typeBlocks = [...grouped.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([type, members]) => {
-        const memberLines = [...members]
-          .sort((left, right) => left.localeCompare(right))
-          .map((member) => `        <members>${member}</members>`)
-          .join('\n');
-
-        return ['    <types>', memberLines, `        <name>${type}</name>`, '    </types>'].join('\n');
-      })
-      .join('\n');
-
-    const content = [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<Package xmlns="http://soap.sforce.com/2006/04/metadata">',
-      typeBlocks,
-      '    <version>61.0</version>',
-      '</Package>',
-      '',
-    ].join('\n');
-
-    const manifestPath = path.join(manifestDir, `wave-${String(params.waveNumber).padStart(3, '0')}.xml`);
-    await writeFile(manifestPath, content, 'utf8');
-    return manifestPath;
   }
 }
