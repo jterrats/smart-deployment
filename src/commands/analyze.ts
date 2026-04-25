@@ -298,6 +298,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
     const clonedComponents = components.map((component) => ({
       ...component,
       dependencies: new Set(component.dependencies),
+      dependencyDetails: [...(component.dependencyDetails ?? [])],
       dependents: new Set(component.dependents),
     }));
     const nodeIdsByName = new Map<string, NodeId>();
@@ -320,7 +321,17 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         continue;
       }
 
-      componentsByNodeId.get(fromNodeId)?.dependencies.add(toNodeId);
+      const sourceComponent = componentsByNodeId.get(fromNodeId);
+      sourceComponent?.dependencies.add(toNodeId);
+      if (sourceComponent && !sourceComponent.dependencyDetails?.some((dependency) => dependency.nodeId === toNodeId)) {
+        sourceComponent.dependencyDetails ??= [];
+        sourceComponent.dependencyDetails.push({
+          nodeId: toNodeId,
+          kind: 'inferred',
+          source: 'ai',
+          reason: 'AI-inferred dependency',
+        });
+      }
       componentsByNodeId.get(toNodeId)?.dependents.add(fromNodeId);
     }
 

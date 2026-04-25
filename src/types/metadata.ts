@@ -101,6 +101,21 @@ export type MetadataType =
   | 'DataPackageKitDefinition'
   | 'DataPackageKitObject';
 
+export type MetadataDependencyKind = 'hard' | 'soft' | 'inferred';
+
+export type MetadataDependencyReference = {
+  /** Target node ID in the graph, e.g. Type:Name */
+  nodeId: string;
+  /** Relationship strength */
+  kind: MetadataDependencyKind;
+  /** Provenance of the dependency */
+  source?: 'parser' | 'ai' | 'manual' | 'merged';
+  /** Optional explanation */
+  reason?: string;
+  /** Optional confidence for inferred dependencies */
+  confidence?: number;
+};
+
 /**
  * Base interface for all metadata components
  */
@@ -113,6 +128,8 @@ export type MetadataComponent = {
   filePath: string;
   /** Set of dependencies (node IDs: "Type:Name") */
   dependencies: Set<string>;
+  /** Structured dependency metadata preserving strength/source */
+  dependencyDetails?: MetadataDependencyReference[];
   /** Set of optional/soft dependencies (subset of dependencies) */
   optionalDependencies?: Set<string>;
   /** Set of dependents (node IDs) */

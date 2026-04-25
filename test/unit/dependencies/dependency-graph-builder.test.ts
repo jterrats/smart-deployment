@@ -83,11 +83,7 @@ describe('DependencyGraphBuilder', () => {
     it('US-028-AC-5: should add multiple components at once', () => {
       const builder = new DependencyGraphBuilder();
 
-      const components = [
-        createComponent('Service1'),
-        createComponent('Service2'),
-        createComponent('Service3'),
-      ];
+      const components = [createComponent('Service1'), createComponent('Service2'), createComponent('Service3')];
 
       builder.addComponents(components);
       expect(builder.size).to.equal(3);
@@ -106,7 +102,7 @@ describe('DependencyGraphBuilder', () => {
 
       const result = builder.build();
       const deps = result.graph.get('ApexClass:AccountService');
-      
+
       expect(deps).to.exist;
       expect(deps!.has('ApexClass:Logger')).to.be.true;
     });
@@ -149,6 +145,29 @@ describe('DependencyGraphBuilder', () => {
       const result = builder.build();
       expect(result.graph.get('ApexClass:A')?.size).to.equal(3);
     });
+
+    it('should derive soft edges from dependencyDetails', () => {
+      const builder = new DependencyGraphBuilder();
+      const component = createComponent('ServiceA', 'ApexClass', ['ApexClass:Logger', 'ApexClass:OptionalHelper']);
+      component.dependencyDetails = [
+        {
+          nodeId: 'ApexClass:Logger',
+          kind: 'hard',
+          source: 'parser',
+        },
+        {
+          nodeId: 'ApexClass:OptionalHelper',
+          kind: 'soft',
+          source: 'parser',
+        },
+      ];
+
+      builder.addComponent(component);
+
+      const result = builder.build();
+      expect(result.graph.get('ApexClass:ServiceA')?.has('ApexClass:Logger')).to.be.true;
+      expect(result.graph.get('ApexClass:ServiceA')?.has('ApexClass:OptionalHelper')).to.be.true;
+    });
   });
 
   describe('removeComponent', () => {
@@ -181,10 +200,7 @@ describe('DependencyGraphBuilder', () => {
     it('should get all dependencies of a component', () => {
       const builder = new DependencyGraphBuilder();
 
-      const compA = createComponent('ServiceA', 'ApexClass', [
-        'ApexClass:Logger',
-        'ApexClass:Utils',
-      ]);
+      const compA = createComponent('ServiceA', 'ApexClass', ['ApexClass:Logger', 'ApexClass:Utils']);
       builder.addComponent(compA);
 
       const deps = builder.getDependencies('ApexClass:ServiceA');
@@ -367,4 +383,3 @@ describe('DependencyGraphBuilder', () => {
     });
   });
 });
-

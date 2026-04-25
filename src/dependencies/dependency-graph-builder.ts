@@ -13,7 +13,7 @@
  */
 
 import { getLogger } from '../utils/logger.js';
-import type { MetadataComponent, MetadataType } from '../types/metadata.js';
+import type { MetadataComponent, MetadataDependencyKind, MetadataType } from '../types/metadata.js';
 import type {
   NodeId,
   DependencyGraph,
@@ -28,7 +28,7 @@ const logger = getLogger('DependencyGraphBuilder');
 /**
  * Dependency types for tracking relationship strength
  */
-export type DependencyType = 'hard' | 'soft' | 'inferred';
+export type DependencyType = MetadataDependencyKind;
 
 /**
  * Extended edge information
@@ -140,14 +140,23 @@ export class DependencyGraphBuilder {
       this.reverseGraph.set(nodeId, new Set());
     }
 
-    // Add edges from dependencies
-    for (const depId of component.dependencies) {
-      this.addEdge(nodeId, depId, 'hard', 'Declared dependency');
+    const dependencyDetails =
+      component.dependencyDetails && component.dependencyDetails.length > 0
+        ? component.dependencyDetails
+        : [...component.dependencies].map((depId) => ({
+            nodeId: depId,
+            kind: component.optionalDependencies?.has(depId) ? ('soft' as const) : ('hard' as const),
+            source: 'parser' as const,
+            reason: component.optionalDependencies?.has(depId) ? 'Declared optional dependency' : 'Declared dependency',
+          }));
+
+    for (const dependency of dependencyDetails) {
+      this.addEdge(nodeId, dependency.nodeId, dependency.kind, dependency.reason);
     }
 
     logger.debug('Added component to graph', {
       nodeId,
-      dependencies: component.dependencies.size,
+      dependencies: dependencyDetails.length,
     });
   }
 

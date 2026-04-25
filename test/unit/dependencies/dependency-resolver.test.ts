@@ -159,6 +159,31 @@ describe('DependencyResolver', () => {
       expect(result.optional).to.deep.equal([]);
       expect(result.deploymentOrder).to.include('ApexClass:B');
     });
+
+    it('should honor dependencyDetails soft edges even without optionalDependencies set', () => {
+      const { graph, components } = createTestData([['ApexClass:A', 'ApexClass:B']]);
+      const component = components.get('ApexClass:A');
+
+      if (!component) {
+        throw new Error('Missing test component ApexClass:A');
+      }
+
+      component.optionalDependencies = new Set();
+      component.dependencyDetails = [
+        {
+          nodeId: 'ApexClass:B',
+          kind: 'soft',
+          source: 'parser',
+        },
+      ];
+
+      const resolver = new DependencyResolver(graph, components, {
+        includeOptional: false,
+      });
+      const result = resolver.resolve();
+
+      expect(result.optional).to.deep.equal(['ApexClass:B']);
+    });
   });
 
   describe('Managed Packages', () => {

@@ -379,6 +379,12 @@ export class DependencyResolver {
    */
   private isOptionalDependency(nodeId: NodeId, dependencyId: NodeId): boolean {
     const component = this.components.get(nodeId);
+    const explicitDetail = component?.dependencyDetails?.find((dependency) => dependency.nodeId === dependencyId);
+
+    if (explicitDetail) {
+      return explicitDetail.kind === 'soft';
+    }
+
     return component?.optionalDependencies?.has(dependencyId) ?? false;
   }
 
