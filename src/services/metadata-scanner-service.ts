@@ -36,6 +36,24 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('MetadataScannerService');
 
+type ScannerContext = {
+  fileExists: (filePath: string) => Promise<boolean>;
+  shouldIgnore: (filePath: string) => boolean;
+  readFile: typeof fs.readFile;
+  errors: string[];
+};
+
+type FileScanner = {
+  pattern: string;
+  shouldInclude?: (filePath: string) => boolean;
+  parse: (filePath: string, context: ScannerContext) => Promise<MetadataComponent | undefined>;
+};
+
+type DirectoryScanner = {
+  pattern: string;
+  parse: (directoryPath: string, context: ScannerContext) => Promise<MetadataComponent | undefined>;
+};
+
 function toNodeIds(dependencies: Iterable<string>, defaultType: string): Set<string> {
   return new Set(
     [...dependencies].map((dependency) => (dependency.includes(':') ? dependency : `${defaultType}:${dependency}`))
@@ -45,6 +63,170 @@ function toNodeIds(dependencies: Iterable<string>, defaultType: string): Set<str
 function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
 }
+
+async function parseApexClassComponent(
+  filePath: string,
+  context: ScannerContext
+): Promise<MetadataComponent | undefined> {
+  try {
+    const content = await context.readFile(filePath, 'utf-8');
+    const parsed = parseApexClass(filePath, content);
+
+    return {
+      name: parsed.className,
+      type: 'ApexClass' as const,
+      filePath,
+      dependencies: toNodeIds(
+        parsed.dependencies.map((dependency) => dependency.className),
+        'ApexClass'
+      ),
+      dependents: new Set<string>(),
+      priorityBoost: 0,
+    };
+  } catch (error) {
+    const errorMsg = `Failed to parse Apex class ${filePath}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    logger.warn(errorMsg);
+    context.errors.push(errorMsg);
+    return undefined;
+  }
+}
+
+async function parseApexTriggerComponent(
+  filePath: string,
+  context: ScannerContext
+): Promise<MetadataComponent | undefined> {
+  try {
+    const content = await context.readFile(filePath, 'utf-8');
+    const parsed = parseApexTrigger(filePath, content);
+
+    return {
+      name: parsed.triggerName,
+      type: 'ApexTrigger' as const,
+      filePath,
+      dependencies: toNodeIds(
+        parsed.dependencies.map((dependency) => dependency.className),
+        'ApexClass'
+      ),
+      dependents: new Set<string>(),
+      priorityBoost: 0,
+    };
+  } catch (error) {
+    const errorMsg = `Failed to parse Apex trigger ${filePath}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    logger.warn(errorMsg);
+    context.errors.push(errorMsg);
+    return undefined;
+  }
+}
+
+async function parseLwcComponent(
+  directoryPath: string,
+  context: ScannerContext
+): Promise<MetadataComponent | undefined> {
+  const componentName = path.basename(directoryPath);
+  const jsFile = path.join(directoryPath, `${componentName}.js`);
+  const tsFile = path.join(directoryPath, `${componentName}.ts`);
+  const metaFile = path.join(directoryPath, `${componentName}.js-meta.xml`);
+
+  const jsExists = await context.fileExists(jsFile);
+  const tsExists = jsExists ? false : await context.fileExists(tsFile);
+  const codeFile = jsExists ? jsFile : tsExists ? tsFile : null;
+  if (codeFile === null) {
+    return undefined;
+  }
+
+  try {
+    const jsContent = await context.readFile(codeFile, 'utf-8');
+    const metaContent = (await context.fileExists(metaFile)) ? await context.readFile(metaFile, 'utf-8') : undefined;
+    const parsed = parseLWC(componentName, jsContent, metaContent);
+
+    return {
+      name: componentName,
+      type: 'LightningComponentBundle' as const,
+      filePath: codeFile,
+      dependencies: new Set<string>([
+        ...parsed.apexImports,
+        ...parsed.lwcImports.map((dependency) => `c:${dependency}`),
+      ]),
+      dependents: new Set<string>(),
+      priorityBoost: 0,
+    };
+  } catch (error) {
+    const errorMsg = `Failed to parse LWC ${componentName}: ${error instanceof Error ? error.message : String(error)}`;
+    logger.warn(errorMsg);
+    context.errors.push(errorMsg);
+    return undefined;
+  }
+}
+
+async function parseAuraComponent(
+  directoryPath: string,
+  context: ScannerContext
+): Promise<MetadataComponent | undefined> {
+  const componentName = path.basename(directoryPath);
+  const cmpFile = path.join(directoryPath, `${componentName}.cmp`);
+  if (!(await context.fileExists(cmpFile))) {
+    return undefined;
+  }
+
+  try {
+    const cmpContent = await context.readFile(cmpFile, 'utf-8');
+    const parsed = parseAura(componentName, cmpContent);
+
+    const dependencies = new Set<string>();
+    if (parsed.apexController) {
+      dependencies.add(parsed.apexController);
+    }
+    if (parsed.extendsComponent) {
+      dependencies.add(parsed.extendsComponent);
+    }
+    parsed.implementsInterfaces.forEach((implementedInterface) => dependencies.add(implementedInterface));
+    parsed.childComponents.forEach((childComponent) => dependencies.add(`c:${childComponent}`));
+
+    return {
+      name: componentName,
+      type: 'AuraDefinitionBundle' as const,
+      filePath: cmpFile,
+      dependencies,
+      dependents: new Set<string>(),
+      priorityBoost: 0,
+    };
+  } catch (error) {
+    const errorMsg = `Failed to parse Aura component ${componentName}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    logger.warn(errorMsg);
+    context.errors.push(errorMsg);
+    return undefined;
+  }
+}
+
+const FILE_SCANNERS: FileScanner[] = [
+  {
+    pattern: '**/classes/**/*.cls',
+    shouldInclude: (filePath) => !filePath.endsWith('.cls-meta.xml'),
+    parse: parseApexClassComponent,
+  },
+  {
+    pattern: '**/triggers/**/*.trigger',
+    shouldInclude: (filePath) => !filePath.endsWith('.trigger-meta.xml'),
+    parse: parseApexTriggerComponent,
+  },
+];
+
+const DIRECTORY_SCANNERS: DirectoryScanner[] = [
+  {
+    pattern: '**/lwc/*',
+    parse: parseLwcComponent,
+  },
+  {
+    pattern: '**/aura/*',
+    parse: parseAuraComponent,
+  },
+];
 
 export type ScanOptions = {
   sourcePath?: string;
@@ -180,156 +362,8 @@ export class MetadataScannerService {
     void warnings;
     const components: MetadataComponent[] = [];
 
-    // Scan Apex Classes
-    const apexFiles = await this.findFiles(packagePath, '**/classes/**/*.cls');
-    const apexComponents = await Promise.all(
-      apexFiles
-        .filter((filePath) => !this.shouldIgnore(filePath) && !filePath.endsWith('.cls-meta.xml'))
-        .map(async (filePath) => {
-          try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const parsed = parseApexClass(filePath, content);
-
-            return {
-              name: parsed.className,
-              type: 'ApexClass' as const,
-              filePath,
-              dependencies: toNodeIds(
-                parsed.dependencies.map((d) => d.className),
-                'ApexClass'
-              ),
-              dependents: new Set<string>(),
-              priorityBoost: 0,
-            };
-          } catch (error) {
-            const errorMsg = `Failed to parse Apex class ${filePath}: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-            logger.warn(errorMsg);
-            errors.push(errorMsg);
-            return undefined;
-          }
-        })
-    );
-    components.push(...apexComponents.filter(isDefined));
-
-    // Scan Apex Triggers
-    const triggerFiles = await this.findFiles(packagePath, '**/triggers/**/*.trigger');
-    const triggerComponents = await Promise.all(
-      triggerFiles
-        .filter((filePath) => !this.shouldIgnore(filePath) && !filePath.endsWith('.trigger-meta.xml'))
-        .map(async (filePath) => {
-          try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const parsed = parseApexTrigger(filePath, content);
-
-            return {
-              name: parsed.triggerName,
-              type: 'ApexTrigger' as const,
-              filePath,
-              dependencies: toNodeIds(
-                parsed.dependencies.map((d) => d.className),
-                'ApexClass'
-              ),
-              dependents: new Set<string>(),
-              priorityBoost: 0,
-            };
-          } catch (error) {
-            const errorMsg = `Failed to parse Apex trigger ${filePath}: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-            logger.warn(errorMsg);
-            errors.push(errorMsg);
-            return undefined;
-          }
-        })
-    );
-    components.push(...triggerComponents.filter(isDefined));
-
-    // Scan LWC Components (container-based)
-    const lwcDirs = await this.findDirectories(packagePath, '**/lwc/*');
-    const lwcComponents = await Promise.all(
-      lwcDirs
-        .filter((lwcDir) => !this.shouldIgnore(lwcDir))
-        .map(async (lwcDir) => {
-          const componentName = path.basename(lwcDir);
-          const jsFile = path.join(lwcDir, `${componentName}.js`);
-          const tsFile = path.join(lwcDir, `${componentName}.ts`);
-          const metaFile = path.join(lwcDir, `${componentName}.js-meta.xml`);
-
-          const jsExists = await this.fileExists(jsFile);
-          const tsExists = jsExists ? false : await this.fileExists(tsFile);
-          const codeFile = jsExists ? jsFile : tsExists ? tsFile : null;
-          if (!codeFile) {
-            return undefined;
-          }
-
-          try {
-            const jsContent = await fs.readFile(codeFile, 'utf-8');
-            const metaContent = (await this.fileExists(metaFile)) ? await fs.readFile(metaFile, 'utf-8') : undefined;
-            const parsed = parseLWC(componentName, jsContent, metaContent);
-
-            return {
-              name: componentName,
-              type: 'LightningComponentBundle' as const,
-              filePath: codeFile,
-              dependencies: new Set<string>([...parsed.apexImports, ...parsed.lwcImports.map((imp) => `c:${imp}`)]),
-              dependents: new Set<string>(),
-              priorityBoost: 0,
-            };
-          } catch (error) {
-            const errorMsg = `Failed to parse LWC ${componentName}: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-            logger.warn(errorMsg);
-            errors.push(errorMsg);
-            return undefined;
-          }
-        })
-    );
-    components.push(...lwcComponents.filter(isDefined));
-
-    // Scan Aura Components (container-based)
-    const auraDirs = await this.findDirectories(packagePath, '**/aura/*');
-    const auraComponents = await Promise.all(
-      auraDirs
-        .filter((auraDir) => !this.shouldIgnore(auraDir))
-        .map(async (auraDir) => {
-          const componentName = path.basename(auraDir);
-          const cmpFile = path.join(auraDir, `${componentName}.cmp`);
-          if (!(await this.fileExists(cmpFile))) {
-            return undefined;
-          }
-
-          try {
-            const cmpContent = await fs.readFile(cmpFile, 'utf-8');
-            const parsed = parseAura(componentName, cmpContent);
-
-            const deps = new Set<string>();
-            if (parsed.apexController) deps.add(parsed.apexController);
-            if (parsed.extendsComponent) deps.add(parsed.extendsComponent);
-            parsed.implementsInterfaces.forEach((i) => deps.add(i));
-            parsed.childComponents.forEach((c) => deps.add(`c:${c}`));
-
-            return {
-              name: componentName,
-              type: 'AuraDefinitionBundle' as const,
-              filePath: cmpFile,
-              dependencies: deps,
-              dependents: new Set<string>(),
-              priorityBoost: 0,
-            };
-          } catch (error) {
-            const errorMsg = `Failed to parse Aura component ${componentName}: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-            logger.warn(errorMsg);
-            errors.push(errorMsg);
-            return undefined;
-          }
-        })
-    );
-    components.push(...auraComponents.filter(isDefined));
+    components.push(...(await this.scanRegisteredFileMetadata(packagePath, errors)));
+    components.push(...(await this.scanRegisteredDirectoryMetadata(packagePath, errors)));
 
     // Scan Flows
     const flowFiles = await this.findFiles(packagePath, '**/flows/**/*.flow-meta.xml');
@@ -758,6 +792,48 @@ export class MetadataScannerService {
     components.push(...visualforceComponents.filter(isDefined));
 
     return components;
+  }
+
+  private async scanRegisteredFileMetadata(packagePath: string, errors: string[]): Promise<MetadataComponent[]> {
+    const context = this.createScannerContext(errors);
+    const components = await Promise.all(
+      FILE_SCANNERS.flatMap(async (scanner) => {
+        const files = await this.findFiles(packagePath, scanner.pattern);
+        return Promise.all(
+          files
+            .filter((filePath) => !this.shouldIgnore(filePath))
+            .filter((filePath) => scanner.shouldInclude?.(filePath) ?? true)
+            .map((filePath) => scanner.parse(filePath, context))
+        );
+      })
+    );
+
+    return components.flat().filter(isDefined);
+  }
+
+  private async scanRegisteredDirectoryMetadata(packagePath: string, errors: string[]): Promise<MetadataComponent[]> {
+    const context = this.createScannerContext(errors);
+    const components = await Promise.all(
+      DIRECTORY_SCANNERS.flatMap(async (scanner) => {
+        const directories = await this.findDirectories(packagePath, scanner.pattern);
+        return Promise.all(
+          directories
+            .filter((directoryPath) => !this.shouldIgnore(directoryPath))
+            .map((directoryPath) => scanner.parse(directoryPath, context))
+        );
+      })
+    );
+
+    return components.flat().filter(isDefined);
+  }
+
+  private createScannerContext(errors: string[]): ScannerContext {
+    return {
+      fileExists: (filePath) => this.fileExists(filePath),
+      shouldIgnore: (filePath) => this.shouldIgnore(filePath),
+      readFile: fs.readFile,
+      errors,
+    };
   }
 
   /**
