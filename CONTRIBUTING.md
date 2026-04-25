@@ -2,6 +2,17 @@
 
 Contributions should align with the current product surface, not archived planning docs.
 
+## Architecture Rules
+
+Read [AGENTS.md](/Users/polux/dev/smart-deployment/AGENTS.md:1) before making non-trivial code changes.
+
+That file is the local architecture contract for this repo and defines:
+
+- Clean Architecture expectations
+- SOLID guardrails
+- separation of concerns by layer
+- complexity/refactor triggers for hotspot files
+
 ## Before Opening A PR
 
 - run `yarn test`
