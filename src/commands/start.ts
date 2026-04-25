@@ -30,15 +30,14 @@ import {
 } from '../deployment/cycle-source-editor.js';
 import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
 import { TestPlanService } from '../deployment/test-plan-service.js';
-import { MetadataScannerService } from '../services/metadata-scanner-service.js';
-import { WaveBuilder } from '../waves/wave-builder.js';
-import { AIEnhancedPriorityWaveGenerator } from '../waves/priority-wave-generator-ai.js';
-import { getWavesInExecutionOrder } from '../waves/wave-executor.js';
+import {
+  DeploymentContextService,
+  type DeploymentContext,
+  type DeploymentContextMessages,
+} from '../deployment/deployment-context-service.js';
 import { StateManager } from '../deployment/state-manager.js';
 import { DeploymentTracker } from '../deployment/deployment-tracker.js';
-import { AgentforcePriorityService } from '../ai/agentforce-priority-service.js';
-import { DependencyInferenceService } from '../ai/dependency-inference-service.js';
-import { DependencyGraphBuilder } from '../dependencies/dependency-graph-builder.js';
+import type { ScanResult } from '../services/metadata-scanner-service.js';
 import type { NodeId } from '../types/dependency.js';
 import type { MetadataComponent, MetadataType } from '../types/metadata.js';
 import type { Wave } from '../waves/wave-builder.js';
@@ -46,6 +45,7 @@ import type { Wave } from '../waves/wave-builder.js';
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
+const deploymentContextService = new DeploymentContextService();
 const testPlanService = new TestPlanService();
 
 /**
@@ -134,14 +134,19 @@ export default class Start extends SfCommand<StartResult> {
     try {
       logger.info('Starting smart deployment', { flags });
 
-      // AC-1: Analyze metadata
       this.log('📊 Analyzing metadata...');
-      const metadataCount = await this.analyzeMetadata(sourcePath);
+      const deploymentContext = await deploymentContextService.buildContext({
+        sourcePath,
+        useAI: Boolean(flags['use-ai']),
+        orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
+        industry: typeof flags.industry === 'string' ? flags.industry : undefined,
+      });
+      this.reportScanDiagnostics(deploymentContext.scanResult);
+      this.reportDeploymentContextMessages(deploymentContext.messages);
+      const metadataCount = deploymentContext.scanResult.components.length;
       this.log(`✅ Found ${metadataCount} metadata components`);
 
-      // AC-2: Generate waves
       this.log('🌊 Generating deployment waves...');
-      const deploymentContext = await this.buildDeploymentContext(flags, sourcePath);
       const waves = deploymentContext.orderedWaves.length;
       this.log(`✅ Generated ${waves} waves`);
 
@@ -153,7 +158,7 @@ export default class Start extends SfCommand<StartResult> {
       // AC-3: Execute deployment
       if (!flags['dry-run']) {
         this.log('🚀 Executing deployment...');
-        await this.executeDeployment(flags, sourcePath);
+        await this.executeDeployment(flags, deploymentContext, sourcePath);
       } else {
         this.log('🔍 Dry-run mode: skipping actual deployment');
       }
@@ -170,23 +175,11 @@ export default class Start extends SfCommand<StartResult> {
     }
   }
 
-  private async analyzeMetadata(sourcePath?: string): Promise<number> {
-    const scanner = new MetadataScannerService();
-    const result = await scanner.scan({ sourcePath });
-
-    if (result.errors.length > 0) {
-      logger.error('Metadata scanning completed with errors', { errors: result.errors });
-      result.errors.forEach((err) => this.warn(err));
-    }
-    if (result.warnings.length > 0) {
-      logger.warn('Metadata scanning completed with warnings', { warnings: result.warnings });
-      result.warnings.forEach((warn) => this.warn(warn));
-    }
-
-    return result.components.length;
-  }
-
-  private async executeDeployment(flags: Record<string, unknown>, sourcePath?: string): Promise<void> {
+  private async executeDeployment(
+    flags: Record<string, unknown>,
+    deploymentContext: DeploymentContext,
+    sourcePath?: string
+  ): Promise<void> {
     const dryRun = flags['dry-run'] as boolean;
     const validateOnly = flags['validate-only'] as boolean;
     const allowCycleRemediation = flags['allow-cycle-remediation'] as boolean;
@@ -198,7 +191,6 @@ export default class Start extends SfCommand<StartResult> {
       return;
     }
 
-    const deploymentContext = await this.buildDeploymentContext(flags, sourcePath);
     const { scanResult, orderedWaves } = deploymentContext;
     const testExecutor = testPlanService.createExecutor(scanResult.components);
 
@@ -354,121 +346,6 @@ export default class Start extends SfCommand<StartResult> {
     // Clear state on success
     await stateManager.clearState();
     this.log('\n✅ All waves deployed successfully!');
-  }
-
-  private async buildDeploymentContext(
-    flags: Record<string, unknown>,
-    sourcePath?: string
-  ): Promise<{
-    scanResult: Awaited<ReturnType<MetadataScannerService['scan']>>;
-    orderedWaves: Wave[];
-    aiContext?: {
-      enabled: boolean;
-      provider?: string;
-      model?: string;
-      aiAdjustments?: number;
-      unknownTypes?: string[];
-      fallback?: boolean;
-      inferredDependencies?: number;
-      inferenceFallback?: boolean;
-    };
-  }> {
-    const scanner = new MetadataScannerService();
-    const scanResult = await scanner.scan({ sourcePath });
-
-    if (scanResult.errors.length > 0) {
-      logger.error('Metadata scanning completed with errors', { errors: scanResult.errors });
-      scanResult.errors.forEach((err) => this.warn(err));
-    }
-    if (scanResult.warnings.length > 0) {
-      logger.warn('Metadata scanning completed with warnings', { warnings: scanResult.warnings });
-      scanResult.warnings.forEach((warn) => this.warn(warn));
-    }
-
-    let dependencyResult = scanResult.dependencyResult;
-    let inferredDependencies = 0;
-    let inferenceFallback = false;
-
-    if (flags['use-ai']) {
-      const inferenceService = new DependencyInferenceService({
-        baseDir: sourcePath ?? process.cwd(),
-      });
-      const inferenceResult = await inferenceService.inferDependencies(
-        scanResult.components,
-        scanResult.dependencyResult.graph
-      );
-
-      inferredDependencies = inferenceResult.highConfidenceCount;
-      inferenceFallback = inferenceResult.fallbackToStatic;
-
-      if (inferenceResult.dependencies.length > 0) {
-        const enrichedComponents = this.applyInferredDependencies(scanResult.components, inferenceResult.dependencies);
-        const graphBuilder = new DependencyGraphBuilder();
-        graphBuilder.addComponents(enrichedComponents);
-        scanResult.components = enrichedComponents;
-        dependencyResult = graphBuilder.build();
-        scanResult.dependencyResult = dependencyResult;
-      }
-    }
-
-    const waveBuilder = new WaveBuilder({
-      dependencyEdges: dependencyResult.edges,
-    });
-    const waveResult = waveBuilder.generateWaves(dependencyResult.graph);
-    let orderedWaves = getWavesInExecutionOrder(waveResult);
-    let aiContext:
-      | {
-          enabled: boolean;
-          provider?: string;
-          model?: string;
-          aiAdjustments?: number;
-          unknownTypes?: string[];
-          fallback?: boolean;
-          inferredDependencies?: number;
-          inferenceFallback?: boolean;
-        }
-      | undefined;
-
-    if (flags['use-ai']) {
-      this.log('  🤖 Using AI priority weighting for wave ordering...');
-      const priorityService = new AgentforcePriorityService({
-        baseDir: sourcePath ?? process.cwd(),
-      });
-      const aiWaveGenerator = new AIEnhancedPriorityWaveGenerator({
-        agentforceService: priorityService,
-        orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
-        industry: typeof flags.industry === 'string' ? flags.industry : undefined,
-      });
-      orderedWaves = await aiWaveGenerator.applyPriorityWavesAsync(
-        orderedWaves,
-        scanResult.dependencyResult.components
-      );
-
-      const unknownTypesWarning = aiWaveGenerator.getUnknownTypesWarning();
-      if (unknownTypesWarning) {
-        this.warn(unknownTypesWarning);
-      }
-
-      const aiReport = aiWaveGenerator.getAIReport();
-      if (aiReport) {
-        this.log(aiReport);
-      }
-
-      const aiStats = aiWaveGenerator.getAIStats();
-      const providerConfig = priorityService.getProviderConfig();
-      aiContext = {
-        enabled: true,
-        provider: providerConfig.provider,
-        model: providerConfig.model,
-        aiAdjustments: aiStats?.aiAdjustments ?? 0,
-        unknownTypes: aiStats?.unknownTypes ?? [],
-        fallback: aiStats?.usedFallback ?? false,
-        inferredDependencies,
-        inferenceFallback,
-      };
-    }
-
-    return { scanResult, orderedWaves, aiContext };
   }
 
   private generateReport(waves: number): void {
@@ -738,54 +615,20 @@ export default class Start extends SfCommand<StartResult> {
     };
   }
 
-  private applyInferredDependencies(
-    components: MetadataComponent[],
-    inferredDependencies: Array<{
-      from: string;
-      to: string;
-    }>
-  ): MetadataComponent[] {
-    const clonedComponents = components.map((component) => ({
-      ...component,
-      dependencies: new Set(component.dependencies),
-      dependencyDetails: [...(component.dependencyDetails ?? [])],
-      dependents: new Set(component.dependents),
-    }));
-    const nodeIdsByName = new Map<string, NodeId>();
-
-    for (const component of clonedComponents) {
-      nodeIdsByName.set(component.name, `${component.type}:${component.name}`);
+  private reportScanDiagnostics(scanResult: ScanResult): void {
+    if (scanResult.errors.length > 0) {
+      logger.error('Metadata scanning completed with errors', { errors: scanResult.errors });
+      scanResult.errors.forEach((err) => this.warn(err));
     }
-
-    const componentsByNodeId = new Map<NodeId, MetadataComponent>();
-    for (const component of clonedComponents) {
-      const nodeId = `${component.type}:${component.name}`;
-      componentsByNodeId.set(nodeId, component);
+    if (scanResult.warnings.length > 0) {
+      logger.warn('Metadata scanning completed with warnings', { warnings: scanResult.warnings });
+      scanResult.warnings.forEach((warn) => this.warn(warn));
     }
+  }
 
-    for (const inferred of inferredDependencies) {
-      const fromNodeId = nodeIdsByName.get(inferred.from);
-      const toNodeId = nodeIdsByName.get(inferred.to);
-
-      if (!fromNodeId || !toNodeId) {
-        continue;
-      }
-
-      const sourceComponent = componentsByNodeId.get(fromNodeId);
-      sourceComponent?.dependencies.add(toNodeId);
-      if (sourceComponent && !sourceComponent.dependencyDetails?.some((dependency) => dependency.nodeId === toNodeId)) {
-        sourceComponent.dependencyDetails ??= [];
-        sourceComponent.dependencyDetails.push({
-          nodeId: toNodeId,
-          kind: 'inferred',
-          source: 'ai',
-          reason: 'AI-inferred dependency',
-        });
-      }
-      componentsByNodeId.get(toNodeId)?.dependents.add(fromNodeId);
-    }
-
-    return clonedComponents;
+  private reportDeploymentContextMessages(messagesToReport: DeploymentContextMessages): void {
+    messagesToReport.warnings.forEach((warning) => this.warn(warning));
+    messagesToReport.logs.forEach((entry) => this.log(entry));
   }
 
   private async restoreCycleEdits(
