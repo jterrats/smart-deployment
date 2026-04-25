@@ -47,6 +47,10 @@ type ScannerContext = {
   errors: string[];
 };
 
+type ApexMetadataComponent = MetadataComponent & {
+  isTest?: boolean;
+};
+
 type FileScanner = {
   pattern: string;
   shouldInclude?: (filePath: string) => boolean;
@@ -74,6 +78,15 @@ function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
 }
 
+function isApexTestClassContent(content: string, className: string): boolean {
+  if (/@isTest\b/i.test(content) || /\btestMethod\b/i.test(content)) {
+    return true;
+  }
+
+  const normalizedName = className.toLowerCase();
+  return normalizedName.includes('test') || normalizedName.endsWith('_test');
+}
+
 async function parseApexClassComponent(
   filePath: string,
   context: ScannerContext
@@ -92,7 +105,8 @@ async function parseApexClassComponent(
       ),
       dependents: new Set<string>(),
       priorityBoost: 0,
-    };
+      isTest: isApexTestClassContent(content, parsed.className),
+    } as ApexMetadataComponent;
   } catch (error) {
     const errorMsg = `Failed to parse Apex class ${filePath}: ${
       error instanceof Error ? error.message : String(error)

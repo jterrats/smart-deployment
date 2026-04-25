@@ -805,8 +805,9 @@ export default class Start extends SfCommand<StartResult> {
       .filter((component) => component.type === 'ApexClass')
       .map((component) => component.name)
       .filter((className) => this.isTestClassName(className));
+    const availableTestComponents = components.filter((component) => component.type === 'ApexClass');
 
-    return new TestExecutor({ availableTestClasses });
+    return new TestExecutor({ availableTestClasses, availableTestComponents });
   }
 
   private resolveTestPlan(wave: Wave, skipTests: boolean, testExecutor: TestExecutor): TestExecutionPlan {

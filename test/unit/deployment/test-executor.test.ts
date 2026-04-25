@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 import { TestExecutor } from '../../../src/deployment/test-executor.js';
+import type { MetadataComponent } from '../../../src/types/metadata.js';
 import type { Wave } from '../../../src/waves/wave-builder.js';
 
 describe('TestExecutor', () => {
@@ -40,6 +41,28 @@ describe('TestExecutor', () => {
       expect(plan.testLevel).to.equal('RunSpecifiedTests');
       expect(plan.tests).to.include.members(['TestAccountService', 'AccountService_Test']);
       expect(plan.tests).to.not.include('UnrelatedTest');
+    });
+
+    it('prefers structured test catalog entries that depend on the target class', () => {
+      const executor = new TestExecutor({
+        availableTestComponents: [
+          {
+            name: 'ServiceValidationSpec',
+            type: 'ApexClass',
+            filePath: 'force-app/main/default/classes/ServiceValidationSpec.cls',
+            dependencies: new Set(['ApexClass:AccountService']),
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+            isTest: true,
+          } as MetadataComponent & { isTest: boolean },
+        ],
+      });
+      const wave = createWave(['ApexClass:AccountService'], ['ApexClass']);
+
+      const plan = executor.determineTestLevel(wave, false);
+
+      expect(plan.testLevel).to.equal('RunSpecifiedTests');
+      expect(plan.tests).to.include('ServiceValidationSpec');
     });
 
     it('matches trigger-related tests from the available test catalog', () => {

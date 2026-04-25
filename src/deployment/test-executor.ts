@@ -12,6 +12,7 @@
  */
 
 import { getLogger } from '../utils/logger.js';
+import type { MetadataComponent } from '../types/metadata.js';
 import type { Wave } from '../waves/wave-builder.js';
 import type { TestLevel } from './sf-cli-integration.js';
 
@@ -32,6 +33,12 @@ export type TestResults = {
 
 export type TestExecutorOptions = {
   availableTestClasses?: string[];
+  availableTestComponents?: MetadataComponent[];
+};
+
+type TestClassCatalogEntry = {
+  name: string;
+  dependencies: Set<string>;
 };
 
 type SfTestFailure = {
@@ -85,9 +92,22 @@ type SfDeployResultLike = {
  */
 export class TestExecutor {
   private readonly availableTestClasses: string[];
+  private readonly availableTestCatalog: TestClassCatalogEntry[];
 
   public constructor(options: TestExecutorOptions = {}) {
-    this.availableTestClasses = options.availableTestClasses ?? [];
+    this.availableTestCatalog = (options.availableTestComponents ?? [])
+      .filter((component) => component.type === 'ApexClass')
+      .filter((component) => this.isTestComponent(component))
+      .map((component) => ({
+        name: component.name,
+        dependencies: new Set(component.dependencies),
+      }));
+    this.availableTestClasses = Array.from(
+      new Set([
+        ...this.availableTestCatalog.map((component) => component.name),
+        ...(options.availableTestClasses ?? []),
+      ])
+    );
   }
 
   public determineTestLevel(wave: Wave, isSandbox: boolean): TestExecutionPlan {
@@ -118,7 +138,7 @@ export class TestExecutor {
     const explicitTests = apexComponents
       .filter((component) => component.startsWith('ApexClass:'))
       .map((component) => component.replace('ApexClass:', ''))
-      .filter((className) => this.isTestClass(className));
+      .filter((className) => this.isKnownOrNamedTestClass(className));
     const codeClasses = apexComponents
       .filter((component) => component.startsWith('ApexClass:'))
       .map((component) => component.replace('ApexClass:', ''))
@@ -155,6 +175,12 @@ export class TestExecutor {
     }
 
     for (const codeClass of codeClasses) {
+      for (const candidateTest of this.availableTestCatalog) {
+        if (candidateTest.dependencies.has(`ApexClass:${codeClass}`)) {
+          relatedTests.add(candidateTest.name);
+        }
+      }
+
       for (const candidateTest of candidateTests) {
         if (this.matchesTestToClass(codeClass, candidateTest)) {
           relatedTests.add(candidateTest);
@@ -183,6 +209,15 @@ export class TestExecutor {
   private isTestClass(className: string): boolean {
     const normalizedName = className.toLowerCase();
     return normalizedName.includes('test') || normalizedName.endsWith('_test');
+  }
+
+  private isKnownOrNamedTestClass(className: string): boolean {
+    return this.availableTestCatalog.some((component) => component.name === className) || this.isTestClass(className);
+  }
+
+  private isTestComponent(component: MetadataComponent): boolean {
+    const apexComponent = component as MetadataComponent & { isTest?: boolean };
+    return apexComponent.isTest === true || this.isTestClass(component.name);
   }
 
   private matchesTestToClass(className: string, testClassName: string): boolean {

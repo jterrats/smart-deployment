@@ -119,6 +119,49 @@ private class AccountServiceTest {
   return { projectRoot };
 }
 
+async function createProjectWithStructuredRelatedTest(rootDir: string): Promise<{
+  projectRoot: string;
+}> {
+  const projectRoot = path.join(rootDir, 'project-with-structured-tests');
+  const classesDir = path.join(projectRoot, 'force-app/main/default/classes');
+  await rm(projectRoot, { recursive: true, force: true });
+  await mkdir(classesDir, { recursive: true });
+  await writeFile(
+    path.join(projectRoot, 'sfdx-project.json'),
+    JSON.stringify(
+      {
+        packageDirectories: [{ path: 'force-app', default: true }],
+        sourceApiVersion: '61.0',
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  await writeFile(path.join(projectRoot, '.forceignore'), '', 'utf8');
+
+  await writeFile(
+    path.join(classesDir, 'AccountService.cls'),
+    `public with sharing class AccountService {
+  public static void execute() {}
+}`
+  );
+  await writeFile(
+    path.join(classesDir, 'ServiceValidationSpec.cls'),
+    `@IsTest
+private class ServiceValidationSpec {
+  @IsTest
+  static void validatesAccountService() {
+    Test.startTest();
+    AccountService.execute();
+    Test.stopTest();
+  }
+}`
+  );
+
+  return { projectRoot };
+}
+
 describe('StartCommand', () => {
   let tempDir: string;
 
@@ -301,6 +344,71 @@ describe('StartCommand', () => {
           (deployCall) =>
             deployCall.testLevel === 'RunSpecifiedTests' && (deployCall.tests?.includes('AccountServiceTest') ?? false)
         )
+      ).to.equal(true);
+    } finally {
+      Object.defineProperty(SfCliIntegration.prototype, 'deploy', { value: originalDeploy, writable: true });
+    }
+  });
+
+  it('uses structured test metadata when the related test name does not follow standard naming conventions', async () => {
+    const { projectRoot } = await createProjectWithStructuredRelatedTest(tempDir);
+    const command = new Start([], {} as never);
+    const deployCalls: Array<{ testLevel?: string; tests?: string[] }> = [];
+    const originalDeploy = Object.getOwnPropertyDescriptor(SfCliIntegration.prototype, 'deploy')?.value as
+      | typeof SfCliIntegration.prototype.deploy
+      | undefined;
+
+    SfCliIntegration.prototype.deploy = async function stubDeploy(options) {
+      deployCalls.push({
+        testLevel: options.testLevel,
+        tests: options.tests,
+      });
+      return {
+        success: true,
+        deploymentId: 'deploy-structured-tests',
+        status: 'Succeeded',
+        componentSuccesses: 2,
+        componentFailures: 0,
+        testsRun: 1,
+        testFailures: 0,
+        output: '{"result":{"status":"Succeeded"}}',
+      };
+    };
+
+    try {
+      (command as unknown as StartCommandTestDouble).parse = async () => ({
+        flags: {
+          'target-org': 'test-org',
+          'dry-run': false,
+          'validate-only': false,
+          'skip-tests': false,
+          'use-ai': false,
+          'allow-cycle-remediation': false,
+          'source-path': projectRoot,
+        },
+        args: {},
+        argv: [],
+        raw: [],
+        metadata: { flags: {}, args: {} },
+        nonExistentFlags: [],
+        _runtime: {},
+      });
+      (command as unknown as StartCommandTestDouble).log = () => undefined;
+      (command as unknown as StartCommandTestDouble).warn = () => undefined;
+      (command as unknown as StartCommandTestDouble).error = (message: string) => {
+        throw new Error(message);
+      };
+
+      const result = await command.run();
+
+      expect(result.success).to.equal(true);
+      expect(
+        deployCalls.some(
+          (deployCall) =>
+            deployCall.testLevel === 'RunSpecifiedTests' &&
+            (deployCall.tests?.includes('ServiceValidationSpec') ?? false)
+        ),
+        JSON.stringify(deployCalls)
       ).to.equal(true);
     } finally {
       Object.defineProperty(SfCliIntegration.prototype, 'deploy', { value: originalDeploy, writable: true });
