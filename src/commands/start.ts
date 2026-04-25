@@ -28,7 +28,8 @@ import {
   type CycleSourceEditRequest,
   type CycleSourceEditRecord,
 } from '../deployment/cycle-source-editor.js';
-import { SfCliIntegration, type TestLevel } from '../deployment/sf-cli-integration.js';
+import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
+import { TestExecutor, type TestExecutionPlan } from '../deployment/test-executor.js';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
 import { AIEnhancedPriorityWaveGenerator } from '../waves/priority-wave-generator-ai.js';
@@ -198,6 +199,7 @@ export default class Start extends SfCommand<StartResult> {
 
     const deploymentContext = await this.buildDeploymentContext(flags, sourcePath);
     const { scanResult, orderedWaves } = deploymentContext;
+    const testExecutor = this.createTestExecutor(scanResult.components);
 
     const planner = new CycleRemediationPlanner(scanResult.dependencyResult.graph, {
       components: scanResult.dependencyResult.components,
@@ -264,13 +266,15 @@ export default class Start extends SfCommand<StartResult> {
           components: wave.components,
           componentMap: scanResult.dependencyResult.components,
         });
+        const testPlan = this.resolveTestPlan(wave, skipTests, testExecutor);
 
         // Execute deployment
         tracker.startTracking(deploymentId, wave.number, orderedWaves.length);
         const result = await sfCli.deploy({
           manifestPath,
           targetOrg,
-          testLevel: this.resolveTestLevel(skipTests),
+          testLevel: testPlan.testLevel,
+          tests: testPlan.testLevel === 'RunSpecifiedTests' ? testPlan.tests : undefined,
         });
         tracker.updateProgress(deploymentId, result);
 
@@ -303,7 +307,7 @@ export default class Start extends SfCommand<StartResult> {
               lastKnownStatus: result.status,
               testsRun: result.testsRun,
               testFailures: result.testFailures,
-              testLevel: this.resolveTestLevel(skipTests),
+              testLevel: testPlan.testLevel,
               ...aiMetadata,
             },
           });
@@ -334,7 +338,7 @@ export default class Start extends SfCommand<StartResult> {
             lastKnownStatus: result.status,
             testsRun: result.testsRun,
             testFailures: result.testFailures,
-            testLevel: this.resolveTestLevel(skipTests),
+            testLevel: testPlan.testLevel,
             ...aiMetadata,
           },
         });
@@ -496,6 +500,7 @@ export default class Start extends SfCommand<StartResult> {
     const editor = new CycleSourceEditor();
     const startedAt = new Date().toISOString();
     const editRecords: CycleSourceEditRecord[] = [];
+    const testExecutor = this.createTestExecutor([...componentMap.values()]);
     const cycleId = plan.cycles.map((cycle) => cycle.id).join('||');
     const phaseOneComponents = [
       ...new Set(
@@ -544,10 +549,16 @@ export default class Start extends SfCommand<StartResult> {
         components: phaseOneComponents,
         componentMap,
       });
+      const phaseOneTestPlan = this.resolveTestPlan(
+        this.buildSyntheticWave(1, phaseOneComponents, componentMap),
+        skipTests,
+        testExecutor
+      );
       const phaseOneResult = await sfCli.deploy({
         manifestPath: phaseOneManifestPath,
         targetOrg,
-        testLevel: this.resolveTestLevel(skipTests),
+        testLevel: phaseOneTestPlan.testLevel,
+        tests: phaseOneTestPlan.testLevel === 'RunSpecifiedTests' ? phaseOneTestPlan.tests : undefined,
       });
 
       if (!phaseOneResult.success) {
@@ -575,7 +586,7 @@ export default class Start extends SfCommand<StartResult> {
             lastKnownStatus: phaseOneResult.status,
             testsRun: phaseOneResult.testsRun,
             testFailures: phaseOneResult.testFailures,
-            testLevel: this.resolveTestLevel(skipTests),
+            testLevel: phaseOneTestPlan.testLevel,
           },
         });
         failureStateSaved = true;
@@ -601,7 +612,7 @@ export default class Start extends SfCommand<StartResult> {
           lastKnownStatus: phaseOneResult.status,
           testsRun: phaseOneResult.testsRun,
           testFailures: phaseOneResult.testFailures,
-          testLevel: this.resolveTestLevel(skipTests),
+          testLevel: phaseOneTestPlan.testLevel,
         },
       });
 
@@ -617,10 +628,16 @@ export default class Start extends SfCommand<StartResult> {
         components: phaseTwoComponents,
         componentMap,
       });
+      const phaseTwoTestPlan = this.resolveTestPlan(
+        this.buildSyntheticWave(2, phaseTwoComponents, componentMap),
+        skipTests,
+        testExecutor
+      );
       const phaseTwoResult = await sfCli.deploy({
         manifestPath: phaseTwoManifestPath,
         targetOrg,
-        testLevel: this.resolveTestLevel(skipTests),
+        testLevel: phaseTwoTestPlan.testLevel,
+        tests: phaseTwoTestPlan.testLevel === 'RunSpecifiedTests' ? phaseTwoTestPlan.tests : undefined,
       });
 
       if (!phaseTwoResult.success) {
@@ -648,7 +665,7 @@ export default class Start extends SfCommand<StartResult> {
             lastKnownStatus: phaseTwoResult.status,
             testsRun: phaseTwoResult.testsRun,
             testFailures: phaseTwoResult.testFailures,
-            testLevel: this.resolveTestLevel(skipTests),
+            testLevel: phaseTwoTestPlan.testLevel,
           },
         });
         failureStateSaved = true;
@@ -772,8 +789,61 @@ export default class Start extends SfCommand<StartResult> {
     });
   }
 
-  private resolveTestLevel(skipTests: boolean): TestLevel {
-    return skipTests ? 'NoTestRun' : 'RunLocalTests';
+  private createTestExecutor(components: MetadataComponent[]): TestExecutor {
+    const availableTestClasses = components
+      .filter((component) => component.type === 'ApexClass')
+      .map((component) => component.name)
+      .filter((className) => this.isTestClassName(className));
+
+    return new TestExecutor({ availableTestClasses });
+  }
+
+  private resolveTestPlan(wave: Wave, skipTests: boolean, testExecutor: TestExecutor): TestExecutionPlan {
+    if (skipTests) {
+      return {
+        testLevel: 'NoTestRun',
+        tests: [],
+        reason: 'Tests skipped via --skip-tests',
+      };
+    }
+
+    return testExecutor.determineTestLevel(wave, false);
+  }
+
+  private isTestClassName(className: string): boolean {
+    const normalizedName = className.toLowerCase();
+    return normalizedName.includes('test') || normalizedName.endsWith('_test');
+  }
+
+  private buildSyntheticWave(
+    waveNumber: number,
+    components: NodeId[],
+    componentMap: ReadonlyMap<NodeId, MetadataComponent>
+  ): Wave {
+    return {
+      number: waveNumber,
+      components,
+      metadata: {
+        componentCount: components.length,
+        types: this.collectWaveTypes(components, componentMap),
+        maxDepth: 0,
+        hasCircularDeps: false,
+        estimatedTime: 0,
+      },
+    };
+  }
+
+  private collectWaveTypes(components: NodeId[], componentMap: ReadonlyMap<NodeId, MetadataComponent>): MetadataType[] {
+    const types = new Set<MetadataType>();
+
+    for (const componentId of components) {
+      const component = componentMap.get(componentId);
+      if (component) {
+        types.add(component.type);
+      }
+    }
+
+    return Array.from(types);
   }
 
   private getTargetOrgIdentifier(value: unknown): string | undefined {
