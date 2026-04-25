@@ -29,7 +29,7 @@ import {
   type CycleSourceEditRecord,
 } from '../deployment/cycle-source-editor.js';
 import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
-import { TestExecutor, type TestExecutionPlan } from '../deployment/test-executor.js';
+import { TestPlanService } from '../deployment/test-plan-service.js';
 import { MetadataScannerService } from '../services/metadata-scanner-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
 import { AIEnhancedPriorityWaveGenerator } from '../waves/priority-wave-generator-ai.js';
@@ -46,6 +46,7 @@ import type { Wave } from '../waves/wave-builder.js';
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
+const testPlanService = new TestPlanService();
 
 /**
  * @ac US-046-AC-1: Analyzes metadata automatically
@@ -199,7 +200,7 @@ export default class Start extends SfCommand<StartResult> {
 
     const deploymentContext = await this.buildDeploymentContext(flags, sourcePath);
     const { scanResult, orderedWaves } = deploymentContext;
-    const testExecutor = this.createTestExecutor(scanResult.components);
+    const testExecutor = testPlanService.createExecutor(scanResult.components);
 
     const planner = new CycleRemediationPlanner(scanResult.dependencyResult.graph, {
       components: scanResult.dependencyResult.components,
@@ -266,7 +267,7 @@ export default class Start extends SfCommand<StartResult> {
           components: wave.components,
           componentMap: scanResult.dependencyResult.components,
         });
-        const testPlan = this.resolveTestPlan(wave, skipTests, testExecutor);
+        const testPlan = testPlanService.resolveTestPlan(wave, skipTests, testExecutor);
 
         // Execute deployment
         tracker.startTracking(deploymentId, wave.number, orderedWaves.length);
@@ -502,7 +503,7 @@ export default class Start extends SfCommand<StartResult> {
     const editor = new CycleSourceEditor();
     const startedAt = new Date().toISOString();
     const editRecords: CycleSourceEditRecord[] = [];
-    const testExecutor = this.createTestExecutor([...componentMap.values()]);
+    const testExecutor = testPlanService.createExecutor([...componentMap.values()]);
     const cycleId = plan.cycles.map((cycle) => cycle.id).join('||');
     const phaseOneComponents = [
       ...new Set(
@@ -551,7 +552,7 @@ export default class Start extends SfCommand<StartResult> {
         components: phaseOneComponents,
         componentMap,
       });
-      const phaseOneTestPlan = this.resolveTestPlan(
+      const phaseOneTestPlan = testPlanService.resolveTestPlan(
         this.buildSyntheticWave(1, phaseOneComponents, componentMap),
         skipTests,
         testExecutor
@@ -630,7 +631,7 @@ export default class Start extends SfCommand<StartResult> {
         components: phaseTwoComponents,
         componentMap,
       });
-      const phaseTwoTestPlan = this.resolveTestPlan(
+      const phaseTwoTestPlan = testPlanService.resolveTestPlan(
         this.buildSyntheticWave(2, phaseTwoComponents, componentMap),
         skipTests,
         testExecutor
@@ -800,33 +801,6 @@ export default class Start extends SfCommand<StartResult> {
         );
       }
     });
-  }
-
-  private createTestExecutor(components: MetadataComponent[]): TestExecutor {
-    const availableTestClasses = components
-      .filter((component) => component.type === 'ApexClass')
-      .map((component) => component.name)
-      .filter((className) => this.isTestClassName(className));
-    const availableTestComponents = components.filter((component) => component.type === 'ApexClass');
-
-    return new TestExecutor({ availableTestClasses, availableTestComponents, availableComponents: components });
-  }
-
-  private resolveTestPlan(wave: Wave, skipTests: boolean, testExecutor: TestExecutor): TestExecutionPlan {
-    if (skipTests) {
-      return {
-        testLevel: 'NoTestRun',
-        tests: [],
-        reason: 'Tests skipped via --skip-tests',
-      };
-    }
-
-    return testExecutor.determineTestLevel(wave, false);
-  }
-
-  private isTestClassName(className: string): boolean {
-    const normalizedName = className.toLowerCase();
-    return normalizedName.includes('test') || normalizedName.endsWith('_test');
   }
 
   private buildSyntheticWave(
