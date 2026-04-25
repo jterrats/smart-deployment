@@ -89,6 +89,13 @@ describe('DependencyMerger', () => {
 
       expect(result.stats.inferredDependencies).to.equal(1);
       expect(result.graph.get('ApexClass:TestA')?.has('ApexClass:ServiceA')).to.be.true;
+      expect(result.components.get('ApexClass:TestA')?.dependencyDetails).to.deep.include({
+        nodeId: 'ApexClass:ServiceA',
+        kind: 'inferred',
+        source: 'ai',
+        reason: 'test-pattern',
+        confidence: 0.9,
+      });
     });
 
     it('US-037-AC-2: should filter low confidence inferences', () => {

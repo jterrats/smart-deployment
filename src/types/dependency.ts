@@ -2,7 +2,7 @@
  * Dependency Graph Type Definitions
  */
 
-import { type MetadataComponent } from './metadata.js';
+import { type MetadataComponent, type MetadataDependencyKind } from './metadata.js';
 
 /**
  * Nodo en el grafo de dependencias
@@ -27,6 +27,15 @@ export type DependencyGraph = Map<NodeId, Set<NodeId>>;
  */
 export type ReverseGraph = Map<NodeId, Set<NodeId>>;
 
+export type DependencyEdge = {
+  from: NodeId;
+  to: NodeId;
+  type: MetadataDependencyKind;
+  source?: 'parser' | 'ai' | 'manual' | 'merged';
+  reason?: string;
+  confidence?: number;
+};
+
 /**
  * Resultado del análisis de dependencias
  */
@@ -37,6 +46,8 @@ export type DependencyAnalysisResult = {
   graph: DependencyGraph;
   /** Grafo inverso (B ← A significa "B es dependido por A") */
   reverseGraph: ReverseGraph;
+  /** Edges enriquecidos con tipo/razón/confianza */
+  edges: DependencyEdge[];
   /** Componentes con dependencias circulares */
   circularDependencies: CircularDependency[];
   /** Componentes aislados (sin dependencias ni dependientes) */

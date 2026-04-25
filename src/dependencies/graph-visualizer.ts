@@ -13,7 +13,7 @@
  */
 
 import { getLogger } from '../utils/logger.js';
-import type { NodeId, DependencyGraph } from '../types/dependency.js';
+import type { DependencyEdge, NodeId, DependencyGraph } from '../types/dependency.js';
 import type { MetadataType } from '../types/metadata.js';
 
 const logger = getLogger('GraphVisualizer');
@@ -39,6 +39,8 @@ export type VisualizationOptions = {
   showLabels?: boolean;
   /** Color scheme */
   colorScheme?: 'default' | 'type' | 'depth';
+  /** Edge metadata for styling/labels */
+  edgeMetadata?: DependencyEdge[];
 };
 
 /**
@@ -80,10 +82,12 @@ const TYPE_COLORS: Record<string, string> = {
  */
 export class GraphVisualizer {
   private graph: DependencyGraph;
+  private edgeMetadata: Map<string, DependencyEdge>;
   private options: VisualizationOptions;
 
   public constructor(graph: DependencyGraph, options: VisualizationOptions = {}) {
     this.graph = graph;
+    this.edgeMetadata = new Map((options.edgeMetadata ?? []).map((edge) => [`${edge.from}->${edge.to}`, edge]));
     this.options = {
       showLabels: options.showLabels ?? true,
       colorScheme: options.colorScheme ?? 'type',
@@ -112,9 +116,13 @@ export class GraphVisualizer {
       for (const dep of deps) {
         const fromStyle = this.getMermaidNodeStyle(nodeId, criticalSet);
         const toStyle = this.getMermaidNodeStyle(dep, criticalSet);
-        const edgeStyle = criticalSet.has(nodeId) && criticalSet.has(dep) ? '==>' : '-->';
+        const edgeMetadata = this.edgeMetadata.get(`${nodeId}->${dep}`);
+        const edgeStyle = this.getMermaidEdgeStyle(nodeId, dep, criticalSet, edgeMetadata);
+        const edgeLabel = edgeMetadata ? `|${edgeMetadata.type}|` : '';
 
-        lines.push(`    ${this.escapeNodeId(nodeId)}${fromStyle} ${edgeStyle} ${this.escapeNodeId(dep)}${toStyle}`);
+        lines.push(
+          `    ${this.escapeNodeId(nodeId)}${fromStyle} ${edgeStyle}${edgeLabel} ${this.escapeNodeId(dep)}${toStyle}`
+        );
       }
     }
 
@@ -160,8 +168,10 @@ export class GraphVisualizer {
     // Add edges
     for (const [nodeId, deps] of filtered.entries()) {
       for (const dep of deps) {
-        const edgeStyle = criticalSet.has(nodeId) && criticalSet.has(dep) ? ', color=red, penwidth=2.0' : '';
-        lines.push(`    "${nodeId}" -> "${dep}"${edgeStyle};`);
+        const edgeMetadata = this.edgeMetadata.get(`${nodeId}->${dep}`);
+        const edgeAttributes = this.getDotEdgeAttributes(nodeId, dep, criticalSet, edgeMetadata);
+        const attributeBlock = edgeAttributes.length > 0 ? ` [${edgeAttributes.join(', ')}]` : '';
+        lines.push(`    "${nodeId}" -> "${dep}"${attributeBlock};`);
       }
     }
 
@@ -249,6 +259,54 @@ export class GraphVisualizer {
   private matchesType(nodeId: NodeId, types: MetadataType[]): boolean {
     const nodeType = nodeId.split(':')[0];
     return types.includes(nodeType as MetadataType);
+  }
+
+  private getMermaidEdgeStyle(
+    from: NodeId,
+    to: NodeId,
+    criticalSet: Set<NodeId>,
+    edgeMetadata?: DependencyEdge
+  ): string {
+    if (criticalSet.has(from) && criticalSet.has(to)) {
+      return '==>';
+    }
+
+    if (edgeMetadata?.type === 'soft') {
+      return '-.->';
+    }
+
+    if (edgeMetadata?.type === 'inferred') {
+      return '==>';
+    }
+
+    return '-->';
+  }
+
+  private getDotEdgeAttributes(
+    from: NodeId,
+    to: NodeId,
+    criticalSet: Set<NodeId>,
+    edgeMetadata?: DependencyEdge
+  ): string[] {
+    const styles: string[] = [];
+
+    if (criticalSet.has(from) && criticalSet.has(to)) {
+      styles.push('color=red', 'penwidth=2.0');
+    }
+
+    if (edgeMetadata?.type === 'soft') {
+      styles.push('style=dashed');
+    }
+
+    if (edgeMetadata?.type === 'inferred') {
+      styles.push('color=blue');
+    }
+
+    if (edgeMetadata) {
+      styles.push(`label="${edgeMetadata.type}"`);
+    }
+
+    return styles;
   }
 
   /**

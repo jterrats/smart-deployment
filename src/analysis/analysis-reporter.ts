@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
 import type { WaveResult } from '../waves/wave-builder.js';
+import type { MetadataDependencyKind } from '../types/metadata.js';
 
 export type AnalysisAIContext = {
   enabled: boolean;
@@ -26,6 +27,7 @@ export type AnalysisReport = {
   summary: {
     components: number;
     dependencies: number;
+    dependencyBreakdown: Record<MetadataDependencyKind, number>;
     waves: number;
     circularDependencies: number;
     unplacedComponents: number;
@@ -80,6 +82,7 @@ export class AnalysisReporter {
       summary: {
         components: scanResult.components.length,
         dependencies: scanResult.dependencyResult.stats.totalDependencies,
+        dependencyBreakdown: AnalysisReporter.createDependencyBreakdown(scanResult),
         waves: waveResult.waves.length,
         circularDependencies: waveResult.circularDependencies.length,
         unplacedComponents: waveResult.unplacedComponents.length,
@@ -134,6 +137,20 @@ export class AnalysisReporter {
     };
   }
 
+  private static createDependencyBreakdown(scanResult: ScanResult): Record<MetadataDependencyKind, number> {
+    return scanResult.dependencyResult.edges.reduce<Record<MetadataDependencyKind, number>>(
+      (accumulator, edge) => ({
+        ...accumulator,
+        [edge.type]: accumulator[edge.type] + 1,
+      }),
+      {
+        hard: 0,
+        soft: 0,
+        inferred: 0,
+      }
+    );
+  }
+
   public toHTML(report: AnalysisReport): string {
     const issueItems =
       report.issues.length > 0
@@ -180,6 +197,9 @@ export class AnalysisReporter {
   <div class="summary">
     <div class="card"><strong>Components</strong><br>${report.summary.components}</div>
     <div class="card"><strong>Dependencies</strong><br>${report.summary.dependencies}</div>
+    <div class="card"><strong>Hard / Soft / Inferred</strong><br>${report.summary.dependencyBreakdown.hard} / ${
+      report.summary.dependencyBreakdown.soft
+    } / ${report.summary.dependencyBreakdown.inferred}</div>
     <div class="card"><strong>Waves</strong><br>${report.summary.waves}</div>
     <div class="card"><strong>Circular Dependencies</strong><br>${report.summary.circularDependencies}</div>
     <div class="card"><strong>Unplaced Components</strong><br>${report.summary.unplacedComponents}</div>

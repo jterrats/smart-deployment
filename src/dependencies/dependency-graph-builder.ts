@@ -21,6 +21,7 @@ import type {
   DependencyAnalysisResult,
   DependencyStats,
   CircularDependency,
+  DependencyEdge,
 } from '../types/dependency.js';
 
 const logger = getLogger('DependencyGraphBuilder');
@@ -29,16 +30,6 @@ const logger = getLogger('DependencyGraphBuilder');
  * Dependency types for tracking relationship strength
  */
 export type DependencyType = MetadataDependencyKind;
-
-/**
- * Extended edge information
- */
-export type DependencyEdge = {
-  from: NodeId;
-  to: NodeId;
-  type: DependencyType;
-  reason?: string; // Why this dependency exists
-};
 
 /**
  * Options for building the dependency graph
@@ -187,7 +178,7 @@ export class DependencyGraphBuilder {
    * @ac US-028-AC-3: Handle bidirectional dependencies
    * @ac US-028-AC-4: Track dependency types
    */
-  public addEdge(from: NodeId, to: NodeId, type: DependencyType = 'hard', reason?: string): void {
+  public addEdge(from: NodeId, to: NodeId, type: DependencyType = 'hard', reason?: string, confidence?: number): void {
     // Add forward edge (A depends on B)
     if (!this.graph.has(from)) {
       this.graph.set(from, new Set());
@@ -203,7 +194,14 @@ export class DependencyGraphBuilder {
     // Track edge metadata
     if (this.options.trackDependencyTypes) {
       const edgeKey = `${from}->${to}`;
-      this.edges.set(edgeKey, { from, to, type, reason });
+      this.edges.set(edgeKey, {
+        from,
+        to,
+        type,
+        reason,
+        confidence,
+        source: type === 'inferred' ? 'ai' : 'parser',
+      });
     }
 
     logger.debug('Added dependency edge', { from, to, type });
@@ -303,6 +301,7 @@ export class DependencyGraphBuilder {
       components: new Map(this.components),
       graph: new Map(this.graph),
       reverseGraph: new Map(this.reverseGraph),
+      edges: [...this.edges.values()],
       circularDependencies,
       isolatedComponents,
       stats,

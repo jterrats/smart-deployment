@@ -71,10 +71,26 @@ describe('GraphVisualizer', () => {
       expect(mermaid).to.include('==>'); // Critical edge
     });
 
-    it('US-035-AC-1: should handle isolated nodes', () => {
+    it('should show soft and inferred edge labels when edge metadata is provided', () => {
       const graph = createGraph([
         ['ApexClass:A', 'ApexClass:B'],
+        ['ApexClass:A', 'ApexClass:C'],
       ]);
+
+      const visualizer = new GraphVisualizer(graph, {
+        edgeMetadata: [
+          { from: 'ApexClass:A', to: 'ApexClass:B', type: 'soft' },
+          { from: 'ApexClass:A', to: 'ApexClass:C', type: 'inferred' },
+        ],
+      });
+      const mermaid = visualizer.toMermaid();
+
+      expect(mermaid).to.include('-.->|soft|');
+      expect(mermaid).to.include('==>|inferred|');
+    });
+
+    it('US-035-AC-1: should handle isolated nodes', () => {
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
       graph.set('ApexClass:Isolated', new Set());
 
       const visualizer = new GraphVisualizer(graph);
@@ -89,9 +105,7 @@ describe('GraphVisualizer', () => {
      * @ac US-035-AC-2: Generate DOT format
      */
     it('US-035-AC-2: should generate valid DOT syntax', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const visualizer = new GraphVisualizer(graph);
       const dot = visualizer.toDot();
@@ -103,9 +117,7 @@ describe('GraphVisualizer', () => {
     });
 
     it('US-035-AC-2: should include node styling', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const visualizer = new GraphVisualizer(graph);
       const dot = visualizer.toDot();
@@ -127,6 +139,18 @@ describe('GraphVisualizer', () => {
 
       expect(dot).to.include('color=red');
       expect(dot).to.include('penwidth=2');
+    });
+
+    it('should label DOT edges with dependency type when metadata is provided', () => {
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
+
+      const visualizer = new GraphVisualizer(graph, {
+        edgeMetadata: [{ from: 'ApexClass:A', to: 'ApexClass:B', type: 'soft' }],
+      });
+      const dot = visualizer.toDot();
+
+      expect(dot).to.include('label="soft"');
+      expect(dot).to.include('style=dashed');
     });
   });
 
@@ -233,9 +257,7 @@ describe('GraphVisualizer', () => {
     });
 
     it('should auto-select root if not provided', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const visualizer = new GraphVisualizer(graph);
       const ascii = visualizer.toAscii();
@@ -294,7 +316,7 @@ describe('GraphVisualizer', () => {
 
     it('should handle complex graphs', () => {
       const edges: Array<[string, string]> = [];
-      
+
       for (let i = 0; i < 50; i++) {
         edges.push([`ApexClass:Node${i}`, `ApexClass:Node${i + 1}`]);
       }
@@ -310,9 +332,7 @@ describe('GraphVisualizer', () => {
 
   describe('Labels', () => {
     it('should show labels when enabled', () => {
-      const graph = createGraph([
-        ['ApexClass:AccountService', 'ApexClass:Repository'],
-      ]);
+      const graph = createGraph([['ApexClass:AccountService', 'ApexClass:Repository']]);
 
       const visualizer = new GraphVisualizer(graph, {
         showLabels: true,
@@ -323,9 +343,7 @@ describe('GraphVisualizer', () => {
     });
 
     it('should hide full node IDs when labels enabled', () => {
-      const graph = createGraph([
-        ['ApexClass:Service', 'ApexClass:Repo'],
-      ]);
+      const graph = createGraph([['ApexClass:Service', 'ApexClass:Repo']]);
 
       const visualizer = new GraphVisualizer(graph, {
         showLabels: true,
@@ -364,9 +382,7 @@ describe('GraphVisualizer', () => {
     });
 
     it('US-035-AC-6: should generate Graphviz-compatible DOT with styling', () => {
-      const graph = createGraph([
-        ['ApexClass:A', 'ApexClass:B'],
-      ]);
+      const graph = createGraph([['ApexClass:A', 'ApexClass:B']]);
 
       const visualizer = new GraphVisualizer(graph);
       const dot = visualizer.toDot({
@@ -376,7 +392,7 @@ describe('GraphVisualizer', () => {
       // Critical path styling should be Graphviz-compatible
       expect(dot).to.include('fillcolor=');
       expect(dot).to.include('style=');
-      
+
       // Commands to export (documented in comments):
       // dot -Tsvg graph.dot > graph.svg
       // dot -Tpng graph.dot > graph.png
@@ -385,4 +401,3 @@ describe('GraphVisualizer', () => {
     });
   });
 });
-

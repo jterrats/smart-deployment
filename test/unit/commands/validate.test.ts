@@ -14,6 +14,14 @@ function createScanResult(overrides: Partial<ScanResult> = {}): ScanResult {
       ['ApexClass:Service', new Set<string>(['ApexClass:Base'])],
     ]),
     reverseGraph: new Map(),
+    edges: [
+      {
+        from: 'ApexClass:Service',
+        to: 'ApexClass:Base',
+        type: 'hard',
+        source: 'parser',
+      },
+    ],
     circularDependencies: [],
     isolatedComponents: [],
     stats: {

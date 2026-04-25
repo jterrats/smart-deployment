@@ -1,20 +1,20 @@
 /**
  * Dependency Merger
  * Merges static parser dependencies with AI-inferred dependencies
- * 
+ *
  * @ac US-037-AC-1: Merge static parser dependencies
  * @ac US-037-AC-2: Merge AI-inferred dependencies
  * @ac US-037-AC-3: Resolve conflicts (prefer static)
  * @ac US-037-AC-4: Track dependency source
  * @ac US-037-AC-5: Report merged dependencies
  * @ac US-037-AC-6: Confidence scoring
- * 
+ *
  * @issue #37
  */
 
 import { getLogger } from '../utils/logger.js';
 import type { NodeId, DependencyGraph, InferredDependency } from '../types/dependency.js';
-import type { MetadataComponent } from '../types/metadata.js';
+import type { MetadataComponent, MetadataDependencyReference } from '../types/metadata.js';
 
 const logger = getLogger('DependencyMerger');
 
@@ -39,6 +39,7 @@ export type MergedDependency = {
  */
 export type MergeResult = {
   graph: DependencyGraph;
+  components: Map<NodeId, MetadataComponent>;
   dependencies: MergedDependency[];
   stats: MergeStats;
 };
@@ -69,24 +70,24 @@ export type MergerOptions = {
 
 /**
  * Dependency Merger
- * 
+ *
  * Merges dependencies from multiple sources:
  * 1. Static parser dependencies (from metadata files)
  * 2. AI-inferred dependencies (from heuristics/patterns)
- * 
+ *
  * Conflict Resolution:
  * - Static dependencies always take precedence
  * - Inferred dependencies are added if not in static
  * - Confidence scores help prioritize inferences
- * 
+ *
  * Performance: O(V + E)
- * 
+ *
  * @example
  * const merger = new DependencyMerger({
  *   minConfidence: 0.7,
  *   preferStatic: true
  * });
- * 
+ *
  * const result = merger.merge(components, inferences);
  * console.log(`Merged ${result.stats.totalDependencies} dependencies`);
  */
@@ -113,33 +114,55 @@ export class DependencyMerger {
    * @ac US-037-AC-4: Track dependency source
    * @ac US-037-AC-5: Report merged dependencies
    */
-  public merge(
-    components: Map<NodeId, MetadataComponent>,
-    inferences: InferredDependency[]
-  ): MergeResult {
+  public merge(components: Map<NodeId, MetadataComponent>, inferences: InferredDependency[]): MergeResult {
     const startTime = Date.now();
-    
+    const mergedComponents = new Map(
+      [...components.entries()].map(([nodeId, component]) => [
+        nodeId,
+        {
+          ...component,
+          dependencies: new Set(component.dependencies),
+          dependencyDetails: [...(component.dependencyDetails ?? [])],
+          dependents: new Set(component.dependents),
+        },
+      ])
+    );
+
     // Build graph from static dependencies
     const graph: DependencyGraph = new Map();
     const dependencies: MergedDependency[] = [];
     const staticEdges = new Set<string>();
 
     // Add static dependencies first
-    for (const [nodeId, component] of components.entries()) {
+    for (const [nodeId, component] of mergedComponents.entries()) {
       if (!graph.has(nodeId)) {
         graph.set(nodeId, new Set());
       }
 
-      for (const dep of component.dependencies) {
-        graph.get(nodeId)!.add(dep);
-        staticEdges.add(`${nodeId}→${dep}`);
+      const staticDependencyDetails =
+        component.dependencyDetails && component.dependencyDetails.length > 0
+          ? component.dependencyDetails.filter((dependency) => dependency.kind !== 'inferred')
+          : [...component.dependencies].map(
+              (dep): MetadataDependencyReference => ({
+                nodeId: dep,
+                kind: component.optionalDependencies?.has(dep) ? 'soft' : 'hard',
+                source: 'parser',
+                reason: 'Explicit reference in metadata',
+              })
+            );
+
+      component.dependencyDetails = [...staticDependencyDetails];
+
+      for (const dep of staticDependencyDetails) {
+        graph.get(nodeId)!.add(dep.nodeId);
+        staticEdges.add(`${nodeId}→${dep.nodeId}`);
 
         dependencies.push({
           from: nodeId,
-          to: dep,
+          to: dep.nodeId,
           source: 'static',
           confidence: 1.0,
-          reasons: ['Explicit reference in metadata'],
+          reasons: [dep.reason ?? 'Explicit reference in metadata'],
         });
       }
     }
@@ -172,9 +195,7 @@ export class DependencyMerger {
 
         if (!this.options.preferStatic) {
           // Update source to merged
-          const existing = dependencies.find(
-            (d) => d.from === inference.from && d.to === inference.to
-          );
+          const existing = dependencies.find((d) => d.from === inference.from && d.to === inference.to);
           if (existing) {
             existing.source = 'merged';
             existing.reasons.push(inference.reason);
@@ -189,6 +210,26 @@ export class DependencyMerger {
       }
 
       graph.get(inference.from)!.add(inference.to);
+      const sourceComponent = mergedComponents.get(inference.from);
+      if (sourceComponent) {
+        sourceComponent.dependencies.add(inference.to);
+        sourceComponent.dependencyDetails ??= [];
+        const existing = sourceComponent.dependencyDetails.find((dependency) => dependency.nodeId === inference.to);
+        if (existing) {
+          existing.kind = existing.kind === 'hard' ? 'hard' : 'inferred';
+          existing.source = existing.source === 'parser' ? 'merged' : 'ai';
+          existing.reason = existing.reason ? `${existing.reason}; ${inference.reason}` : inference.reason;
+          existing.confidence = inference.confidence;
+        } else {
+          sourceComponent.dependencyDetails.push({
+            nodeId: inference.to,
+            kind: 'inferred',
+            source: 'ai',
+            reason: inference.reason,
+            confidence: inference.confidence,
+          });
+        }
+      }
       inferredCount++;
       totalConfidence += inference.confidence;
 
@@ -220,39 +261,28 @@ export class DependencyMerger {
       durationMs: duration,
     });
 
-    return { graph, dependencies, stats };
+    return { graph, components: mergedComponents, dependencies, stats };
   }
 
   /**
    * Filter dependencies by confidence
    */
-  public filterByConfidence(
-    dependencies: MergedDependency[],
-    minConfidence: number
-  ): MergedDependency[] {
+  public filterByConfidence(dependencies: MergedDependency[], minConfidence: number): MergedDependency[] {
     return dependencies.filter((dep) => dep.confidence >= minConfidence);
   }
 
   /**
    * Get dependencies by source
    */
-  public getDependenciesBySource(
-    dependencies: MergedDependency[],
-    source: DependencySource
-  ): MergedDependency[] {
+  public getDependenciesBySource(dependencies: MergedDependency[], source: DependencySource): MergedDependency[] {
     return dependencies.filter((dep) => dep.source === source);
   }
 
   /**
    * Get low confidence dependencies (potential false positives)
    */
-  public getLowConfidenceDependencies(
-    dependencies: MergedDependency[],
-    threshold: number = 0.7
-  ): MergedDependency[] {
-    return dependencies.filter(
-      (dep) => dep.source === 'inferred' && dep.confidence < threshold
-    );
+  public getLowConfidenceDependencies(dependencies: MergedDependency[], threshold: number = 0.7): MergedDependency[] {
+    return dependencies.filter((dep) => dep.source === 'inferred' && dep.confidence < threshold);
   }
 
   /**
@@ -349,4 +379,3 @@ export class DependencyMerger {
     return lines.join('\n');
   }
 }
-
