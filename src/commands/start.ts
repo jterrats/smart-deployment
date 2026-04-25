@@ -410,7 +410,9 @@ export default class Start extends SfCommand<StartResult> {
       }
     }
 
-    const waveBuilder = new WaveBuilder();
+    const waveBuilder = new WaveBuilder({
+      dependencyEdges: dependencyResult.edges,
+    });
     const waveResult = waveBuilder.generateWaves(dependencyResult.graph);
     let orderedWaves = getWavesInExecutionOrder(waveResult);
     let aiContext:

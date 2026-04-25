@@ -46,6 +46,7 @@ export class DeploymentValidationService {
       maxComponentsPerWave: 10_000,
       respectTypeOrder: true,
       handleCircularDeps: true,
+      dependencyEdges: scanResult.dependencyResult.edges,
     });
     const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
     const issues: DeploymentValidationIssue[] = [];

@@ -305,6 +305,43 @@ describe('WaveBuilder', () => {
         expect(customObjIndex).to.be.lessThan(apexClassIndex);
       }
     });
+
+    it('should prioritize hard dependencies ahead of soft and inferred ones within the same wave', () => {
+      const graph = createGraph([
+        ['ApexClass:HardConsumer', 'ApexClass:Base'],
+        ['ApexClass:SoftConsumer', 'ApexClass:Base'],
+        ['ApexClass:InferredConsumer', 'ApexClass:Base'],
+      ]);
+
+      const builder = new WaveBuilder({
+        respectTypeOrder: true,
+        dependencyEdges: [
+          {
+            from: 'ApexClass:HardConsumer',
+            to: 'ApexClass:Base',
+            type: 'hard',
+          },
+          {
+            from: 'ApexClass:SoftConsumer',
+            to: 'ApexClass:Base',
+            type: 'soft',
+          },
+          {
+            from: 'ApexClass:InferredConsumer',
+            to: 'ApexClass:Base',
+            type: 'inferred',
+          },
+        ],
+      });
+      const result = builder.generateWaves(graph);
+
+      const consumerWave = result.waves.find((wave) => wave.components.includes('ApexClass:HardConsumer'));
+      expect(consumerWave?.components).to.deep.equal([
+        'ApexClass:HardConsumer',
+        'ApexClass:SoftConsumer',
+        'ApexClass:InferredConsumer',
+      ]);
+    });
   });
 
   describe('Max Components Per Wave', () => {

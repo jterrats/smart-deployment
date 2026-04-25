@@ -13,7 +13,7 @@
  */
 
 import { getLogger } from '../utils/logger.js';
-import type { NodeId, DependencyGraph, CircularDependency } from '../types/dependency.js';
+import type { NodeId, DependencyEdge, DependencyGraph, CircularDependency } from '../types/dependency.js';
 import type { MetadataType } from '../types/metadata.js';
 
 const logger = getLogger('WaveBuilder');
@@ -88,6 +88,8 @@ export type WaveBuilderOptions = {
   respectTypeOrder?: boolean;
   /** Handle circular dependencies */
   handleCircularDeps?: boolean;
+  /** Structured dependency edges for risk-aware ordering inside a wave */
+  dependencyEdges?: DependencyEdge[];
 };
 
 /**
@@ -136,13 +138,21 @@ const TYPE_DEPLOYMENT_ORDER: MetadataType[] = [
  */
 export class WaveBuilder {
   private options: Required<WaveBuilderOptions>;
+  private readonly edgeTypesByFrom: Map<NodeId, Array<DependencyEdge['type']>>;
 
   public constructor(options: WaveBuilderOptions = {}) {
     this.options = {
       maxComponentsPerWave: options.maxComponentsPerWave ?? 0,
       respectTypeOrder: options.respectTypeOrder ?? true,
       handleCircularDeps: options.handleCircularDeps ?? true,
+      dependencyEdges: options.dependencyEdges ?? [],
     };
+    this.edgeTypesByFrom = new Map();
+    for (const edge of this.options.dependencyEdges) {
+      const existing = this.edgeTypesByFrom.get(edge.from) ?? [];
+      existing.push(edge.type);
+      this.edgeTypesByFrom.set(edge.from, existing);
+    }
 
     logger.debug('Initialized WaveBuilder', {
       maxComponentsPerWave: this.options.maxComponentsPerWave,
@@ -185,7 +195,7 @@ export class WaveBuilder {
 
       // Sort by type order if configured
       if (this.options.respectTypeOrder) {
-        currentWave.sort((a, b) => this.compareByTypeOrder(a, b));
+        currentWave.sort((a, b) => this.compareWavePriority(a, b));
       }
 
       // Split into multiple waves if exceeds max size
@@ -289,6 +299,9 @@ export class WaveBuilder {
     });
 
     if (this.options.handleCircularDeps) {
+      if (this.options.respectTypeOrder) {
+        remaining.sort((a, b) => this.compareWavePriority(a, b));
+      }
       waves.push({
         number: waveNumber,
         components: remaining,
@@ -336,7 +349,7 @@ export class WaveBuilder {
   /**
    * Compare nodes by type deployment order
    */
-  private compareByTypeOrder(a: NodeId, b: NodeId): number {
+  private compareWavePriority(a: NodeId, b: NodeId): number {
     const typeA = a.split(':')[0] as MetadataType;
     const typeB = b.split(':')[0] as MetadataType;
 
@@ -347,7 +360,43 @@ export class WaveBuilder {
     const finalOrderA = orderA === -1 ? 9999 : orderA;
     const finalOrderB = orderB === -1 ? 9999 : orderB;
 
-    return finalOrderA - finalOrderB;
+    const typeOrderComparison = finalOrderA - finalOrderB;
+    if (typeOrderComparison !== 0) {
+      return typeOrderComparison;
+    }
+
+    const riskA = this.getDependencyRiskProfile(a);
+    const riskB = this.getDependencyRiskProfile(b);
+
+    if (riskA.inferred !== riskB.inferred) {
+      return riskA.inferred - riskB.inferred;
+    }
+
+    if (riskA.soft !== riskB.soft) {
+      return riskA.soft - riskB.soft;
+    }
+
+    if (riskA.hard !== riskB.hard) {
+      return riskB.hard - riskA.hard;
+    }
+
+    return a.localeCompare(b);
+  }
+
+  private getDependencyRiskProfile(nodeId: NodeId): { hard: number; soft: number; inferred: number } {
+    const edgeTypes = this.edgeTypesByFrom.get(nodeId) ?? [];
+
+    return edgeTypes.reduce(
+      (accumulator, type) => ({
+        ...accumulator,
+        [type]: accumulator[type] + 1,
+      }),
+      {
+        hard: 0,
+        soft: 0,
+        inferred: 0,
+      }
+    );
   }
 
   /**

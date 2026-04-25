@@ -203,6 +203,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
       maxComponentsPerWave: 10_000,
       respectTypeOrder: true,
       handleCircularDeps: true,
+      dependencyEdges: scanResult.dependencyResult.edges,
     });
     let waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
     let priorityOverrides: Record<string, PriorityOverride> = {};
