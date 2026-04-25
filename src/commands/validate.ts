@@ -15,6 +15,7 @@ import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { DeploymentValidationService } from '../deployment/deployment-validation-service.js';
 import { getLogger } from '../utils/logger.js';
+import type { MetadataDependencyKind } from '../types/metadata.js';
 
 const logger = getLogger('ValidateCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
@@ -23,6 +24,8 @@ const messages = Messages.loadMessages('@jterrats/smart-deployment', 'validate')
 type ValidateResult = {
   success: boolean;
   components: number;
+  dependencies: number;
+  dependencyBreakdown: Record<MetadataDependencyKind, number>;
   waves: number;
   issueCount: number;
   ai?: {
@@ -71,6 +74,8 @@ export default class Validate extends SfCommand<ValidateResult> {
     return {
       success: summary.valid,
       components: summary.components,
+      dependencies: summary.dependencies,
+      dependencyBreakdown: summary.dependencyBreakdown,
       waves: summary.totalWaves,
       issueCount: summary.issues.length,
       ai: useAI

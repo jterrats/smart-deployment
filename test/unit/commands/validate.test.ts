@@ -126,8 +126,15 @@ describe('ValidateCommand', () => {
 
     expect(result.success).to.be.true;
     expect(result.components).to.equal(2);
+    expect(result.dependencies).to.equal(1);
+    expect(result.dependencyBreakdown).to.deep.equal({
+      hard: 1,
+      soft: 0,
+      inferred: 0,
+    });
     expect(result.waves).to.equal(2);
     expect(result.issueCount).to.equal(0);
+    expect(logs.some((message) => message.includes('Hard / Soft / Inferred: 1 / 0 / 0'))).to.be.true;
     expect(logs.some((message) => message.includes('No deployment was executed'))).to.be.true;
   });
 
@@ -164,6 +171,7 @@ describe('ValidateCommand', () => {
     const result = await command.run();
 
     expect(result.success).to.be.false;
+    expect(result.dependencies).to.equal(1);
     expect(result.issueCount).to.equal(1);
     expect(logs.some((message) => message.includes('Broken metadata file'))).to.be.true;
     expect(warnings.some((message) => message.includes('Validation found 1 issue'))).to.be.true;

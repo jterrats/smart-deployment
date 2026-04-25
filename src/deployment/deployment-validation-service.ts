@@ -6,6 +6,7 @@ import { XmlMetadataValidator } from '../validators/xml-metadata-validator.js';
 import { WaveValidationService } from '../ai/wave-validation-service.js';
 import { WaveBuilder } from '../waves/wave-builder.js';
 import { validateWaveOrder } from '../waves/wave-executor.js';
+import type { MetadataDependencyKind } from '../types/metadata.js';
 
 const logger = getLogger('DeploymentValidationService');
 
@@ -19,6 +20,8 @@ export type DeploymentValidationIssue = {
 export type DeploymentValidationSummary = {
   valid: boolean;
   components: number;
+  dependencies: number;
+  dependencyBreakdown: Record<MetadataDependencyKind, number>;
   totalWaves: number;
   estimatedTime: number;
   xmlFilesValidated: number;
@@ -46,6 +49,17 @@ export class DeploymentValidationService {
     });
     const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
     const issues: DeploymentValidationIssue[] = [];
+    const dependencyBreakdown = scanResult.dependencyResult.edges.reduce<Record<MetadataDependencyKind, number>>(
+      (accumulator, edge) => ({
+        ...accumulator,
+        [edge.type]: accumulator[edge.type] + 1,
+      }),
+      {
+        hard: 0,
+        soft: 0,
+        inferred: 0,
+      }
+    );
 
     issues.push(
       ...scanResult.errors.map((message) => ({ severity: 'error' as const, message })),
@@ -144,6 +158,8 @@ export class DeploymentValidationService {
     return {
       valid,
       components: scanResult.components.length,
+      dependencies: scanResult.dependencyResult.stats.totalDependencies,
+      dependencyBreakdown,
       totalWaves: waveResult.waves.length,
       estimatedTime: waveResult.stats.totalEstimatedTime,
       xmlFilesValidated: xmlFiles.length,
@@ -160,6 +176,8 @@ export class DeploymentValidationService {
     const lines = [
       `Validation: ${summary.valid ? 'PASSED' : 'FAILED'}`,
       `Components: ${summary.components}`,
+      `Dependencies: ${summary.dependencies}`,
+      `Hard / Soft / Inferred: ${summary.dependencyBreakdown.hard} / ${summary.dependencyBreakdown.soft} / ${summary.dependencyBreakdown.inferred}`,
       `Waves: ${summary.totalWaves}`,
       `Estimated Time: ${summary.estimatedTime}s`,
       `XML Files Validated: ${summary.xmlFilesValidated}`,

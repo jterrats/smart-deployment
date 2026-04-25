@@ -26,6 +26,12 @@ describe('DeploymentValidationService', () => {
 
     expect(summary.valid).to.equal(true);
     expect(summary.components).to.equal(1);
+    expect(summary.dependencies).to.be.greaterThanOrEqual(0);
+    expect(summary.dependencyBreakdown).to.deep.equal({
+      hard: 0,
+      soft: 0,
+      inferred: 0,
+    });
     expect(summary.totalWaves).to.be.greaterThan(0);
     expect(summary.xmlFilesValidated).to.be.greaterThan(0);
     expect(summary.issues.filter((issue) => issue.severity === 'error')).to.deep.equal([]);
@@ -53,6 +59,8 @@ describe('DeploymentValidationService', () => {
 
     expect(formatted).to.include('Validation: PASSED');
     expect(formatted).to.include('Components: 1');
+    expect(formatted).to.include('Dependencies:');
+    expect(formatted).to.include('Hard / Soft / Inferred:');
     expect(formatted).to.include('Waves:');
     expect(formatted).to.include('XML Files Validated:');
   });
