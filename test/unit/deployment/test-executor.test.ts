@@ -78,6 +78,38 @@ describe('TestExecutor', () => {
       expect(plan.tests).to.not.include('ServiceTest');
     });
 
+    it('matches trigger-related tests through handler dependencies from project metadata', () => {
+      const executor = new TestExecutor({
+        availableComponents: [
+          {
+            name: 'AccountTrigger',
+            type: 'ApexTrigger',
+            filePath: 'force-app/main/default/triggers/AccountTrigger.trigger',
+            dependencies: new Set(['ApexClass:AccountTriggerHandler']),
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+          },
+        ],
+        availableTestComponents: [
+          {
+            name: 'TriggerBehaviorSpec',
+            type: 'ApexClass',
+            filePath: 'force-app/main/default/classes/TriggerBehaviorSpec.cls',
+            dependencies: new Set(['ApexClass:AccountTriggerHandler']),
+            dependents: new Set<string>(),
+            priorityBoost: 0,
+            isTest: true,
+          } as MetadataComponent & { isTest: boolean },
+        ],
+      });
+      const wave = createWave(['ApexTrigger:AccountTrigger'], ['ApexTrigger']);
+
+      const plan = executor.determineTestLevel(wave, false);
+
+      expect(plan.testLevel).to.equal('RunSpecifiedTests');
+      expect(plan.tests).to.include('TriggerBehaviorSpec');
+    });
+
     it('keeps explicit test classes when deploying tests directly', () => {
       const executor = new TestExecutor();
       const wave = createWave(['ApexClass:AccountServiceTest'], ['ApexClass']);

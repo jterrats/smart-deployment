@@ -162,6 +162,57 @@ private class ServiceValidationSpec {
   return { projectRoot };
 }
 
+async function createProjectWithStructuredTriggerTest(rootDir: string): Promise<{
+  projectRoot: string;
+}> {
+  const projectRoot = path.join(rootDir, 'project-with-structured-trigger-tests');
+  const classesDir = path.join(projectRoot, 'force-app/main/default/classes');
+  const triggersDir = path.join(projectRoot, 'force-app/main/default/triggers');
+  await rm(projectRoot, { recursive: true, force: true });
+  await mkdir(classesDir, { recursive: true });
+  await mkdir(triggersDir, { recursive: true });
+  await writeFile(
+    path.join(projectRoot, 'sfdx-project.json'),
+    JSON.stringify(
+      {
+        packageDirectories: [{ path: 'force-app', default: true }],
+        sourceApiVersion: '61.0',
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  await writeFile(path.join(projectRoot, '.forceignore'), '', 'utf8');
+
+  await writeFile(
+    path.join(classesDir, 'AccountTriggerHandler.cls'),
+    `public with sharing class AccountTriggerHandler {
+  public static void handle() {}
+}`
+  );
+  await writeFile(
+    path.join(classesDir, 'TriggerBehaviorSpec.cls'),
+    `@IsTest
+private class TriggerBehaviorSpec {
+  @IsTest
+  static void validatesTriggerHandler() {
+    Test.startTest();
+    AccountTriggerHandler.handle();
+    Test.stopTest();
+  }
+}`
+  );
+  await writeFile(
+    path.join(triggersDir, 'AccountTrigger.trigger'),
+    `trigger AccountTrigger on Account (before insert, before update) {
+  AccountTriggerHandler.handle();
+}`
+  );
+
+  return { projectRoot };
+}
+
 describe('StartCommand', () => {
   let tempDir: string;
 
@@ -407,6 +458,70 @@ describe('StartCommand', () => {
           (deployCall) =>
             deployCall.testLevel === 'RunSpecifiedTests' &&
             (deployCall.tests?.includes('ServiceValidationSpec') ?? false)
+        ),
+        JSON.stringify(deployCalls)
+      ).to.equal(true);
+    } finally {
+      Object.defineProperty(SfCliIntegration.prototype, 'deploy', { value: originalDeploy, writable: true });
+    }
+  });
+
+  it('uses trigger handler dependencies to select non-standard related tests', async () => {
+    const { projectRoot } = await createProjectWithStructuredTriggerTest(tempDir);
+    const command = new Start([], {} as never);
+    const deployCalls: Array<{ testLevel?: string; tests?: string[] }> = [];
+    const originalDeploy = Object.getOwnPropertyDescriptor(SfCliIntegration.prototype, 'deploy')?.value as
+      | typeof SfCliIntegration.prototype.deploy
+      | undefined;
+
+    SfCliIntegration.prototype.deploy = async function stubDeploy(options) {
+      deployCalls.push({
+        testLevel: options.testLevel,
+        tests: options.tests,
+      });
+      return {
+        success: true,
+        deploymentId: 'deploy-trigger-tests',
+        status: 'Succeeded',
+        componentSuccesses: 2,
+        componentFailures: 0,
+        testsRun: 1,
+        testFailures: 0,
+        output: '{"result":{"status":"Succeeded"}}',
+      };
+    };
+
+    try {
+      (command as unknown as StartCommandTestDouble).parse = async () => ({
+        flags: {
+          'target-org': 'test-org',
+          'dry-run': false,
+          'validate-only': false,
+          'skip-tests': false,
+          'use-ai': false,
+          'allow-cycle-remediation': false,
+          'source-path': projectRoot,
+        },
+        args: {},
+        argv: [],
+        raw: [],
+        metadata: { flags: {}, args: {} },
+        nonExistentFlags: [],
+        _runtime: {},
+      });
+      (command as unknown as StartCommandTestDouble).log = () => undefined;
+      (command as unknown as StartCommandTestDouble).warn = () => undefined;
+      (command as unknown as StartCommandTestDouble).error = (message: string) => {
+        throw new Error(message);
+      };
+
+      const result = await command.run();
+
+      expect(result.success).to.equal(true);
+      expect(
+        deployCalls.some(
+          (deployCall) =>
+            deployCall.testLevel === 'RunSpecifiedTests' && (deployCall.tests?.includes('TriggerBehaviorSpec') ?? false)
         ),
         JSON.stringify(deployCalls)
       ).to.equal(true);

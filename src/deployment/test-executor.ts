@@ -34,6 +34,7 @@ export type TestResults = {
 export type TestExecutorOptions = {
   availableTestClasses?: string[];
   availableTestComponents?: MetadataComponent[];
+  availableComponents?: MetadataComponent[];
 };
 
 type TestClassCatalogEntry = {
@@ -93,8 +94,15 @@ type SfDeployResultLike = {
 export class TestExecutor {
   private readonly availableTestClasses: string[];
   private readonly availableTestCatalog: TestClassCatalogEntry[];
+  private readonly componentDependencies: Map<string, Set<string>>;
 
   public constructor(options: TestExecutorOptions = {}) {
+    this.componentDependencies = new Map(
+      (options.availableComponents ?? []).map((component) => [
+        `${component.type}:${component.name}`,
+        new Set(component.dependencies),
+      ])
+    );
     this.availableTestCatalog = (options.availableTestComponents ?? [])
       .filter((component) => component.type === 'ApexClass')
       .filter((component) => this.isTestComponent(component))
@@ -189,6 +197,19 @@ export class TestExecutor {
     }
 
     for (const trigger of triggers) {
+      const triggerDependencies = this.getTriggerRelatedDependencies(trigger);
+
+      for (const candidateTest of this.availableTestCatalog) {
+        if (candidateTest.dependencies.has(`ApexTrigger:${trigger}`)) {
+          relatedTests.add(candidateTest.name);
+          continue;
+        }
+
+        if (triggerDependencies.some((dependency) => candidateTest.dependencies.has(dependency))) {
+          relatedTests.add(candidateTest.name);
+        }
+      }
+
       for (const candidateTest of candidateTests) {
         if (this.matchesTestToTrigger(trigger, candidateTest)) {
           relatedTests.add(candidateTest);
@@ -204,6 +225,16 @@ export class TestExecutor {
     }
 
     return Array.from(relatedTests);
+  }
+
+  private getTriggerRelatedDependencies(triggerName: string): string[] {
+    const triggerNodeId = `ApexTrigger:${triggerName}`;
+    const dependencies = this.componentDependencies.get(triggerNodeId);
+    if (dependencies === undefined) {
+      return [];
+    }
+
+    return [...dependencies].filter((dependency) => dependency.startsWith('ApexClass:'));
   }
 
   private isTestClass(className: string): boolean {
