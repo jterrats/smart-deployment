@@ -63,6 +63,83 @@ export default class AccountCard extends LightningElement {
     return projectRoot;
   }
 
+  async function createSecurityMetadataFixture(): Promise<string> {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'metadata-scanner-security-'));
+    tempDirectories.push(projectRoot);
+
+    await writeFile(
+      path.join(projectRoot, 'sfdx-project.json'),
+      JSON.stringify(
+        {
+          packageDirectories: [{ path: 'force-app', default: true }],
+          sourceApiVersion: '61.0',
+        },
+        null,
+        2
+      )
+    );
+
+    const profileDir = path.join(projectRoot, 'force-app', 'main', 'default', 'profiles');
+    const permissionSetDir = path.join(projectRoot, 'force-app', 'main', 'default', 'permissionsets');
+    await mkdir(profileDir, { recursive: true });
+    await mkdir(permissionSetDir, { recursive: true });
+
+    await writeFile(
+      path.join(profileDir, 'Admin.profile-meta.xml'),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+  <custom>true</custom>
+  <classAccesses>
+    <apexClass>AccountService</apexClass>
+    <enabled>true</enabled>
+  </classAccesses>
+  <layoutAssignments>
+    <layout>Account-Account Layout</layout>
+  </layoutAssignments>
+  <pageAccesses>
+    <apexPage>AccountConsole</apexPage>
+    <enabled>true</enabled>
+  </pageAccesses>
+  <applicationVisibilities>
+    <application>Sales</application>
+    <default>false</default>
+    <visible>true</visible>
+  </applicationVisibilities>
+  <tabVisibilities>
+    <tab>standard-Account</tab>
+    <visibility>DefaultOn</visibility>
+  </tabVisibilities>
+</Profile>`
+    );
+
+    await writeFile(
+      path.join(permissionSetDir, 'Sales.permissionset-meta.xml'),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Sales</label>
+  <classAccesses>
+    <apexClass>AccountService</apexClass>
+    <enabled>true</enabled>
+  </classAccesses>
+  <pageAccesses>
+    <apexPage>AccountConsole</apexPage>
+    <enabled>true</enabled>
+  </pageAccesses>
+  <applicationVisibilities>
+    <application>Sales</application>
+    <default>false</default>
+    <visible>true</visible>
+  </applicationVisibilities>
+  <tabSettings>
+    <tab>standard-Account</tab>
+    <visibility>Visible</visibility>
+  </tabSettings>
+</PermissionSet>`
+    );
+
+    return projectRoot;
+  }
+
   afterEach(async () => {
     await Promise.all(
       tempDirectories.splice(0).map(async (tempDirectory) => rm(tempDirectory, { recursive: true, force: true }))
@@ -85,5 +162,33 @@ export default class AccountCard extends LightningElement {
 
     expect(lwcComponent).to.exist;
     expect([...lwcComponent!.dependencies]).to.include('AccountService.loadName');
+  });
+
+  it('marks presentation and access dependencies as optional for security metadata', async () => {
+    const projectRoot = await createSecurityMetadataFixture();
+    const scanner = new MetadataScannerService();
+
+    const result = await scanner.scan({ sourcePath: projectRoot });
+
+    const profile = result.components.find((component) => component.type === 'Profile' && component.name === 'Admin');
+    const permissionSet = result.components.find(
+      (component) => component.type === 'PermissionSet' && component.name === 'Sales'
+    );
+
+    expect(profile).to.exist;
+    expect(permissionSet).to.exist;
+    expect([...(profile!.optionalDependencies ?? [])]).to.include.members([
+      'Account-Account Layout',
+      'AccountConsole',
+      'Sales',
+      'standard-Account',
+    ]);
+    expect([...(permissionSet!.optionalDependencies ?? [])]).to.include.members([
+      'AccountConsole',
+      'Sales',
+      'standard-Account',
+    ]);
+    expect([...profile!.dependencies]).to.include('AccountService');
+    expect([...permissionSet!.dependencies]).to.include('AccountService');
   });
 });

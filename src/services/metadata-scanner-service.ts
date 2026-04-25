@@ -501,15 +501,32 @@ export class MetadataScannerService {
           const parsed = await parseProfile(filePath, profileName);
 
           const deps = new Set<string>();
+          const optionalDependencies = new Set<string>();
           parsed.objectPermissions.forEach((permission: string) => deps.add(permission));
           parsed.apexClassAccesses.forEach((classAccess: string) => deps.add(classAccess));
-          parsed.layoutAssignments.forEach((layoutAssignment: string) => deps.add(layoutAssignment));
+          parsed.layoutAssignments.forEach((layoutAssignment: string) => {
+            deps.add(layoutAssignment);
+            optionalDependencies.add(layoutAssignment);
+          });
+          parsed.visualforcePageAccesses.forEach((pageAccess: string) => {
+            deps.add(pageAccess);
+            optionalDependencies.add(pageAccess);
+          });
+          parsed.applicationVisibilities.forEach((applicationVisibility: string) => {
+            deps.add(applicationVisibility);
+            optionalDependencies.add(applicationVisibility);
+          });
+          parsed.tabVisibilities.forEach((tabVisibility: string) => {
+            deps.add(tabVisibility);
+            optionalDependencies.add(tabVisibility);
+          });
 
           return {
             name: profileName,
             type: 'Profile' as const,
             filePath,
             dependencies: deps,
+            optionalDependencies,
             dependents: new Set<string>(),
             priorityBoost: 0,
           };
@@ -538,15 +555,29 @@ export class MetadataScannerService {
           const parsed = await parsePermissionSet(filePath, permSetName);
 
           const deps = new Set<string>();
+          const optionalDependencies = new Set<string>();
           parsed.objectPermissions.forEach((permission: string) => deps.add(permission));
           parsed.apexClassAccesses.forEach((classAccess: string) => deps.add(classAccess));
           parsed.customPermissions.forEach((customPermission: string) => deps.add(customPermission));
+          parsed.visualforcePageAccesses.forEach((pageAccess: string) => {
+            deps.add(pageAccess);
+            optionalDependencies.add(pageAccess);
+          });
+          parsed.applicationVisibilities.forEach((applicationVisibility: string) => {
+            deps.add(applicationVisibility);
+            optionalDependencies.add(applicationVisibility);
+          });
+          parsed.tabSettings.forEach((tabSetting: string) => {
+            deps.add(tabSetting);
+            optionalDependencies.add(tabSetting);
+          });
 
           return {
             name: permSetName,
             type: 'PermissionSet' as const,
             filePath,
             dependencies: deps,
+            optionalDependencies,
             dependents: new Set<string>(),
             priorityBoost: 0,
           };
