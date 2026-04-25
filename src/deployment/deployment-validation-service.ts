@@ -87,6 +87,8 @@ export class DeploymentValidationService {
       });
     }
 
+    issues.push(...this.createWaveDependencyRiskIssues(scanResult.dependencyResult.edges, waveResult.waves));
+
     const xmlFiles = await this.findXmlMetadataFiles(scanResult.projectRoot);
     const xmlResults = await this.xmlValidator.validateFiles(xmlFiles);
     for (const result of xmlResults) {
@@ -214,6 +216,49 @@ export class DeploymentValidationService {
     }
 
     return lines.join('\n');
+  }
+
+  private createWaveDependencyRiskIssues(
+    edges: Array<{ from: string; type: 'hard' | 'soft' | 'inferred' }>,
+    waves: Array<{ number: number; components: string[] }>
+  ): DeploymentValidationIssue[] {
+    return waves.flatMap((wave) => {
+      const waveComponents = new Set(wave.components);
+      let softCount = 0;
+      let inferredCount = 0;
+
+      for (const edge of edges) {
+        if (!waveComponents.has(edge.from)) {
+          continue;
+        }
+
+        if (edge.type === 'soft') {
+          softCount += 1;
+        } else if (edge.type === 'inferred') {
+          inferredCount += 1;
+        }
+      }
+
+      if (softCount === 0 && inferredCount === 0) {
+        return [];
+      }
+
+      const parts: string[] = [];
+      if (softCount > 0) {
+        parts.push(`${softCount} soft dependenc${softCount === 1 ? 'y' : 'ies'}`);
+      }
+      if (inferredCount > 0) {
+        parts.push(`${inferredCount} inferred dependenc${inferredCount === 1 ? 'y' : 'ies'}`);
+      }
+
+      return [
+        {
+          severity: 'warning' as const,
+          waveNumber: wave.number,
+          message: `Wave ${wave.number} contains ${parts.join(' and ')} that should be reviewed before deployment.`,
+        },
+      ];
+    });
   }
 
   private async findXmlMetadataFiles(projectRoot: string): Promise<string[]> {

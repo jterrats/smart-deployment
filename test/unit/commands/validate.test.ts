@@ -176,4 +176,97 @@ describe('ValidateCommand', () => {
     expect(logs.some((message) => message.includes('Broken metadata file'))).to.be.true;
     expect(warnings.some((message) => message.includes('Validation found 1 issue'))).to.be.true;
   });
+
+  it('reports wave risk warnings for soft and inferred dependencies', async () => {
+    MetadataScannerService.prototype.scan = async function scanMock() {
+      return createScanResult({
+        components: [
+          {
+            name: 'Base',
+            type: 'ApexClass',
+            filePath: 'force-app/main/default/classes/Base.cls',
+            dependencies: new Set(),
+            dependents: new Set(['ApexClass:Service', 'ApexClass:ServiceTest']),
+            priorityBoost: 0,
+          },
+          {
+            name: 'Service',
+            type: 'ApexClass',
+            filePath: 'force-app/main/default/classes/Service.cls',
+            dependencies: new Set(['ApexClass:Base', 'ApexClass:Helper']),
+            dependents: new Set(),
+            priorityBoost: 0,
+          },
+          {
+            name: 'Helper',
+            type: 'ApexClass',
+            filePath: 'force-app/main/default/classes/Helper.cls',
+            dependencies: new Set(),
+            dependents: new Set(['ApexClass:Service']),
+            priorityBoost: 0,
+          },
+        ],
+        dependencyResult: {
+          components: new Map(),
+          graph: new Map([
+            ['ApexClass:Base', new Set<string>()],
+            ['ApexClass:Helper', new Set<string>()],
+            ['ApexClass:Service', new Set<string>(['ApexClass:Base', 'ApexClass:Helper'])],
+          ]),
+          reverseGraph: new Map(),
+          edges: [
+            {
+              from: 'ApexClass:Service',
+              to: 'ApexClass:Base',
+              type: 'soft',
+              source: 'parser',
+            },
+            {
+              from: 'ApexClass:Service',
+              to: 'ApexClass:Helper',
+              type: 'inferred',
+              source: 'ai',
+            },
+          ],
+          circularDependencies: [],
+          isolatedComponents: [],
+          stats: {
+            totalComponents: 3,
+            totalDependencies: 2,
+            componentsByType: { ApexClass: 3 },
+            maxDepth: 1,
+            mostDepended: { nodeId: 'ApexClass:Base', count: 1 },
+            mostDependencies: { nodeId: 'ApexClass:Service', count: 2 },
+          },
+        },
+      });
+    };
+    StateManager.prototype.loadState = async function loadStateMock() {
+      return null;
+    };
+
+    const command = new Validate([], {} as never);
+    const logs: string[] = [];
+
+    (command as unknown as ValidateCommandTestDouble).parse = async () => ({
+      flags: { 'target-org': 'test-org' },
+      args: {},
+      argv: [],
+      raw: [],
+      metadata: { flags: {}, args: {} },
+      nonExistentFlags: [],
+      _runtime: {},
+    });
+    (command as unknown as ValidateCommandTestDouble).log = (message?: string) => {
+      if (message) logs.push(message);
+    };
+    (command as unknown as ValidateCommandTestDouble).warn = () => undefined;
+
+    const result = await command.run();
+
+    expect(result.success).to.equal(true);
+    expect(result.issueCount).to.equal(1);
+    expect(logs.some((message) => message.includes('soft dependency'))).to.equal(true);
+    expect(logs.some((message) => message.includes('inferred dependency'))).to.equal(true);
+  });
 });
