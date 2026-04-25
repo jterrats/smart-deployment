@@ -29,6 +29,32 @@ describe('TestExecutor', () => {
       expect(plan.tests).to.include.members(['AccountServiceTest', 'AccountServiceTests']);
     });
 
+    it('matches available test classes using common naming conventions', () => {
+      const executor = new TestExecutor({
+        availableTestClasses: ['TestAccountService', 'AccountService_Test', 'UnrelatedTest'],
+      });
+      const wave = createWave(['ApexClass:AccountService'], ['ApexClass']);
+
+      const plan = executor.determineTestLevel(wave, false);
+
+      expect(plan.testLevel).to.equal('RunSpecifiedTests');
+      expect(plan.tests).to.include.members(['TestAccountService', 'AccountService_Test']);
+      expect(plan.tests).to.not.include('UnrelatedTest');
+    });
+
+    it('matches trigger-related tests from the available test catalog', () => {
+      const executor = new TestExecutor({
+        availableTestClasses: ['AccountTriggerTest', 'TestLeadTrigger', 'ServiceTest'],
+      });
+      const wave = createWave(['ApexTrigger:AccountTrigger'], ['ApexTrigger']);
+
+      const plan = executor.determineTestLevel(wave, false);
+
+      expect(plan.testLevel).to.equal('RunSpecifiedTests');
+      expect(plan.tests).to.include('AccountTriggerTest');
+      expect(plan.tests).to.not.include('ServiceTest');
+    });
+
     it('keeps explicit test classes when deploying tests directly', () => {
       const executor = new TestExecutor();
       const wave = createWave(['ApexClass:AccountServiceTest'], ['ApexClass']);

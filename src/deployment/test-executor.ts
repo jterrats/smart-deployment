@@ -30,6 +30,10 @@ export type TestResults = {
   failedTests: string[];
 };
 
+export type TestExecutorOptions = {
+  availableTestClasses?: string[];
+};
+
 type SfTestFailure = {
   name?: string;
   methodName?: string;
@@ -80,6 +84,12 @@ type SfDeployResultLike = {
  * @ac US-087-AC-4: Support NoTestRun (sandbox)
  */
 export class TestExecutor {
+  private readonly availableTestClasses: string[];
+
+  public constructor(options: TestExecutorOptions = {}) {
+    this.availableTestClasses = options.availableTestClasses ?? [];
+  }
+
   public determineTestLevel(wave: Wave, isSandbox: boolean): TestExecutionPlan {
     // AC-1: Only run tests in Apex waves
     const hasApex = wave.metadata.types.some((type) => type === 'ApexClass' || type === 'ApexTrigger');
@@ -105,9 +115,20 @@ export class TestExecutor {
     const apexComponents = wave.components.filter(
       (component) => component.startsWith('ApexClass:') || component.startsWith('ApexTrigger:')
     );
+    const explicitTests = apexComponents
+      .filter((component) => component.startsWith('ApexClass:'))
+      .map((component) => component.replace('ApexClass:', ''))
+      .filter((className) => this.isTestClass(className));
+    const codeClasses = apexComponents
+      .filter((component) => component.startsWith('ApexClass:'))
+      .map((component) => component.replace('ApexClass:', ''))
+      .filter((className) => !this.isTestClass(className));
+    const triggers = apexComponents
+      .filter((component) => component.startsWith('ApexTrigger:'))
+      .map((component) => component.replace('ApexTrigger:', ''));
 
     if (apexComponents.length > 0 && apexComponents.length <= 10) {
-      const tests = this.findRelatedTests(apexComponents);
+      const tests = this.findRelatedTests(codeClasses, triggers, explicitTests);
       if (tests.length > 0) {
         return {
           testLevel: 'RunSpecifiedTests',
@@ -125,25 +146,64 @@ export class TestExecutor {
     };
   }
 
-  private findRelatedTests(apexComponents: string[]): string[] {
+  private findRelatedTests(codeClasses: string[], triggers: string[], explicitTests: string[]): string[] {
     const relatedTests = new Set<string>();
+    const candidateTests = new Set<string>([...explicitTests, ...this.availableTestClasses]);
 
-    for (const component of apexComponents) {
-      if (!component.startsWith('ApexClass:')) {
-        continue;
+    for (const explicitTest of explicitTests) {
+      relatedTests.add(explicitTest);
+    }
+
+    for (const codeClass of codeClasses) {
+      for (const candidateTest of candidateTests) {
+        if (this.matchesTestToClass(codeClass, candidateTest)) {
+          relatedTests.add(candidateTest);
+        }
       }
+    }
 
-      const className = component.replace('ApexClass:', '');
-      if (/(?:^|_)(?:test|tests)$/i.test(className) || /(?:Test|Tests)$/u.test(className)) {
-        relatedTests.add(className);
-        continue;
+    for (const trigger of triggers) {
+      for (const candidateTest of candidateTests) {
+        if (this.matchesTestToTrigger(trigger, candidateTest)) {
+          relatedTests.add(candidateTest);
+        }
       }
+    }
 
-      relatedTests.add(`${className}Test`);
-      relatedTests.add(`${className}Tests`);
+    if (relatedTests.size === 0) {
+      for (const codeClass of codeClasses) {
+        relatedTests.add(`${codeClass}Test`);
+        relatedTests.add(`${codeClass}Tests`);
+      }
     }
 
     return Array.from(relatedTests);
+  }
+
+  private isTestClass(className: string): boolean {
+    const normalizedName = className.toLowerCase();
+    return normalizedName.includes('test') || normalizedName.endsWith('_test');
+  }
+
+  private matchesTestToClass(className: string, testClassName: string): boolean {
+    const normalizedClassName = className.toLowerCase();
+    const normalizedTestName = testClassName.toLowerCase();
+    const strippedTestName = normalizedTestName.replace(/tests?/g, '').replace(/_/g, '');
+    const strippedClassName = normalizedClassName.replace(/_/g, '');
+
+    return (
+      normalizedTestName.includes(normalizedClassName) ||
+      normalizedTestName.includes(strippedClassName) ||
+      strippedTestName.includes(strippedClassName) ||
+      strippedClassName.includes(strippedTestName)
+    );
+  }
+
+  private matchesTestToTrigger(triggerName: string, testClassName: string): boolean {
+    const normalizedTriggerName = triggerName.toLowerCase();
+    const normalizedTestName = testClassName.toLowerCase();
+
+    return normalizedTestName.includes(normalizedTriggerName) || normalizedTestName.includes('trigger');
   }
 
   /**
