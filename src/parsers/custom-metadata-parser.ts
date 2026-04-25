@@ -47,6 +47,27 @@ export type CustomMetadataParseResult = CustomMetadataType & {
   splitBatches?: number; // Number of 200-record batches needed
 };
 
+function extractScalarXmlValue(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => extractScalarXmlValue(entry));
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  const valueRecord = value as Record<string, unknown>;
+  if ('#text' in valueRecord) {
+    return valueRecord['#text'];
+  }
+
+  return value;
+}
+
 /**
  * Parse Custom Metadata Type definition
  *
@@ -92,7 +113,7 @@ export async function parseCustomMetadataType(
       required: field.required ? Boolean(field.required) : undefined,
       unique: field.unique ? Boolean(field.unique) : undefined,
       description: field.description ? String(field.description) : undefined,
-      referenceTo: field.referenceTo ? String(field.referenceTo) : undefined,
+      referenceTo: field.referenceTo ? String(extractScalarXmlValue(field.referenceTo)) : undefined,
     }));
 
     // Extract basic metadata info
@@ -197,7 +218,7 @@ export async function parseCustomMetadataRecord(
       const valueEntries = Array.isArray(valuesRaw) ? valuesRaw : [valuesRaw];
       for (const entry of valueEntries) {
         const field = (entry as Record<string, unknown>).field as string;
-        const value = (entry as Record<string, unknown>).value;
+        const value = extractScalarXmlValue((entry as Record<string, unknown>).value);
         if (field) {
           values[field] = value;
         }
@@ -263,10 +284,31 @@ export function groupCustomMetadataWithRecords(
     name: record.fullName,
   }));
 
+  const lookupDependencies: CustomMetadataDependency[] = [];
+  for (const record of records) {
+    for (const field of typeResult.fields) {
+      if (!field.referenceTo) {
+        continue;
+      }
+
+      const fieldValue = record.values[field.fullName];
+      if (fieldValue === undefined || fieldValue === null || fieldValue === '') {
+        continue;
+      }
+
+      lookupDependencies.push({
+        type: 'lookup_reference',
+        name: record.fullName,
+        referencedObject: field.referenceTo,
+        fieldName: field.fullName,
+      });
+    }
+  }
+
   return {
     ...typeResult,
     records,
-    dependencies: [...typeResult.dependencies, ...recordDependencies],
+    dependencies: [...typeResult.dependencies, ...recordDependencies, ...lookupDependencies],
     requiresSplitting,
     splitBatches,
   };

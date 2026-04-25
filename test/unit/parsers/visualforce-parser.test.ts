@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { parseVisualforce } from '../../../src/parsers/visualforce-parser.js';
 import { ParsingError } from '../../../src/errors/parsing-error.js';
 
@@ -289,6 +290,19 @@ describe('Visualforce Parser', () => {
       expect(result.components).to.have.lengthOf(1);
       expect(result.components).to.include('c:CustomComponent');
       expect(result.components).to.not.include('chatter:feed');
+    });
+
+    it('should exclude flow: namespace components', () => {
+      const vf = `
+        <apex:page>
+          <flow:interview name="MyFlow" />
+          <c:CustomComponent />
+        </apex:page>
+      `;
+
+      const result = parseVisualforce('MyPage.page', vf);
+
+      expect(result.components).to.deep.equal(['c:CustomComponent']);
     });
 
     it('should deduplicate component references', () => {

@@ -193,10 +193,7 @@ describe('Bot Parser', () => {
       const result = await parseBot(filePath, 'Apex_Bot');
 
       expect(result.apexActions).to.be.an('array').with.lengthOf(2);
-      expect(result.apexActions).to.include.members([
-        'AccountService.getAccount',
-        'CaseService.createCase',
-      ]);
+      expect(result.apexActions).to.include.members(['AccountService.getAccount', 'CaseService.createCase']);
       expect(result.dependencies.apexActions).to.deep.equal(result.apexActions);
     });
 
@@ -351,6 +348,61 @@ describe('Bot Parser', () => {
       expect(result.apexActions).to.include('NestedApex');
     });
 
+    it('should include referenced dialogs from navigation and version entry points', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Bot xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Navigation Bot</label>
+    <botVersions>
+        <entryDialog>WelcomeDialog</entryDialog>
+        <mainMenuDialog>MainMenuDialog</mainMenuDialog>
+        <botDialogs>
+            <developerName>WelcomeDialog</developerName>
+            <label>Welcome</label>
+            <botSteps>
+                <type>Navigation</type>
+                <botNavigation>
+                    <type>Menu</type>
+                    <botNavigationLinks>
+                        <label>Escalate</label>
+                        <targetBotDialog>EscalationDialog</targetBotDialog>
+                    </botNavigationLinks>
+                </botNavigation>
+            </botSteps>
+        </botDialogs>
+    </botVersions>
+</Bot>`;
+
+      const filePath = join(testDir, 'Navigation_Bot.bot-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseBot(filePath, 'Navigation_Bot');
+
+      expect(result.dialogs).to.include.members(['WelcomeDialog', 'MainMenuDialog', 'EscalationDialog']);
+      expect(result.dependencies.dialogs).to.deep.equal(result.dialogs);
+    });
+
+    it('should extract ML intents referenced directly by dialogs', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Bot xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Intent Bot</label>
+    <botVersions>
+        <botDialogs>
+            <developerName>IntentDialog</developerName>
+            <label>Intent Dialog</label>
+            <mlIntent>EscalateIntent</mlIntent>
+        </botDialogs>
+    </botVersions>
+</Bot>`;
+
+      const filePath = join(testDir, 'Intent_Bot.bot-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseBot(filePath, 'Intent_Bot');
+
+      expect(result.mlIntents).to.include('EscalateIntent');
+      expect(result.dependencies.mlIntents).to.include('EscalateIntent');
+    });
+
     it('should handle Bot with no versions', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Bot xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -400,4 +452,3 @@ describe('Bot Parser', () => {
     });
   });
 });
-

@@ -17,7 +17,11 @@ import { parseAura } from '../parsers/aura-parser.js';
 import { parseApexClass } from '../parsers/apex-class-parser.js';
 import { parseApexTrigger } from '../parsers/apex-trigger-parser.js';
 import { parseBot } from '../parsers/bot-parser.js';
-import { parseCustomMetadataType } from '../parsers/custom-metadata-parser.js';
+import {
+  groupCustomMetadataWithRecords,
+  parseCustomMetadataRecord,
+  parseCustomMetadataType,
+} from '../parsers/custom-metadata-parser.js';
 import { parseCustomObject } from '../parsers/custom-object-parser.js';
 import { parseEmailTemplate } from '../parsers/email-template-parser.js';
 import { parseFlexiPage } from '../parsers/flexipage-parser.js';
@@ -58,6 +62,12 @@ function toNodeIds(dependencies: Iterable<string>, defaultType: string): Set<str
   return new Set(
     [...dependencies].map((dependency) => (dependency.includes(':') ? dependency : `${defaultType}:${dependency}`))
   );
+}
+
+function addAll(target: Set<string>, values: Iterable<string>, defaultType?: string): void {
+  for (const value of values) {
+    target.add(defaultType && !value.includes(':') ? `${defaultType}:${value}` : value);
+  }
 }
 
 function isDefined<T>(value: T | undefined): value is T {
@@ -455,38 +465,78 @@ export class MetadataScannerService {
     const customMetadataComponents = await Promise.all(
       cmtDirs.map(async (cmtDir) => {
         if (this.shouldIgnore(cmtDir)) {
-          return undefined;
+          return [];
         }
 
         const typeName = path.basename(cmtDir);
         const typeFile = path.join(cmtDir, `${typeName}.md-meta.xml`);
         if (!(await this.fileExists(typeFile))) {
-          return undefined;
+          return [];
         }
 
         try {
           const content = await fs.readFile(typeFile, 'utf-8');
-          await parseCustomMetadataType(typeName, content);
+          const parsedType = await parseCustomMetadataType(typeName, content);
+          const recordFiles = (
+            await globAsync(path.join(cmtDir, '*.md'), {
+              absolute: true,
+            })
+          ).filter((recordFile) => path.basename(recordFile) !== path.basename(typeFile));
+          const records = await Promise.all(
+            recordFiles.map(async (recordFile) => {
+              const recordContent = await fs.readFile(recordFile, 'utf-8');
+              const recordName = path.basename(recordFile, '.md');
+              return parseCustomMetadataRecord(recordName, recordContent);
+            })
+          );
+          const grouped = groupCustomMetadataWithRecords(parsedType, records);
 
-          return {
-            name: typeName,
-            type: 'CustomMetadata' as const,
-            filePath: typeFile,
-            dependencies: new Set<string>(),
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          const deps = new Set<string>();
+          for (const dependency of grouped.dependencies) {
+            switch (dependency.type) {
+              case 'relationship_field':
+              case 'lookup_reference':
+                if (dependency.referencedObject) {
+                  deps.add(dependency.referencedObject);
+                }
+                break;
+              case 'record':
+                deps.add(`CustomMetadataRecord:${dependency.name}`);
+                break;
+              default:
+                break;
+            }
+          }
+
+          return [
+            {
+              name: typeName,
+              type: 'CustomMetadata' as const,
+              filePath: typeFile,
+              dependencies: deps,
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            },
+            ...grouped.records.map((record) => ({
+              name: record.fullName,
+              type: 'CustomMetadataRecord' as const,
+              filePath: path.join(cmtDir, `${record.fullName}.md`),
+              dependencies: new Set<string>([`CustomMetadata:${typeName}`]),
+              dependents: new Set<string>(),
+              priorityBoost: 0,
+            })),
+          ];
         } catch (error) {
           const errorMsg = `Failed to parse Custom Metadata Type ${typeName}: ${
             error instanceof Error ? error.message : String(error)
           }`;
           logger.warn(errorMsg);
           errors.push(errorMsg);
-          return undefined;
+          return [];
         }
       })
     );
-    components.push(...customMetadataComponents.filter(isDefined));
+    components.push(...customMetadataComponents.flat());
 
     // Scan Profiles
     const profileFiles = await this.findFiles(packagePath, '**/profiles/**/*.profile-meta.xml');
@@ -502,24 +552,23 @@ export class MetadataScannerService {
 
           const deps = new Set<string>();
           const optionalDependencies = new Set<string>();
-          parsed.objectPermissions.forEach((permission: string) => deps.add(permission));
-          parsed.apexClassAccesses.forEach((classAccess: string) => deps.add(classAccess));
-          parsed.layoutAssignments.forEach((layoutAssignment: string) => {
-            deps.add(layoutAssignment);
-            optionalDependencies.add(layoutAssignment);
-          });
-          parsed.visualforcePageAccesses.forEach((pageAccess: string) => {
-            deps.add(pageAccess);
-            optionalDependencies.add(pageAccess);
-          });
-          parsed.applicationVisibilities.forEach((applicationVisibility: string) => {
-            deps.add(applicationVisibility);
-            optionalDependencies.add(applicationVisibility);
-          });
-          parsed.tabVisibilities.forEach((tabVisibility: string) => {
-            deps.add(tabVisibility);
-            optionalDependencies.add(tabVisibility);
-          });
+          addAll(deps, parsed.dependencies.objects);
+          addAll(deps, parsed.dependencies.fields);
+          addAll(deps, parsed.dependencies.apexClasses, 'ApexClass');
+          addAll(deps, parsed.dependencies.layouts, 'Layout');
+          addAll(deps, parsed.dependencies.visualforcePages, 'VisualforcePage');
+          addAll(deps, parsed.dependencies.recordTypes, 'RecordType');
+          addAll(deps, parsed.dependencies.applications, 'LightningApp');
+          addAll(deps, parsed.dependencies.tabs);
+          addAll(deps, parsed.dependencies.customPermissions, 'CustomPermission');
+          addAll(deps, parsed.dependencies.customMetadataTypes, 'CustomMetadata');
+          addAll(deps, parsed.dependencies.flows, 'Flow');
+          addAll(deps, parsed.dependencies.externalDataSources);
+          addAll(deps, parsed.dependencies.customSettings);
+          addAll(optionalDependencies, parsed.optionalDependencies.layouts, 'Layout');
+          addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
+          addAll(optionalDependencies, parsed.optionalDependencies.applications, 'LightningApp');
+          addAll(optionalDependencies, parsed.optionalDependencies.tabs);
 
           return {
             name: profileName,
@@ -556,21 +605,21 @@ export class MetadataScannerService {
 
           const deps = new Set<string>();
           const optionalDependencies = new Set<string>();
-          parsed.objectPermissions.forEach((permission: string) => deps.add(permission));
-          parsed.apexClassAccesses.forEach((classAccess: string) => deps.add(classAccess));
-          parsed.customPermissions.forEach((customPermission: string) => deps.add(customPermission));
-          parsed.visualforcePageAccesses.forEach((pageAccess: string) => {
-            deps.add(pageAccess);
-            optionalDependencies.add(pageAccess);
-          });
-          parsed.applicationVisibilities.forEach((applicationVisibility: string) => {
-            deps.add(applicationVisibility);
-            optionalDependencies.add(applicationVisibility);
-          });
-          parsed.tabSettings.forEach((tabSetting: string) => {
-            deps.add(tabSetting);
-            optionalDependencies.add(tabSetting);
-          });
+          addAll(deps, parsed.dependencies.objects);
+          addAll(deps, parsed.dependencies.fields);
+          addAll(deps, parsed.dependencies.apexClasses, 'ApexClass');
+          addAll(deps, parsed.dependencies.visualforcePages, 'VisualforcePage');
+          addAll(deps, parsed.dependencies.customPermissions, 'CustomPermission');
+          addAll(deps, parsed.dependencies.applications, 'LightningApp');
+          addAll(deps, parsed.dependencies.tabs);
+          addAll(deps, parsed.dependencies.customMetadataTypes, 'CustomMetadata');
+          addAll(deps, parsed.dependencies.flows, 'Flow');
+          addAll(deps, parsed.dependencies.externalDataSources);
+          addAll(deps, parsed.dependencies.customSettings);
+          addAll(deps, parsed.dependencies.recordTypes, 'RecordType');
+          addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
+          addAll(optionalDependencies, parsed.optionalDependencies.applications, 'LightningApp');
+          addAll(optionalDependencies, parsed.optionalDependencies.tabs);
 
           return {
             name: permSetName,
@@ -606,9 +655,11 @@ export class MetadataScannerService {
           const parsed = await parseFlexiPage(filePath, flexipageName);
 
           const deps = new Set<string>();
-          parsed.lwcComponents.forEach((componentName) => deps.add(`c:${componentName}`));
-          parsed.auraComponents.forEach((componentName) => deps.add(`c:${componentName}`));
-          parsed.objects.forEach((objectName) => deps.add(objectName));
+          addAll(deps, parsed.lwcComponents);
+          addAll(deps, parsed.auraComponents);
+          addAll(deps, parsed.objects);
+          addAll(deps, parsed.recordTypeFilters, 'RecordType');
+          addAll(deps, parsed.quickActions, 'QuickAction');
 
           return {
             name: flexipageName,
@@ -643,15 +694,28 @@ export class MetadataScannerService {
           const parsed = await parseLayout(filePath, layoutName);
 
           const deps = new Set<string>();
+          const optionalDependencies = new Set<string>();
           deps.add(parsed.object);
-          parsed.customButtons.forEach((buttonName) => deps.add(buttonName));
-          parsed.visualforcePages.forEach((pageName) => deps.add(pageName));
+          addAll(deps, parsed.relatedObjects);
+          addAll(deps, parsed.fields);
+          addAll(deps, parsed.relatedLists);
+          addAll(deps, parsed.customButtons);
+          addAll(deps, parsed.visualforcePages, 'VisualforcePage');
+          addAll(deps, parsed.quickActions, 'QuickAction');
+          addAll(deps, parsed.canvasApps);
+          addAll(deps, parsed.customLinks, 'WebLink');
+          addAll(optionalDependencies, parsed.optionalDependencies.customButtons);
+          addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
+          addAll(optionalDependencies, parsed.optionalDependencies.quickActions, 'QuickAction');
+          addAll(optionalDependencies, parsed.optionalDependencies.canvasApps);
+          addAll(optionalDependencies, parsed.optionalDependencies.customLinks, 'WebLink');
 
           return {
             name: layoutName,
             type: 'Layout' as const,
             filePath,
             dependencies: deps,
+            optionalDependencies,
             dependents: new Set<string>(),
             priorityBoost: 0,
           };
@@ -677,13 +741,29 @@ export class MetadataScannerService {
 
         try {
           const templateName = path.basename(filePath, '.email-meta.xml');
-          const content = await fs.readFile(filePath, 'utf-8');
-          const parsed = await parseEmailTemplate(templateName, content, content);
+          const metadataContent = await fs.readFile(filePath, 'utf-8');
+          const bodyPath = filePath.replace(/\.email-meta\.xml$/, '');
+          const templateContent = (await this.fileExists(bodyPath))
+            ? await fs.readFile(bodyPath, 'utf-8')
+            : metadataContent;
+          const parsed = await parseEmailTemplate(templateName, templateContent, metadataContent);
 
           const deps = new Set<string>();
           parsed.dependencies.forEach((dependency) => {
-            if (dependency.type === 'visualforce_page') {
-              deps.add(dependency.name);
+            switch (dependency.type) {
+              case 'visualforce_page':
+                deps.add(`VisualforcePage:${dependency.name}`);
+                break;
+              case 'related_entity':
+                deps.add(dependency.name);
+                break;
+              case 'merge_field':
+                if (dependency.objectName) {
+                  deps.add(dependency.objectName);
+                }
+                break;
+              default:
+                break;
             }
           });
 
@@ -720,9 +800,10 @@ export class MetadataScannerService {
           const parsed = await parseBot(filePath, botName);
 
           const deps = new Set<string>();
-          parsed.flows.forEach((flowName) => deps.add(flowName));
-          parsed.apexActions.forEach((actionName) => deps.add(actionName));
-          parsed.genAiPrompts.forEach((promptName) => deps.add(promptName));
+          addAll(deps, parsed.flows, 'Flow');
+          addAll(deps, parsed.apexActions, 'ApexClass');
+          addAll(deps, parsed.genAiPrompts, 'GenAiPromptTemplate');
+          addAll(deps, parsed.sobjects);
 
           return {
             name: botName,
@@ -794,8 +875,19 @@ export class MetadataScannerService {
 
           const deps = new Set<string>();
           parsed.dependencies.forEach((dependency) => {
-            if (dependency.type === 'apex_controller' || dependency.type === 'apex_extension') {
-              deps.add(dependency.name);
+            switch (dependency.type) {
+              case 'apex_controller':
+              case 'apex_extension':
+                deps.add(`ApexClass:${dependency.name}`);
+                break;
+              case 'standard_controller':
+                deps.add(dependency.name);
+                break;
+              case 'vf_component':
+                deps.add(`VisualforceComponent:${dependency.name}`);
+                break;
+              default:
+                break;
             }
           });
 

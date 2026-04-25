@@ -119,11 +119,7 @@ describe('GenAI Prompt Template Parser', () => {
       const result = await parseGenAiPrompt(filePath, 'Account_Fields');
 
       expect(result.fields).to.be.an('array');
-      expect(result.fields).to.include.members([
-        'Account.Name',
-        'Account.Industry',
-        'Account.AnnualRevenue',
-      ]);
+      expect(result.fields).to.include.members(['Account.Name', 'Account.Industry', 'Account.AnnualRevenue']);
       expect(result.dependencies.fields).to.deep.equal(result.fields);
     });
 
@@ -148,6 +144,7 @@ describe('GenAI Prompt Template Parser', () => {
 
       expect(result.fields).to.be.an('array').with.lengthOf(3);
       expect(result.fields).to.include.members(['Case.Subject', 'Case.Description', 'Contact.Name']);
+      expect(result.sobjects).to.include.members(['Case', 'Contact']);
     });
 
     /**
@@ -266,6 +263,7 @@ describe('GenAI Prompt Template Parser', () => {
         'Opportunity.StageName',
         'Account.Name',
       ]);
+      expect(result.dataProviderObjects).to.include.members(['Opportunity', 'Account']);
       expect(result.dependencies.models).to.include('sfdc_ai__DefaultGPT4');
       expect(result.dependencies.dataProviders).to.include.members(['OppProvider', 'AccProvider']);
       expect(result.templateVariables).to.include.members(['targetValue', 'context']);
@@ -322,4 +320,3 @@ describe('GenAI Prompt Template Parser', () => {
     });
   });
 });
-

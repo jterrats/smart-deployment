@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { parseApexClass } from '../../../src/parsers/apex-class-parser.js';
 import { ParsingError } from '../../../src/errors/parsing-error.js';
 
@@ -191,6 +192,24 @@ describe('Apex Class Parser', () => {
       expect(staticCalls).to.have.lengthOf(1);
       expect(staticCalls[0].className).to.equal('MyUtility');
       expect(staticCalls[0].namespace).to.equal('MyNamespace');
+    });
+
+    it('should preserve string literals containing URL-like content while ignoring commented dependencies', () => {
+      const code = `
+        public class MyController {
+          public void doSomething() {
+            String endpoint = 'https://example.com/services';
+            // FakeUtility.process();
+            RealUtility.process();
+          }
+        }
+      `;
+
+      const result = parseApexClass('MyController.cls', code);
+
+      const staticCalls = result.dependencies.filter((d) => d.type === 'static_method');
+      expect(staticCalls.map((d) => d.className)).to.include('RealUtility');
+      expect(staticCalls.map((d) => d.className)).to.not.include('FakeUtility');
     });
   });
 

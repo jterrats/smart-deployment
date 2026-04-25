@@ -90,6 +90,29 @@ function extractMergeFields(content: string): MergeField[] {
   return mergeFields;
 }
 
+function remapMergeFieldObjects(
+  mergeFields: MergeField[],
+  aliases: Partial<Record<'recipient' | 'relatedTo', string>>
+): MergeField[] {
+  return mergeFields.map((mergeField) => {
+    if (mergeField.objectName === 'recipient' && aliases.recipient) {
+      return {
+        ...mergeField,
+        objectName: aliases.recipient,
+      };
+    }
+
+    if (mergeField.objectName === 'relatedTo' && aliases.relatedTo) {
+      return {
+        ...mergeField,
+        objectName: aliases.relatedTo,
+      };
+    }
+
+    return mergeField;
+  });
+}
+
 /**
  * Extract custom label references
  *
@@ -112,6 +135,18 @@ function extractCustomLabels(content: string): string[] {
   }
 
   return labels;
+}
+
+function extractVisualforceEmailAttributes(content: string): Partial<Record<'recipient' | 'relatedTo', string>> {
+  const emailTemplateTag = content.match(/<messaging:emailTemplate\b[^>]*>/i)?.[0];
+  if (!emailTemplateTag) {
+    return {};
+  }
+
+  return {
+    recipient: emailTemplateTag.match(/\brecipientType="([^"]+)"/i)?.[1],
+    relatedTo: emailTemplateTag.match(/\brelatedToType="([^"]+)"/i)?.[1],
+  };
 }
 
 /**
@@ -212,23 +247,32 @@ export async function parseEmailTemplate(
 
     // Parse metadata XML using Salesforce types
     const metadata = await parseMetadataXml(metadataContent);
+    const visualforceAttributes = extractVisualforceEmailAttributes(templateContent);
 
     // Extract merge fields from content and subject
-    const contentMergeFields = extractMergeFields(templateContent);
-    const subjectMergeFields = metadata.subject ? extractMergeFields(metadata.subject) : [];
+    const contentMergeFields = remapMergeFieldObjects(extractMergeFields(templateContent), visualforceAttributes);
+    const subjectMergeFields = metadata.subject
+      ? remapMergeFieldObjects(extractMergeFields(metadata.subject), visualforceAttributes)
+      : [];
     const mergeFields = [...contentMergeFields, ...subjectMergeFields];
 
     // Extract custom labels
-    const customLabels = extractCustomLabels(templateContent);
+    const customLabels = [
+      ...new Set([
+        ...extractCustomLabels(templateContent),
+        ...(metadata.subject ? extractCustomLabels(metadata.subject) : []),
+      ]),
+    ];
 
     // Build dependencies array
     const dependencies: EmailTemplateDependency[] = [];
 
     // Add related entity type as dependency
-    if (metadata.relatedEntityType) {
+    const relatedEntityType = metadata.relatedEntityType ?? visualforceAttributes.relatedTo;
+    if (relatedEntityType) {
       dependencies.push({
         type: 'related_entity',
-        name: metadata.relatedEntityType,
+        name: relatedEntityType,
       });
     }
 
@@ -285,6 +329,7 @@ export async function parseEmailTemplate(
 
     const result: EmailTemplateParseResult = {
       ...metadata,
+      relatedEntityType,
       attachments: allAttachments.length > 0 ? allAttachments : undefined,
       mergeFields,
       customLabels,
@@ -294,7 +339,7 @@ export async function parseEmailTemplate(
 
     logger.debug(`Parsed email template: ${templateName}`, {
       templateType: metadata.type,
-      relatedEntityType: !!metadata.relatedEntityType,
+      relatedEntityType: !!relatedEntityType,
       mergeFieldsCount: mergeFields.length,
       customLabelsCount: customLabels.length,
       attachmentsCount: (metadata.attachments?.length ?? 0) + (metadata.attachedContentDocuments?.length ?? 0),

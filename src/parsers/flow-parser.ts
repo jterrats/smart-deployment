@@ -44,6 +44,37 @@ export type FlowParseResult = {
   metadata?: FlowMetadata;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeArray<T>(value: T | T[] | undefined | null): T[] {
+  if (!value) {
+    return [];
+  }
+
+  return Array.isArray(value) ? value : [value];
+}
+
+function deduplicate(values: string[]): string[] {
+  return [...new Set(values.filter((value): value is string => value.trim().length > 0))];
+}
+
+function extractStringValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  const valueRecord = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
+
+  if (typeof valueRecord?.stringValue === 'string') {
+    return valueRecord.stringValue;
+  }
+
+  if (typeof valueRecord?.elementReference === 'string') {
+    return valueRecord.elementReference;
+  }
+
+  return undefined;
+}
+
 /**
  * Extract Apex action references from Flow XML
  *
@@ -53,13 +84,7 @@ export type FlowParseResult = {
 function extractApexActions(flowData: any): string[] {
   const actions: string[] = [];
 
-  // actionCalls can be a single object or array
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const actionCalls = Array.isArray(flowData.actionCalls)
-    ? flowData.actionCalls
-    : flowData.actionCalls
-    ? [flowData.actionCalls]
-    : [];
+  const actionCalls = normalizeArray(flowData.actionCalls);
 
   for (const action of actionCalls) {
     if (action.actionType === 'apex' && action.actionName) {
@@ -67,7 +92,21 @@ function extractApexActions(flowData: any): string[] {
     }
   }
 
-  return actions;
+  const apexPluginCalls = normalizeArray(flowData.apexPluginCalls);
+  for (const pluginCall of apexPluginCalls) {
+    if (pluginCall.apexClass) {
+      actions.push(pluginCall.apexClass);
+    }
+  }
+
+  const transforms = normalizeArray(flowData.transforms);
+  for (const transform of transforms) {
+    if (transform.apexClass) {
+      actions.push(transform.apexClass);
+    }
+  }
+
+  return deduplicate(actions);
 }
 
 /**
@@ -79,12 +118,7 @@ function extractApexActions(flowData: any): string[] {
 function extractSubflows(flowData: any): string[] {
   const subflows: string[] = [];
 
-  // subflows can be a single object or array
-  const subflowCalls = Array.isArray(flowData.subflows)
-    ? flowData.subflows
-    : flowData.subflows
-    ? [flowData.subflows]
-    : [];
+  const subflowCalls = normalizeArray(flowData.subflows);
 
   for (const subflow of subflowCalls) {
     if (subflow.flowName) {
@@ -92,7 +126,7 @@ function extractSubflows(flowData: any): string[] {
     }
   }
 
-  return subflows;
+  return deduplicate(subflows);
 }
 
 /**
@@ -104,52 +138,28 @@ function extractSubflows(flowData: any): string[] {
 function extractRecordReferences(flowData: any): string[] {
   const records = new Set<string>();
 
-  // recordLookups
-  const recordLookups = Array.isArray(flowData.recordLookups)
-    ? flowData.recordLookups
-    : flowData.recordLookups
-    ? [flowData.recordLookups]
-    : [];
-
+  const recordLookups = normalizeArray(flowData.recordLookups);
   for (const lookup of recordLookups) {
     if (lookup.object) {
       records.add(lookup.object);
     }
   }
 
-  // recordCreates
-  const recordCreates = Array.isArray(flowData.recordCreates)
-    ? flowData.recordCreates
-    : flowData.recordCreates
-    ? [flowData.recordCreates]
-    : [];
-
+  const recordCreates = normalizeArray(flowData.recordCreates);
   for (const create of recordCreates) {
     if (create.object) {
       records.add(create.object);
     }
   }
 
-  // recordUpdates
-  const recordUpdates = Array.isArray(flowData.recordUpdates)
-    ? flowData.recordUpdates
-    : flowData.recordUpdates
-    ? [flowData.recordUpdates]
-    : [];
-
+  const recordUpdates = normalizeArray(flowData.recordUpdates);
   for (const update of recordUpdates) {
     if (update.object) {
       records.add(update.object);
     }
   }
 
-  // recordDeletes
-  const recordDeletes = Array.isArray(flowData.recordDeletes)
-    ? flowData.recordDeletes
-    : flowData.recordDeletes
-    ? [flowData.recordDeletes]
-    : [];
-
+  const recordDeletes = normalizeArray(flowData.recordDeletes);
   for (const deleteOp of recordDeletes) {
     if (deleteOp.object) {
       records.add(deleteOp.object);
@@ -162,15 +172,21 @@ function extractRecordReferences(flowData: any): string[] {
   }
 
   // Record variables
-  const variables = Array.isArray(flowData.variables)
-    ? flowData.variables
-    : flowData.variables
-    ? [flowData.variables]
-    : [];
-
+  const variables = normalizeArray(flowData.variables);
   for (const variable of variables) {
     if (variable.dataType === 'SObject' && variable.objectType) {
       records.add(variable.objectType);
+    }
+  }
+
+  const dynamicChoiceSets = normalizeArray(flowData.dynamicChoiceSets);
+  for (const choiceSet of dynamicChoiceSets) {
+    if (choiceSet.object) {
+      records.add(choiceSet.object);
+    }
+
+    if (choiceSet.picklistObject) {
+      records.add(choiceSet.picklistObject);
     }
   }
 
@@ -186,26 +202,34 @@ function extractRecordReferences(flowData: any): string[] {
 function extractGenAIPrompts(flowData: any): string[] {
   const prompts: string[] = [];
 
-  const actionCalls = Array.isArray(flowData.actionCalls)
-    ? flowData.actionCalls
-    : flowData.actionCalls
-    ? [flowData.actionCalls]
-    : [];
+  const actionCalls = normalizeArray(flowData.actionCalls);
 
   for (const action of actionCalls) {
-    // GenAI actions have specific action types
-    const actionType = String(action.actionType || '');
-    if (actionType && (actionType.includes('genai') || actionType.includes('GenAi')) && action.actionName) {
+    const actionType = String(action.actionType || '').toLowerCase();
+    if (actionType && (actionType.includes('genai') || actionType.includes('prompt')) && action.actionName) {
       prompts.push(action.actionName);
     }
 
-    // Also check for prompt template references
     if (action.promptTemplateApiName) {
       prompts.push(action.promptTemplateApiName);
     }
+
+    const inputParameters = normalizeArray(action.inputParameters);
+    for (const parameter of inputParameters) {
+      if (
+        parameter.name === 'promptTemplateApiName' ||
+        parameter.name === 'promptTemplateName' ||
+        parameter.name === 'promptTemplateDeveloperName'
+      ) {
+        const value = extractStringValue(parameter.value);
+        if (value) {
+          prompts.push(value);
+        }
+      }
+    }
   }
 
-  return prompts;
+  return deduplicate(prompts);
 }
 
 /**
@@ -217,11 +241,11 @@ function extractGenAIPrompts(flowData: any): string[] {
 function extractScreenFields(flowData: any): string[] {
   const fields: string[] = [];
 
-  const screens = Array.isArray(flowData.screens) ? flowData.screens : flowData.screens ? [flowData.screens] : [];
+  const screens = normalizeArray(flowData.screens);
 
   for (const screen of screens) {
     if (screen.fields) {
-      const screenFields = Array.isArray(screen.fields) ? screen.fields : [screen.fields];
+      const screenFields = normalizeArray(screen.fields);
 
       for (const field of screenFields) {
         if (field.name) {
@@ -231,7 +255,7 @@ function extractScreenFields(flowData: any): string[] {
     }
   }
 
-  return fields;
+  return deduplicate(fields);
 }
 
 /**
@@ -243,11 +267,7 @@ function extractScreenFields(flowData: any): string[] {
 function extractDecisions(flowData: any): string[] {
   const decisions: string[] = [];
 
-  const decisionNodes = Array.isArray(flowData.decisions)
-    ? flowData.decisions
-    : flowData.decisions
-    ? [flowData.decisions]
-    : [];
+  const decisionNodes = normalizeArray(flowData.decisions);
 
   for (const decision of decisionNodes) {
     if (decision.name) {
@@ -255,7 +275,7 @@ function extractDecisions(flowData: any): string[] {
     }
   }
 
-  return decisions;
+  return deduplicate(decisions);
 }
 
 /**

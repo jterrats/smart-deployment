@@ -204,6 +204,27 @@ describe('Custom Metadata Parser', () => {
 
       expect(result.protected).to.be.false;
     });
+
+    it('should normalize xsi-typed record values to scalars', async () => {
+      const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+          <label>Typed Values</label>
+          <values>
+            <field>TargetObject__c</field>
+            <value xsi:type="xsd:string">Account</value>
+          </values>
+          <values>
+            <field>IsEnabled__c</field>
+            <value xsi:type="xsd:boolean">true</value>
+          </values>
+        </CustomMetadata>
+      `;
+
+      const result = await parseCustomMetadataRecord('Config.Typed', metadata);
+
+      expect(result.values['TargetObject__c']).to.equal('Account');
+      expect(result.values['IsEnabled__c']).to.equal(true);
+    });
   });
 
   describe('Grouping Type with Records', () => {
@@ -349,6 +370,41 @@ describe('Custom Metadata Parser', () => {
       expect(recordDeps).to.have.lengthOf(2);
       expect(recordDeps[0].name).to.equal('Config.Record1');
       expect(recordDeps[1].name).to.equal('Config.Record2');
+    });
+
+    it('should derive lookup reference dependencies from relationship field values in records', async () => {
+      const typeMetadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata">
+          <label>Config</label>
+          <pluralLabel>Configs</pluralLabel>
+          <fields>
+            <fullName>TargetObject__c</fullName>
+            <label>Target Object</label>
+            <type>MetadataRelationship</type>
+            <referenceTo>EntityDefinition</referenceTo>
+          </fields>
+        </CustomMetadata>
+      `;
+
+      const recordMetadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+          <label>Account Config</label>
+          <values>
+            <field>TargetObject__c</field>
+            <value xsi:type="xsd:string">Account</value>
+          </values>
+        </CustomMetadata>
+      `;
+
+      const typeResult = await parseCustomMetadataType('Config__mdt', typeMetadata);
+      const record = await parseCustomMetadataRecord('Config.Account', recordMetadata);
+      const grouped = groupCustomMetadataWithRecords(typeResult, [record]);
+
+      const lookupDeps = grouped.dependencies.filter((d) => d.type === 'lookup_reference');
+      expect(lookupDeps).to.have.lengthOf(1);
+      expect(lookupDeps[0].name).to.equal('Config.Account');
+      expect(lookupDeps[0].referencedObject).to.equal('EntityDefinition');
+      expect(lookupDeps[0].fieldName).to.equal('TargetObject__c');
     });
   });
 

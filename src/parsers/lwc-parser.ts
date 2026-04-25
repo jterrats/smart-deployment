@@ -48,13 +48,72 @@ export type LWCParseResult = {
  * Remove comments from JavaScript/TypeScript code
  */
 function removeComments(code: string): string {
-  // Remove single-line comments (//)
-  let cleaned = code.replace(/\/\/.*$/gm, '');
+  let result = '';
+  let inSingleLineComment = false;
+  let inMultiLineComment = false;
+  let stringDelimiter: "'" | '"' | '`' | null = null;
+  let escapeNext = false;
 
-  // Remove multi-line comments (/* ... */)
-  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (let index = 0; index < code.length; index++) {
+    const current = code[index];
+    const next = code[index + 1];
 
-  return cleaned;
+    if (inSingleLineComment) {
+      if (current === '\n') {
+        inSingleLineComment = false;
+        result += current;
+      }
+
+      continue;
+    }
+
+    if (inMultiLineComment) {
+      if (current === '*' && next === '/') {
+        inMultiLineComment = false;
+        index += 1;
+      } else if (current === '\n') {
+        result += '\n';
+      }
+
+      continue;
+    }
+
+    if (stringDelimiter) {
+      result += current;
+
+      if (escapeNext) {
+        escapeNext = false;
+      } else if (current === '\\') {
+        escapeNext = true;
+      } else if (current === stringDelimiter) {
+        stringDelimiter = null;
+      }
+
+      continue;
+    }
+
+    if (current === '"' || current === "'" || current === '`') {
+      stringDelimiter = current;
+      result += current;
+      continue;
+    }
+
+    if (current === '/' && next === '/') {
+      inSingleLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (current === '/' && next === '*') {
+      inMultiLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    result += current;
+  }
+
+  return result;
 }
 
 /**
@@ -126,8 +185,7 @@ function extractWireAdapters(code: string): string[] {
  * @ac US-016-AC-4: Extract @api property dependencies
  */
 function extractApiProperties(code: string): string[] {
-  // Pattern: @api propertyName
-  const apiPattern = /@api\s+([a-zA-Z][a-zA-Z0-9_]*)/g;
+  const apiPattern = /@api\s+(?:(?:get|set)\s+)?([a-zA-Z][a-zA-Z0-9_]*)/g;
   const matches = code.matchAll(apiPattern);
   const properties: string[] = [];
 

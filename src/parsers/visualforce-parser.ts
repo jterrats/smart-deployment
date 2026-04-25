@@ -107,7 +107,8 @@ function extractComponents(vfContent: string): string[] {
     const componentName = match[2];
 
     // Exclude apex: namespace (standard components)
-    if (namespace.toLowerCase() !== 'apex' && namespace.toLowerCase() !== 'chatter') {
+    const normalizedNamespace = namespace.toLowerCase();
+    if (normalizedNamespace !== 'apex' && normalizedNamespace !== 'chatter' && normalizedNamespace !== 'flow') {
       const fullName = `${namespace}:${componentName}`;
       if (!components.includes(fullName)) {
         components.push(fullName);

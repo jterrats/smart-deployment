@@ -85,6 +85,33 @@ describe('Profile Parser', () => {
       expect(result.dependencies.objects).to.deep.equal(['Account', 'Contact', 'Opportunity']);
     });
 
+    it('should ignore object permissions without any granted access', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>false</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Account</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <allowRead>true</allowRead>
+        <object>Contact</object>
+    </objectPermissions>
+</Profile>`;
+
+      const filePath = join(testDir, 'Object_Filtering.profile-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseProfile(filePath, 'Object_Filtering');
+
+      expect(result.objectPermissions).to.deep.equal(['Contact']);
+      expect(result.dependencies.objects).to.deep.equal(['Contact']);
+    });
+
     /**
      * @ac US-020-AC-2: Extract field permissions
      */
@@ -115,16 +142,8 @@ describe('Profile Parser', () => {
       const result = await parseProfile(filePath, 'Sales_FLS');
 
       expect(result.fieldPermissions).to.be.an('array').with.lengthOf(3);
-      expect(result.fieldPermissions).to.include.members([
-        'Account.Industry',
-        'Account.Revenue',
-        'Opportunity.Amount',
-      ]);
-      expect(result.dependencies.fields).to.deep.equal([
-        'Account.Industry',
-        'Account.Revenue',
-        'Opportunity.Amount',
-      ]);
+      expect(result.fieldPermissions).to.include.members(['Account.Industry', 'Account.Revenue', 'Opportunity.Amount']);
+      expect(result.dependencies.fields).to.deep.equal(['Account.Industry', 'Account.Revenue', 'Opportunity.Amount']);
     });
 
     /**
@@ -164,6 +183,62 @@ describe('Profile Parser', () => {
         'OpportunityHandler',
         'ContactTriggerHandler',
       ]);
+    });
+
+    it('should include only enabled profile access references', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <classAccesses>
+        <apexClass>EnabledClass</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>DisabledClass</apexClass>
+        <enabled>false</enabled>
+    </classAccesses>
+    <pageAccesses>
+        <apexPage>EnabledPage</apexPage>
+        <enabled>true</enabled>
+    </pageAccesses>
+    <pageAccesses>
+        <apexPage>DisabledPage</apexPage>
+        <enabled>false</enabled>
+    </pageAccesses>
+    <applicationVisibilities>
+        <application>VisibleApp</application>
+        <default>true</default>
+        <visible>true</visible>
+    </applicationVisibilities>
+    <applicationVisibilities>
+        <application>HiddenApp</application>
+        <default>false</default>
+        <visible>false</visible>
+    </applicationVisibilities>
+    <tabVisibilities>
+        <tab>standard-Account</tab>
+        <visibility>DefaultOn</visibility>
+    </tabVisibilities>
+    <tabVisibilities>
+        <tab>standard-Contact</tab>
+        <visibility>Hidden</visibility>
+    </tabVisibilities>
+</Profile>`;
+
+      const filePath = join(testDir, 'Enabled_Only.profile-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseProfile(filePath, 'Enabled_Only');
+
+      expect(result.apexClassAccesses).to.deep.equal(['EnabledClass']);
+      expect(result.visualforcePageAccesses).to.deep.equal(['EnabledPage']);
+      expect(result.applicationVisibilities).to.deep.equal(['VisibleApp']);
+      expect(result.tabVisibilities).to.deep.equal(['standard-Account']);
+      expect(result.optionalDependencies).to.deep.equal({
+        layouts: [],
+        visualforcePages: ['EnabledPage'],
+        applications: ['VisibleApp'],
+        tabs: ['standard-Account'],
+      });
     });
 
     /**
@@ -268,9 +343,10 @@ describe('Profile Parser', () => {
 
       const result = await parseProfile(filePath, 'App_Visibility');
 
-      expect(result.applicationVisibilities).to.be.an('array').with.lengthOf(3);
-      expect(result.applicationVisibilities).to.include.members(['Sales', 'Service', 'Marketing']);
-      expect(result.dependencies.applications).to.deep.equal(['Sales', 'Service', 'Marketing']);
+      expect(result.applicationVisibilities).to.be.an('array').with.lengthOf(2);
+      expect(result.applicationVisibilities).to.include.members(['Sales', 'Service']);
+      expect(result.applicationVisibilities).to.not.include('Marketing');
+      expect(result.dependencies.applications).to.deep.equal(['Sales', 'Service']);
     });
 
     /**
@@ -354,9 +430,47 @@ describe('Profile Parser', () => {
       expect(result.dependencies.customPermissions).to.deep.equal(['CanApproveDiscounts']);
       expect(result.dependencies.customMetadataTypes).to.deep.equal(['AppConfig__mdt']);
       expect(result.dependencies.flows).to.deep.equal(['Lead_Assignment_Flow']);
+      expect(result.optionalDependencies).to.deep.equal({
+        layouts: ['Account-Account Layout'],
+        visualforcePages: ['AccountDashboard'],
+        applications: ['Sales'],
+        tabs: ['Account'],
+      });
 
       // Verify user permissions are extracted
       expect(result.userPermissions).to.deep.equal(['ViewAllData']);
+    });
+
+    it('should extract custom setting and external data source accesses', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <externalDataSourceAccesses>
+        <enabled>true</enabled>
+        <externalDataSource>ERP_Connection</externalDataSource>
+    </externalDataSourceAccesses>
+    <externalDataSourceAccesses>
+        <enabled>false</enabled>
+        <externalDataSource>Disabled_ERP</externalDataSource>
+    </externalDataSourceAccesses>
+    <customSettingAccesses>
+        <enabled>true</enabled>
+        <name>AppSettings__c</name>
+    </customSettingAccesses>
+    <customSettingAccesses>
+        <enabled>false</enabled>
+        <name>DisabledSettings__c</name>
+    </customSettingAccesses>
+</Profile>`;
+
+      const filePath = join(testDir, 'Extended_Access.profile-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseProfile(filePath, 'Extended_Access');
+
+      expect(result.externalDataSourceAccesses).to.deep.equal(['ERP_Connection']);
+      expect(result.customSettingAccesses).to.deep.equal(['AppSettings__c']);
+      expect(result.dependencies.externalDataSources).to.deep.equal(['ERP_Connection']);
+      expect(result.dependencies.customSettings).to.deep.equal(['AppSettings__c']);
     });
 
     it('should handle profile with single item (not array)', async () => {
@@ -449,4 +563,3 @@ describe('Profile Parser', () => {
     });
   });
 });
-

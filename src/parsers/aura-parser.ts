@@ -94,7 +94,7 @@ function extractChildComponents(cmpXml: string): string[] {
     const componentName = match[2];
 
     // Exclude aura: namespace (framework components)
-    if (namespace !== 'aura' && namespace !== 'lightning' && namespace !== 'ui') {
+    if (namespace !== 'aura' && namespace !== 'lightning' && namespace !== 'ui' && namespace !== 'force') {
       const fullName = `${namespace}:${componentName}`;
       if (!children.includes(fullName)) {
         children.push(fullName);
@@ -110,7 +110,7 @@ function extractChildComponents(cmpXml: string): string[] {
     const namespace = match[1];
     const componentName = match[2];
 
-    if (namespace !== 'aura' && namespace !== 'lightning' && namespace !== 'ui') {
+    if (namespace !== 'aura' && namespace !== 'lightning' && namespace !== 'ui' && namespace !== 'force') {
       const fullName = `${namespace}:${componentName}`;
       if (!children.includes(fullName)) {
         children.push(fullName);

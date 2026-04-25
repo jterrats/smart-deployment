@@ -175,6 +175,35 @@ describe('Custom Object Parser', () => {
       expect(formulaDeps.some((d) => d.referencedObject === 'Contact')).to.be.true;
     });
 
+    it('should resolve custom relationship traversals to their referenced object and field dependency', async () => {
+      const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+          <label>Invoice</label>
+          <pluralLabel>Invoices</pluralLabel>
+          <fields>
+            <fullName>Account__c</fullName>
+            <label>Account</label>
+            <type>Lookup</type>
+            <referenceTo>Account</referenceTo>
+            <relationshipName>Account</relationshipName>
+          </fields>
+          <fields>
+            <fullName>AccountName__c</fullName>
+            <label>Account Name</label>
+            <type>Text</type>
+            <formula>Account__r.Name</formula>
+          </fields>
+        </CustomObject>
+      `;
+
+      const result = await parseCustomObject('Invoice__c', metadata);
+
+      const formulaDeps = result.dependencies.filter((d) => d.type === 'formula_field');
+      const customFieldDeps = result.dependencies.filter((d) => d.type === 'custom_field');
+      expect(formulaDeps.some((d) => d.referencedObject === 'Account')).to.be.true;
+      expect(customFieldDeps.some((d) => d.name === 'Account__c')).to.be.true;
+    });
+
     it('should ignore standard formula functions', async () => {
       const metadata = `<?xml version="1.0" encoding="UTF-8"?>
         <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -269,6 +298,69 @@ describe('Custom Object Parser', () => {
       const lookupDeps = result.dependencies.filter((d) => d.type === 'lookup_field');
       expect(lookupDeps).to.have.lengthOf(2);
       expect(lookupDeps.map((d) => d.referencedObject)).to.include.members(['Account', 'Contact']);
+    });
+  });
+
+  describe('Derived Field Dependencies', () => {
+    it('should extract custom field dependencies from roll-up summary fields', async () => {
+      const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+          <label>Invoice</label>
+          <pluralLabel>Invoices</pluralLabel>
+          <fields>
+            <fullName>Amount__c</fullName>
+            <label>Amount</label>
+            <type>Currency</type>
+            <precision>18</precision>
+            <scale>2</scale>
+          </fields>
+          <fields>
+            <fullName>LineItems__c</fullName>
+            <label>Line Items</label>
+            <type>MasterDetail</type>
+            <referenceTo>Invoice_Line_Item__c</referenceTo>
+            <relationshipName>LineItems</relationshipName>
+          </fields>
+          <fields>
+            <fullName>TotalAmount__c</fullName>
+            <label>Total Amount</label>
+            <type>Summary</type>
+            <summaryForeignKey>LineItems__c</summaryForeignKey>
+            <summarizedField>Amount__c</summarizedField>
+            <summaryOperation>sum</summaryOperation>
+          </fields>
+        </CustomObject>
+      `;
+
+      const result = await parseCustomObject('Invoice__c', metadata);
+
+      const customFieldDeps = result.dependencies.filter((d) => d.type === 'custom_field');
+      expect(customFieldDeps.map((d) => d.name)).to.include.members(['LineItems__c', 'Amount__c']);
+    });
+
+    it('should extract custom field dependencies from validation rules', async () => {
+      const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+          <label>Order</label>
+          <pluralLabel>Orders</pluralLabel>
+          <fields>
+            <fullName>Status__c</fullName>
+            <label>Status</label>
+            <type>Text</type>
+            <length>20</length>
+          </fields>
+          <validationRules>
+            <fullName>Requires_Status</fullName>
+            <active>true</active>
+            <errorConditionFormula>ISBLANK(Status__c)</errorConditionFormula>
+          </validationRules>
+        </CustomObject>
+      `;
+
+      const result = await parseCustomObject('Order__c', metadata);
+
+      const customFieldDeps = result.dependencies.filter((d) => d.type === 'custom_field');
+      expect(customFieldDeps.some((d) => d.name === 'Status__c')).to.be.true;
     });
   });
 

@@ -1,7 +1,7 @@
 /**
  * Permission Set Parser
  * Parses Salesforce Permission Set metadata files (.permissionset-meta.xml)
- * 
+ *
  * @ac AC-1: Parse permission set metadata files
  * @ac AC-2: Extract object permissions (CRUD + modify/view all)
  * @ac AC-3: Extract field-level security (FLS) permissions
@@ -11,7 +11,7 @@
  * @ac AC-7: Extract application visibility settings
  * @ac AC-8: Extract tab visibility settings
  * @ac AC-9: Identify all dependent metadata types
- * 
+ *
  * @issue #22
  */
 
@@ -72,6 +72,12 @@ export type PermissionSetParseResult = {
     customSettings: string[];
     recordTypes: string[];
   };
+  /** Soft dependencies that may not block deploy ordering */
+  optionalDependencies: {
+    visualforcePages: string[];
+    applications: string[];
+    tabs: string[];
+  };
 };
 
 /**
@@ -82,13 +88,35 @@ function normalizeArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
+function uniqueDefined(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function hasObjectAccess(permission: {
+  allowCreate?: boolean;
+  allowDelete?: boolean;
+  allowEdit?: boolean;
+  allowRead?: boolean;
+  modifyAllRecords?: boolean;
+  viewAllRecords?: boolean;
+}): boolean {
+  return [
+    permission.allowCreate,
+    permission.allowDelete,
+    permission.allowEdit,
+    permission.allowRead,
+    permission.modifyAllRecords,
+    permission.viewAllRecords,
+  ].some((value) => value === true);
+}
+
 /**
  * Parse a Permission Set metadata XML file
- * 
+ *
  * @param filePath - Path to the .permissionset-meta.xml file
  * @param permissionSetName - Name of the permission set (typically from filename)
  * @returns Parsed permission set metadata with dependencies
- * 
+ *
  * @example
  * const result = await parsePermissionSet(
  *   'force-app/main/default/permissionsets/Sales_User.permissionset-meta.xml',
@@ -141,58 +169,49 @@ export async function parsePermissionSet(
   const userPermissions = normalizeArray(metadata.userPermissions);
   const recordTypeVisibilities = normalizeArray(metadata.recordTypeVisibilities);
 
-  // Extract object names
-  const objectNames = objectPermissions.map((perm) => perm.object);
+  const objectNames = uniqueDefined(
+    objectPermissions.filter((perm) => hasObjectAccess(perm)).map((perm) => perm.object)
+  );
 
-  // Extract field names (format: ObjectName.FieldName)
-  const fieldNames = fieldPermissions.map((perm) => perm.field);
+  const fieldNames = uniqueDefined(
+    fieldPermissions.filter((perm) => perm.editable || perm.readable).map((perm) => perm.field)
+  );
 
-  // Extract Apex class names
-  const apexClassNames = classAccesses.map((access) => access.apexClass);
+  const apexClassNames = uniqueDefined(
+    classAccesses.filter((access) => access.enabled).map((access) => access.apexClass)
+  );
 
-  // Extract Visualforce page names
-  const visualforcePageNames = pageAccesses.map((access) => access.apexPage);
+  const visualforcePageNames = uniqueDefined(
+    pageAccesses.filter((access) => access.enabled).map((access) => access.apexPage)
+  );
 
-  // Extract custom permission names
-  const customPermissionNames = customPermissions
-    .filter((perm) => perm.enabled)
-    .map((perm) => perm.name);
+  const customPermissionNames = uniqueDefined(
+    customPermissions.filter((perm) => perm.enabled).map((perm) => perm.name)
+  );
 
-  // Extract application names
-  const applicationNames = applicationVisibilities.map((app) => app.application);
+  const applicationNames = uniqueDefined(
+    applicationVisibilities.filter((app) => app.visible).map((app) => app.application)
+  );
 
-  // Extract tab names
-  const tabNames = tabSettings.map((tab) => tab.tab);
+  const tabNames = uniqueDefined(tabSettings.filter((tab) => tab.visibility !== 'None').map((tab) => tab.tab));
 
-  // Extract custom metadata type names
-  const customMetadataTypeNames = customMetadataTypeAccesses
-    .filter((access) => access.enabled)
-    .map((access) => access.name);
+  const customMetadataTypeNames = uniqueDefined(
+    customMetadataTypeAccesses.filter((access) => access.enabled).map((access) => access.name)
+  );
 
-  // Extract flow names
-  const flowNames = flowAccesses
-    .filter((access) => access.enabled)
-    .map((access) => access.flow);
+  const flowNames = uniqueDefined(flowAccesses.filter((access) => access.enabled).map((access) => access.flow));
 
-  // Extract external data source names
-  const externalDataSourceNames = externalDataSourceAccesses
-    .filter((access) => access.enabled)
-    .map((access) => access.externalDataSource);
+  const externalDataSourceNames = uniqueDefined(
+    externalDataSourceAccesses.filter((access) => access.enabled).map((access) => access.externalDataSource)
+  );
 
-  // Extract custom setting names
-  const customSettingNames = customSettingAccesses
-    .filter((access) => access.enabled)
-    .map((access) => access.name);
+  const customSettingNames = uniqueDefined(
+    customSettingAccesses.filter((access) => access.enabled).map((access) => access.name)
+  );
 
-  // Extract user permission names
-  const userPermissionNames = userPermissions
-    .filter((perm) => perm.enabled)
-    .map((perm) => perm.name);
+  const userPermissionNames = uniqueDefined(userPermissions.filter((perm) => perm.enabled).map((perm) => perm.name));
 
-  // Extract record type names
-  const recordTypeNames = recordTypeVisibilities
-    .filter((rt) => rt.visible)
-    .map((rt) => rt.recordType);
+  const recordTypeNames = uniqueDefined(recordTypeVisibilities.filter((rt) => rt.visible).map((rt) => rt.recordType));
 
   // Build result
   return {
@@ -226,6 +245,11 @@ export async function parsePermissionSet(
       externalDataSources: externalDataSourceNames,
       customSettings: customSettingNames,
       recordTypes: recordTypeNames,
+    },
+    optionalDependencies: {
+      visualforcePages: visualforcePageNames,
+      applications: applicationNames,
+      tabs: tabNames,
     },
   };
 }

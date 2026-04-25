@@ -20,6 +20,7 @@ import type {
   ItemInstance,
   QuickActionListItem,
   PlatformActionListItem,
+  UiFormulaRule,
 } from '../types/salesforce/flexipage.js';
 
 /**
@@ -65,16 +66,47 @@ function normalizeArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
+function extractRecordTypesFromVisibilityRule(visibilityRule: UiFormulaRule | undefined): string[] {
+  if (!visibilityRule) {
+    return [];
+  }
+
+  const recordTypes: string[] = [];
+  const criteria = normalizeArray(visibilityRule.criteria);
+
+  for (const criterion of criteria) {
+    if (criterion.leftValue?.includes('RecordType') || criterion.rightValue?.includes('RecordType')) {
+      const candidate = criterion.rightValue?.includes('RecordType') ? criterion.leftValue : criterion.rightValue;
+      if (candidate && !candidate.includes('RecordType')) {
+        recordTypes.push(candidate);
+      }
+    }
+  }
+
+  return recordTypes;
+}
+
+function extractObjectName(value: string): string | undefined {
+  if (!value.includes('.')) {
+    return undefined;
+  }
+
+  const [objectName] = value.split('.');
+  return objectName || undefined;
+}
+
 /**
  * Extract components from item instances
  */
 function extractComponentsFromItems(items: ItemInstance[]): {
   lwc: string[];
   aura: string[];
+  objects: string[];
   recordTypes: string[];
 } {
   const lwcComponents: string[] = [];
   const auraComponents: string[] = [];
+  const objects: string[] = [];
   const recordTypes: string[] = [];
 
   for (const item of items) {
@@ -107,25 +139,23 @@ function extractComponentsFromItems(items: ItemInstance[]): {
         lwcComponents.push(componentName);
       }
 
-      // Extract record type filters from visibility rules
-      if (item.componentInstance.visibilityRule) {
-        const criteria = normalizeArray(item.componentInstance.visibilityRule.criteria);
-        for (const criterion of criteria) {
-          // Check if criterion references RecordType
-          if (criterion.leftValue?.includes('RecordType') || criterion.rightValue?.includes('RecordType')) {
-            const rtValue = criterion.rightValue ?? criterion.leftValue;
-            if (rtValue && !rtValue.includes('RecordType')) {
-              recordTypes.push(rtValue);
-            }
-          }
-        }
+      recordTypes.push(...extractRecordTypesFromVisibilityRule(item.componentInstance.visibilityRule));
+    }
+
+    if (item.fieldInstance?.fieldItem) {
+      const objectName = extractObjectName(item.fieldInstance.fieldItem);
+      if (objectName) {
+        objects.push(objectName);
       }
+
+      recordTypes.push(...extractRecordTypesFromVisibilityRule(item.fieldInstance.visibilityRule));
     }
   }
 
   return {
     lwc: lwcComponents,
     aura: auraComponents,
+    objects,
     recordTypes,
   };
 }
@@ -136,23 +166,27 @@ function extractComponentsFromItems(items: ItemInstance[]): {
 function extractComponents(regions: FlexiPageRegion[]): {
   lwc: string[];
   aura: string[];
+  objects: string[];
   recordTypes: string[];
 } {
   const allLwc: string[] = [];
   const allAura: string[] = [];
+  const allObjects: string[] = [];
   const allRecordTypes: string[] = [];
 
   for (const region of regions) {
     const items = normalizeArray(region.itemInstances);
-    const { lwc, aura, recordTypes } = extractComponentsFromItems(items);
+    const { lwc, aura, objects, recordTypes } = extractComponentsFromItems(items);
     allLwc.push(...lwc);
     allAura.push(...aura);
+    allObjects.push(...objects);
     allRecordTypes.push(...recordTypes);
   }
 
   return {
     lwc: [...new Set(allLwc)],
     aura: [...new Set(allAura)],
+    objects: [...new Set(allObjects)],
     recordTypes: [...new Set(allRecordTypes)],
   };
 }
@@ -198,10 +232,7 @@ function extractQuickActions(metadata: FlexiPageMetadata): string[] {
  * console.log(result.lwcComponents); // ['c:accountSummary', 'c:relatedContacts']
  * console.log(result.dependencies.auraComponents); // ['c:AccountChart']
  */
-export async function parseFlexiPage(
-  filePath: string,
-  flexiPageName: string
-): Promise<FlexiPageParseResult> {
+export async function parseFlexiPage(filePath: string, flexiPageName: string): Promise<FlexiPageParseResult> {
   // Read and parse XML
   const xmlContent = await readFile(filePath, 'utf-8');
   const parser = new XMLParser({
@@ -232,16 +263,18 @@ export async function parseFlexiPage(
   const regionNames = regions.map((region) => region.name);
 
   // Extract components
-  const { lwc, aura, recordTypes } = extractComponents(regions);
+  const { lwc, aura, objects: regionObjects, recordTypes } = extractComponents(regions);
 
   // Extract objects
   const objects: string[] = [];
   if (metadata.sobjectType) {
     objects.push(metadata.sobjectType);
   }
+  objects.push(...regionObjects);
 
   // Extract quick actions
   const quickActions = extractQuickActions(metadata);
+  const uniqueObjects = [...new Set(objects)];
 
   // Build result
   return {
@@ -251,18 +284,17 @@ export async function parseFlexiPage(
     sobjectType: metadata.sobjectType,
     lwcComponents: lwc,
     auraComponents: aura,
-    objects,
+    objects: uniqueObjects,
     recordTypeFilters: recordTypes,
     regions: regionNames,
     quickActions,
     dependencies: {
       lwcComponents: lwc,
       auraComponents: aura,
-      objects,
+      objects: uniqueObjects,
       recordTypes,
       regions: regionNames,
       quickActions,
     },
   };
 }
-

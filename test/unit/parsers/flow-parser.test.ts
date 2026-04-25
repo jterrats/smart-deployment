@@ -75,6 +75,24 @@ describe('Flow Parser', () => {
       expect(result.apexActions).to.include.members(['MyApexClass.method1', 'AnotherClass.method2']);
     });
 
+    it('should extract apex classes from plugin calls and transforms', () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <apexPluginCalls>
+    <name>PluginCall</name>
+    <apexClass>PluginActionHandler</apexClass>
+  </apexPluginCalls>
+  <transforms>
+    <name>TransformCall</name>
+    <apexClass>TransformActionHandler</apexClass>
+  </transforms>
+</Flow>`;
+
+      const result = parseFlow('MyFlow.flow-meta.xml', xml);
+
+      expect(result.apexActions).to.include.members(['PluginActionHandler', 'TransformActionHandler']);
+    });
+
     it('should not extract non-apex action types', () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -259,6 +277,24 @@ describe('Flow Parser', () => {
       // Should only appear once despite multiple references
       expect(result.recordReferences.filter((r) => r === 'Account')).to.have.lengthOf(1);
     });
+
+    it('should extract record references from dynamic choice sets', () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <dynamicChoiceSets>
+    <name>AccountChoices</name>
+    <dataType>String</dataType>
+    <displayField>Name</displayField>
+    <object>Account</object>
+    <picklistObject>Opportunity</picklistObject>
+    <valueField>Id</valueField>
+  </dynamicChoiceSets>
+</Flow>`;
+
+      const result = parseFlow('MyFlow.flow-meta.xml', xml);
+
+      expect(result.recordReferences).to.include.members(['Account', 'Opportunity']);
+    });
   });
 
   describe('GenAI Prompt References', () => {
@@ -294,6 +330,26 @@ describe('Flow Parser', () => {
       const result = parseFlow('MyFlow.flow-meta.xml', xml);
 
       expect(result.genaiPrompts).to.include('MyPromptTemplate');
+    });
+
+    it('should extract prompt template names from action input parameters', () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <actionCalls>
+    <name>UsePromptTemplate</name>
+    <actionType>standardInvocableAction</actionType>
+    <inputParameters>
+      <name>promptTemplateApiName</name>
+      <value>
+        <stringValue>CaseSummaryPrompt</stringValue>
+      </value>
+    </inputParameters>
+  </actionCalls>
+</Flow>`;
+
+      const result = parseFlow('MyFlow.flow-meta.xml', xml);
+
+      expect(result.genaiPrompts).to.include('CaseSummaryPrompt');
     });
 
     it('should extract GenAi action types (case variations)', () => {

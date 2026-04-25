@@ -38,6 +38,8 @@ export type LayoutParseResult = {
   canvasApps: string[];
   /** Custom links referenced in the layout */
   customLinks: string[];
+  /** Related objects referenced directly in the layout metadata */
+  relatedObjects: string[];
   /** All dependencies extracted from this layout */
   dependencies: {
     object: string;
@@ -45,6 +47,15 @@ export type LayoutParseResult = {
     visualforcePages: string[];
     fields: string[];
     relatedLists: string[];
+    quickActions: string[];
+    canvasApps: string[];
+    customLinks: string[];
+    relatedObjects: string[];
+  };
+  /** Soft dependencies that may not block deploy ordering */
+  optionalDependencies: {
+    customButtons: string[];
+    visualforcePages: string[];
     quickActions: string[];
     canvasApps: string[];
     customLinks: string[];
@@ -57,6 +68,10 @@ export type LayoutParseResult = {
 function normalizeArray<T>(value: T | T[] | undefined): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+function uniqueDefined(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
 /**
@@ -76,6 +91,7 @@ function extractObjectFromLayoutName(layoutName: string): string {
 function extractCustomButtons(metadata: LayoutMetadata): string[] {
   const layoutCustomButtons = normalizeArray(metadata.customButtons);
   const relatedListCustomButtons: string[] = [];
+  const platformActionCustomButtons: string[] = [];
 
   const relatedLists = normalizeArray(metadata.relatedLists);
   for (const relatedList of relatedLists) {
@@ -83,7 +99,16 @@ function extractCustomButtons(metadata: LayoutMetadata): string[] {
     relatedListCustomButtons.push(...buttons);
   }
 
-  return [...new Set([...layoutCustomButtons, ...relatedListCustomButtons])];
+  if (metadata.platformActionList) {
+    const actionItems = normalizeArray(metadata.platformActionList.platformActionListItems);
+    for (const item of actionItems) {
+      if (item.actionType === 'CustomButton') {
+        platformActionCustomButtons.push(item.actionName);
+      }
+    }
+  }
+
+  return uniqueDefined([...layoutCustomButtons, ...relatedListCustomButtons, ...platformActionCustomButtons]);
 }
 
 /**
@@ -123,7 +148,7 @@ function extractVFPagesFromFeedLayout(feedLayout?: FeedLayout): string[] {
     }
   }
 
-  return pages;
+  return uniqueDefined(pages);
 }
 
 /**
@@ -179,7 +204,17 @@ function extractFields(metadata: LayoutMetadata, layoutSections: LayoutSection[]
     }
   }
 
-  return [...new Set(fields)];
+  const multilineFields = normalizeArray(metadata.multilineLayoutFields);
+  fields.push(...multilineFields);
+
+  const relatedContentItems = normalizeArray(metadata.relatedContent?.relatedContentItems);
+  for (const item of relatedContentItems) {
+    if (item.layoutItem.field) {
+      fields.push(item.layoutItem.field);
+    }
+  }
+
+  return uniqueDefined(fields);
 }
 
 /**
@@ -202,7 +237,7 @@ function extractQuickActions(metadata: LayoutMetadata): string[] {
     }
   }
 
-  return [...new Set(quickActions)];
+  return uniqueDefined(quickActions);
 }
 
 /**
@@ -223,7 +258,7 @@ function extractCanvasApps(sections: LayoutSection[]): string[] {
     }
   }
 
-  return [...new Set(apps)];
+  return uniqueDefined(apps);
 }
 
 /**
@@ -255,7 +290,61 @@ function extractCustomLinks(metadata: LayoutMetadata, layoutSections: LayoutSect
     }
   }
 
-  return [...new Set(links)];
+  if (metadata.platformActionList) {
+    const actionItems = normalizeArray(metadata.platformActionList.platformActionListItems);
+    for (const item of actionItems) {
+      if (item.actionType === 'ActionLink') {
+        links.push(item.actionName);
+      }
+    }
+  }
+
+  const relatedContentItems = normalizeArray(metadata.relatedContent?.relatedContentItems);
+  for (const item of relatedContentItems) {
+    if (item.layoutItem.customLink) {
+      links.push(item.layoutItem.customLink);
+    }
+  }
+
+  return uniqueDefined(links);
+}
+
+function extractVFPages(metadata: LayoutMetadata, layoutSections: LayoutSection[]): string[] {
+  const pages = [...extractVFPagesFromSections(layoutSections), ...extractVFPagesFromFeedLayout(metadata.feedLayout)];
+
+  const relatedContentItems = normalizeArray(metadata.relatedContent?.relatedContentItems);
+  for (const item of relatedContentItems) {
+    if (item.layoutItem.page) {
+      pages.push(item.layoutItem.page);
+    }
+  }
+
+  return uniqueDefined(pages);
+}
+
+function extractCanvasAppsFromFeedLayout(feedLayout?: FeedLayout): string[] {
+  if (!feedLayout) {
+    return [];
+  }
+
+  const components = [...normalizeArray(feedLayout.leftComponents), ...normalizeArray(feedLayout.rightComponents)];
+
+  return uniqueDefined(
+    components.filter((component) => component.componentType === 'Canvas').map((component) => component.page)
+  );
+}
+
+function extractCanvasAppsWithRelatedContent(metadata: LayoutMetadata, layoutSections: LayoutSection[]): string[] {
+  const apps = [...extractCanvasApps(layoutSections), ...extractCanvasAppsFromFeedLayout(metadata.feedLayout)];
+
+  const relatedContentItems = normalizeArray(metadata.relatedContent?.relatedContentItems);
+  for (const item of relatedContentItems) {
+    if (item.layoutItem.canvas) {
+      apps.push(item.layoutItem.canvas);
+    }
+  }
+
+  return uniqueDefined(apps);
 }
 
 /**
@@ -274,10 +363,7 @@ function extractCustomLinks(metadata: LayoutMetadata, layoutSections: LayoutSect
  * console.log(result.customButtons); // ['New_Custom_Button', 'Edit_Button']
  * console.log(result.dependencies.visualforcePages); // ['AccountDashboard']
  */
-export async function parseLayout(
-  filePath: string,
-  layoutName: string
-): Promise<LayoutParseResult> {
+export async function parseLayout(filePath: string, layoutName: string): Promise<LayoutParseResult> {
   // Read and parse XML
   const xmlContent = await readFile(filePath, 'utf-8');
   const parser = new XMLParser({
@@ -311,14 +397,13 @@ export async function parseLayout(
   const relatedLists = normalizeArray(metadata.relatedLists);
 
   const customButtons = extractCustomButtons(metadata);
-  const vfPagesFromSections = extractVFPagesFromSections(layoutSections);
-  const vfPagesFromFeed = extractVFPagesFromFeedLayout(metadata.feedLayout);
-  const visualforcePages = [...new Set([...vfPagesFromSections, ...vfPagesFromFeed])];
+  const visualforcePages = extractVFPages(metadata, layoutSections);
   const fields = extractFields(metadata, layoutSections);
-  const relatedListNames = relatedLists.map((list) => list.relatedList);
+  const relatedListNames = uniqueDefined(relatedLists.map((list) => list.relatedList));
   const quickActions = extractQuickActions(metadata);
-  const canvasApps = extractCanvasApps(layoutSections);
+  const canvasApps = extractCanvasAppsWithRelatedContent(metadata, layoutSections);
   const customLinks = extractCustomLinks(metadata, layoutSections);
+  const relatedObjects = uniqueDefined(normalizeArray(metadata.relatedObjects));
 
   // Build result
   return {
@@ -331,16 +416,24 @@ export async function parseLayout(
     quickActions,
     canvasApps,
     customLinks,
+    relatedObjects,
     dependencies: {
       object: objectName,
       customButtons,
       visualforcePages,
       fields,
-      relatedLists: [...new Set(relatedListNames)],
+      relatedLists: relatedListNames,
+      quickActions,
+      canvasApps,
+      customLinks,
+      relatedObjects,
+    },
+    optionalDependencies: {
+      customButtons,
+      visualforcePages,
       quickActions,
       canvasApps,
       customLinks,
     },
   };
 }
-

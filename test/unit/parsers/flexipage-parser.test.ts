@@ -132,6 +132,31 @@ describe('FlexiPage Parser', () => {
       expect(result.dependencies.objects).to.deep.equal(['Opportunity']);
     });
 
+    it('US-022-AC-3: should extract object references from field instances', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<FlexiPage xmlns="http://soap.sforce.com/2006/04/metadata">
+    <masterLabel>Field Instance Page</masterLabel>
+    <type>RecordPage</type>
+    <flexiPageRegions>
+        <name>main</name>
+        <type>Region</type>
+        <itemInstances>
+            <fieldInstance>
+                <fieldItem>Case.Subject</fieldItem>
+            </fieldInstance>
+        </itemInstances>
+    </flexiPageRegions>
+</FlexiPage>`;
+
+      const filePath = join(testDir, 'Field_Instance.flexipage-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseFlexiPage(filePath, 'Field_Instance');
+
+      expect(result.objects).to.include('Case');
+      expect(result.dependencies.objects).to.include('Case');
+    });
+
     /**
      * @ac US-022-AC-4: Extract record type filters
      */
@@ -179,6 +204,38 @@ describe('FlexiPage Parser', () => {
       expect(result.recordTypeFilters).to.be.an('array').with.lengthOf(2);
       expect(result.recordTypeFilters).to.include.members(['Enterprise', 'SMB']);
       expect(result.dependencies.recordTypes).to.deep.equal(result.recordTypeFilters);
+    });
+
+    it('US-022-AC-4: should extract record type filters from field visibility rules', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<FlexiPage xmlns="http://soap.sforce.com/2006/04/metadata">
+    <masterLabel>Field Visibility Page</masterLabel>
+    <type>RecordPage</type>
+    <flexiPageRegions>
+        <name>main</name>
+        <type>Region</type>
+        <itemInstances>
+            <fieldInstance>
+                <fieldItem>Account.Name</fieldItem>
+                <visibilityRule>
+                    <criteria>
+                        <leftValue>{!Record.RecordType.DeveloperName}</leftValue>
+                        <operator>EQUAL</operator>
+                        <rightValue>Customer</rightValue>
+                    </criteria>
+                </visibilityRule>
+            </fieldInstance>
+        </itemInstances>
+    </flexiPageRegions>
+</FlexiPage>`;
+
+      const filePath = join(testDir, 'Field_Visibility.flexipage-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseFlexiPage(filePath, 'Field_Visibility');
+
+      expect(result.recordTypeFilters).to.include('Customer');
+      expect(result.dependencies.recordTypes).to.include('Customer');
     });
 
     /**
@@ -348,4 +405,3 @@ describe('FlexiPage Parser', () => {
     });
   });
 });
-

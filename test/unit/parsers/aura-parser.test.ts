@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { parseAura } from '../../../src/parsers/aura-parser.js';
 
 describe('Aura Parser', () => {
@@ -181,6 +182,19 @@ describe('Aura Parser', () => {
       expect(result.childComponents).to.have.lengthOf(1);
       expect(result.childComponents).to.include('c:CustomComponent');
       expect(result.childComponents).to.not.include('lightning:button');
+    });
+
+    it('should exclude force: namespace components', () => {
+      const cmp = `
+        <aura:component>
+          <force:recordData />
+          <c:CustomComponent />
+        </aura:component>
+      `;
+
+      const result = parseAura('MyComponent', cmp);
+
+      expect(result.childComponents).to.deep.equal(['c:CustomComponent']);
     });
   });
 

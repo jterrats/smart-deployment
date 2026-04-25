@@ -102,6 +102,88 @@ function extractFormulaReferences(formula: string): string[] {
   return [...references];
 }
 
+function sanitizeFormula(formula: string): string {
+  return formula.replace(/"[^"]*"|'[^']*'/g, ' ');
+}
+
+function createRelationshipFieldMap(
+  fields: CustomField[]
+): Map<string, { fieldName: string; referencedObjects: string[] }> {
+  const relationshipFieldMap = new Map<string, { fieldName: string; referencedObjects: string[] }>();
+
+  for (const field of fields) {
+    if (!field.referenceTo || field.referenceTo.length === 0) {
+      continue;
+    }
+
+    const keys = new Set<string>();
+    keys.add(field.fullName);
+
+    if (field.fullName.endsWith('__c')) {
+      keys.add(`${field.fullName.slice(0, -3)}__r`);
+    }
+
+    if (field.relationshipName) {
+      keys.add(field.relationshipName);
+    }
+
+    for (const key of keys) {
+      relationshipFieldMap.set(key, {
+        fieldName: field.fullName,
+        referencedObjects: field.referenceTo,
+      });
+    }
+  }
+
+  return relationshipFieldMap;
+}
+
+function resolveFormulaReferences(formula: string, fields: CustomField[]): string[] {
+  const rawReferences = extractFormulaReferences(formula);
+  const relationshipFieldMap = createRelationshipFieldMap(fields);
+  const resolved = new Set<string>();
+
+  for (const rawReference of rawReferences) {
+    const relationship = relationshipFieldMap.get(rawReference);
+    if (relationship) {
+      for (const referencedObject of relationship.referencedObjects) {
+        resolved.add(referencedObject);
+      }
+      continue;
+    }
+
+    resolved.add(rawReference);
+  }
+
+  return [...resolved];
+}
+
+function extractCustomFieldReferences(formula: string, fields: CustomField[], currentFieldName?: string): string[] {
+  const sanitizedFormula = sanitizeFormula(formula);
+  const customFieldNames = new Set(fields.map((field) => field.fullName));
+  const relationshipFieldMap = createRelationshipFieldMap(fields);
+  const references = new Set<string>();
+
+  const directFieldPattern = /\b([a-zA-Z][a-zA-Z0-9_]*__c)\b/g;
+  for (const match of sanitizedFormula.matchAll(directFieldPattern)) {
+    const fieldName = match[1];
+    if (fieldName !== currentFieldName && customFieldNames.has(fieldName)) {
+      references.add(fieldName);
+    }
+  }
+
+  const relationshipPattern = /\b([a-zA-Z][a-zA-Z0-9_]*__r)\./g;
+  for (const match of sanitizedFormula.matchAll(relationshipPattern)) {
+    const relationshipName = match[1];
+    const fieldReference = relationshipFieldMap.get(relationshipName)?.fieldName;
+    if (fieldReference && fieldReference !== currentFieldName) {
+      references.add(fieldReference);
+    }
+  }
+
+  return [...references];
+}
+
 /**
  * Extract Apex class references from validation rules
  *
@@ -315,7 +397,7 @@ export async function parseCustomObject(objectName: string, metadataContent: str
 
       // Formula fields
       if (field.formula) {
-        const formulaRefs = extractFormulaReferences(field.formula);
+        const formulaRefs = resolveFormulaReferences(field.formula, fields);
         for (const ref of formulaRefs) {
           dependencies.push({
             type: 'formula_field',
@@ -334,13 +416,40 @@ export async function parseCustomObject(objectName: string, metadataContent: str
             fieldName: field.fullName,
           });
         }
+
+        const customFieldRefs = extractCustomFieldReferences(field.formula, fields, field.fullName);
+        for (const customFieldRef of customFieldRefs) {
+          dependencies.push({
+            type: 'custom_field',
+            name: customFieldRef,
+            fieldName: customFieldRef,
+          });
+        }
+      }
+
+      if (field.type === 'Summary') {
+        if (field.summaryForeignKey) {
+          dependencies.push({
+            type: 'custom_field',
+            name: field.summaryForeignKey,
+            fieldName: field.summaryForeignKey,
+          });
+        }
+
+        if (field.summarizedField) {
+          dependencies.push({
+            type: 'custom_field',
+            name: field.summarizedField,
+            fieldName: field.summarizedField,
+          });
+        }
       }
     }
 
     // Add validation rule dependencies
     for (const rule of validationRules) {
       if (rule.errorConditionFormula) {
-        const formulaRefs = extractFormulaReferences(rule.errorConditionFormula);
+        const formulaRefs = resolveFormulaReferences(rule.errorConditionFormula, fields);
         for (const ref of formulaRefs) {
           dependencies.push({
             type: 'validation_rule',
@@ -355,6 +464,15 @@ export async function parseCustomObject(objectName: string, metadataContent: str
           dependencies.push({
             type: 'apex_class',
             name: apexClass,
+          });
+        }
+
+        const customFieldRefs = extractCustomFieldReferences(rule.errorConditionFormula, fields);
+        for (const customFieldRef of customFieldRefs) {
+          dependencies.push({
+            type: 'custom_field',
+            name: customFieldRef,
+            fieldName: customFieldRef,
           });
         }
       }

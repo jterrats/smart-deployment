@@ -1,22 +1,19 @@
 /**
  * GenAI Prompt Template Parser
  * Parses Salesforce GenAI Prompt Template metadata files (.genAiPromptTemplate-meta.xml)
- * 
+ *
  * @ac US-025-AC-1: Extract related object references
  * @ac US-025-AC-2: Extract field references in prompts
  * @ac US-025-AC-3: Extract model configurations
  * @ac US-025-AC-4: Detect circular dependencies with Flows
  * @ac US-025-AC-5: Link to dependent metadata
- * 
+ *
  * @issue #25
  */
 
 import { readFile } from 'node:fs/promises';
 import { XMLParser } from 'fast-xml-parser';
-import type {
-  GenAiPromptTemplateMetadata,
-  GenAiPromptTemplateDataProvider,
-} from '../types/salesforce/genai.js';
+import type { GenAiPromptTemplateMetadata, GenAiPromptTemplateDataProvider } from '../types/salesforce/genai.js';
 
 /**
  * Result of parsing a GenAI Prompt Template file
@@ -82,6 +79,19 @@ function extractFieldsFromContent(content: string): string[] {
   return fields;
 }
 
+function extractObjectsFromFields(fields: string[]): string[] {
+  return [
+    ...new Set(
+      fields
+        .map((field) => {
+          const segments = field.split('.');
+          return segments.length > 1 ? segments[0] : undefined;
+        })
+        .filter((value): value is string => Boolean(value))
+    ),
+  ];
+}
+
 /**
  * Extract objects and fields from data providers
  */
@@ -109,11 +119,11 @@ function extractFromDataProviders(dataProviders: GenAiPromptTemplateDataProvider
 
 /**
  * Parse a GenAI Prompt Template metadata XML file
- * 
+ *
  * @param filePath - Path to the .genAiPromptTemplate-meta.xml file
  * @param promptName - Name of the prompt template (typically from filename)
  * @returns Parsed prompt template metadata with dependencies
- * 
+ *
  * @example
  * const result = await parseGenAiPrompt(
  *   'force-app/main/default/genAiPromptTemplates/CaseSummary.genAiPromptTemplate-meta.xml',
@@ -123,10 +133,7 @@ function extractFromDataProviders(dataProviders: GenAiPromptTemplateDataProvider
  * console.log(result.models); // ['sfdc_ai__DefaultGPT35Turbo']
  * console.log(result.sobjects); // ['Case', 'Contact']
  */
-export async function parseGenAiPrompt(
-  filePath: string,
-  promptName: string
-): Promise<GenAiPromptParseResult> {
+export async function parseGenAiPrompt(filePath: string, promptName: string): Promise<GenAiPromptParseResult> {
   // Read and parse XML
   const xmlContent = await readFile(filePath, 'utf-8');
   const parser = new XMLParser({
@@ -140,7 +147,9 @@ export async function parseGenAiPrompt(
     parsed = parser.parse(xmlContent);
   } catch (error) {
     throw new Error(
-      `Failed to parse GenAI Prompt Template XML at ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to parse GenAI Prompt Template XML at ${filePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 
@@ -158,9 +167,7 @@ export async function parseGenAiPrompt(
   const versions = normalizeArray(metadata.templateVersions);
 
   // Extract models
-  const models = versions
-    .map((version) => version.primaryModel)
-    .filter((model): model is string => Boolean(model));
+  const models = versions.map((version) => version.primaryModel).filter((model): model is string => Boolean(model));
 
   // Extract template variables
   const allVariables: string[] = [];
@@ -173,17 +180,17 @@ export async function parseGenAiPrompt(
   const allObjects: string[] = [];
   const allFields: string[] = [];
   const dataProviderNames: string[] = [];
+  const dataProviderObjects: string[] = [];
 
   for (const version of versions) {
     const dataProviders = normalizeArray(version.templateDataProviders);
     const { objects, fields } = extractFromDataProviders(dataProviders);
     allObjects.push(...objects);
     allFields.push(...fields);
+    dataProviderObjects.push(...objects);
 
     // Extract data provider API names
-    dataProviderNames.push(
-      ...dataProviders.map((dp) => dp.apiName).filter((name): name is string => Boolean(name))
-    );
+    dataProviderNames.push(...dataProviders.map((dp) => dp.apiName).filter((name): name is string => Boolean(name)));
   }
 
   // Extract field references from prompt content
@@ -193,6 +200,7 @@ export async function parseGenAiPrompt(
       contentFields.push(...extractFieldsFromContent(version.content));
     }
   }
+  allObjects.push(...extractObjectsFromFields(contentFields));
 
   // Add related entity to objects
   if (metadata.relatedEntity) {
@@ -210,6 +218,7 @@ export async function parseGenAiPrompt(
   const uniqueDataProviders = [...new Set(dataProviderNames)];
   const uniqueModels = [...new Set(models)];
   const uniqueVariables = [...new Set(allVariables)];
+  const uniqueDataProviderObjects = [...new Set(dataProviderObjects)];
 
   // Build result
   return {
@@ -225,7 +234,7 @@ export async function parseGenAiPrompt(
     templateVariables: uniqueVariables,
     sobjects: uniqueObjects,
     fields: uniqueFields,
-    dataProviderObjects: uniqueDataProviders,
+    dataProviderObjects: uniqueDataProviderObjects,
     dependencies: {
       models: uniqueModels,
       sobjects: uniqueObjects,
@@ -234,4 +243,3 @@ export async function parseGenAiPrompt(
     },
   };
 }
-

@@ -210,6 +210,29 @@ describe('Email Template Parser', () => {
 
       expect(result.relatedEntityType).to.be.undefined;
     });
+
+    it('should infer related entity and remap Visualforce recipient and relatedTo aliases when metadata omits them', async () => {
+      const content = `
+        <messaging:emailTemplate subject="Case update" recipientType="Contact" relatedToType="Case">
+          Hello {!recipient.Name}, case {!relatedTo.CaseNumber}
+        </messaging:emailTemplate>
+      `;
+      const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <EmailTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+          <available>true</available>
+          <encodingKey>UTF-8</encodingKey>
+          <name>CaseVFEmail</name>
+          <style>none</style>
+          <type>visualforce</type>
+        </EmailTemplate>
+      `;
+
+      const result = await parseEmailTemplate('CaseVFEmail', content, metadata);
+
+      expect(result.relatedEntityType).to.equal('Case');
+      expect(result.mergeFields.map((field) => field.objectName)).to.include.members(['Contact', 'Case']);
+      expect(result.dependencies.some((d) => d.type === 'related_entity' && d.name === 'Case')).to.be.true;
+    });
   });
 
   describe('Attachment References', () => {
@@ -336,6 +359,28 @@ describe('Email Template Parser', () => {
       const result = await parseEmailTemplate('DupLabelEmail', content, metadata);
 
       expect(result.customLabels).to.have.lengthOf(1);
+    });
+
+    it('should extract custom labels from the subject as well as the body', async () => {
+      const content = 'Body {!$Label.Body_Message}';
+      const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+        <EmailTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+          <available>true</available>
+          <encodingKey>UTF-8</encodingKey>
+          <name>SubjectLabelEmail</name>
+          <style>none</style>
+          <subject>{!$Label.Subject_Message}</subject>
+          <type>text</type>
+        </EmailTemplate>
+      `;
+
+      const result = await parseEmailTemplate('SubjectLabelEmail', content, metadata);
+
+      expect(result.customLabels).to.include.members(['Body_Message', 'Subject_Message']);
+      expect(result.dependencies.filter((d) => d.type === 'custom_label').map((d) => d.name)).to.include.members([
+        'Body_Message',
+        'Subject_Message',
+      ]);
     });
   });
 

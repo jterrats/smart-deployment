@@ -85,6 +85,7 @@ describe('Layout Parser', () => {
       expect(result.customButtons).to.be.an('array').with.lengthOf(3);
       expect(result.customButtons).to.include.members(['New_Custom_Button', 'Edit_Button', 'Delete_Button']);
       expect(result.dependencies.customButtons).to.deep.equal(result.customButtons);
+      expect(result.optionalDependencies.customButtons).to.deep.equal(result.customButtons);
     });
 
     /**
@@ -162,6 +163,36 @@ describe('Layout Parser', () => {
       expect(result.visualforcePages).to.include.members(['LeftSidebar', 'RightPanel']);
     });
 
+    it('should extract Visualforce pages and canvas apps from related content and feed layout', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <feedLayout>
+        <rightComponents>
+            <componentType>Canvas</componentType>
+            <page>FeedCanvasApp</page>
+        </rightComponents>
+    </feedLayout>
+    <relatedContent>
+        <relatedContentItems>
+            <layoutItem>
+                <page>EmbeddedVF</page>
+                <canvas>EmbeddedCanvas</canvas>
+            </layoutItem>
+        </relatedContentItems>
+    </relatedContent>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Rich Content.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Rich Content');
+
+      expect(result.visualforcePages).to.include('EmbeddedVF');
+      expect(result.canvasApps).to.include.members(['FeedCanvasApp', 'EmbeddedCanvas']);
+      expect(result.optionalDependencies.visualforcePages).to.include('EmbeddedVF');
+      expect(result.optionalDependencies.canvasApps).to.include.members(['FeedCanvasApp', 'EmbeddedCanvas']);
+    });
+
     /**
      * @ac US-021-AC-4: Extract field references
      */
@@ -218,6 +249,27 @@ describe('Layout Parser', () => {
       const result = await parseLayout(filePath, 'Account-Mini');
 
       expect(result.fields).to.include.members(['Id', 'Name', 'Owner']);
+    });
+
+    it('should extract fields from multiline layout and related content', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <multilineLayoutFields>Description</multilineLayoutFields>
+    <relatedContent>
+        <relatedContentItems>
+            <layoutItem>
+                <field>OwnerId</field>
+            </layoutItem>
+        </relatedContentItems>
+    </relatedContent>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Extra Fields.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Extra Fields');
+
+      expect(result.fields).to.include.members(['Description', 'OwnerId']);
     });
 
     /**
@@ -317,6 +369,8 @@ describe('Layout Parser', () => {
       expect(result.dependencies.quickActions).to.include('SendEmail');
       expect(result.dependencies.canvasApps).to.include('CanvasApp');
       expect(result.dependencies.customLinks).to.include('CustomLink1');
+      expect(result.optionalDependencies.quickActions).to.include('SendEmail');
+      expect(result.optionalDependencies.customLinks).to.include('CustomLink1');
     });
 
     /**
@@ -346,6 +400,37 @@ describe('Layout Parser', () => {
       const result = await parseLayout(filePath, 'Account-Platform Actions');
 
       expect(result.quickActions).to.include.members(['Action1', 'Action2']);
+    });
+
+    it('should extract custom buttons and action links from platform actions', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <platformActionList>
+        <actionListContext>Record</actionListContext>
+        <platformActionListItems>
+            <actionName>CustomMassUpdate</actionName>
+            <actionType>CustomButton</actionType>
+            <sortOrder>1</sortOrder>
+        </platformActionListItems>
+        <platformActionListItems>
+            <actionName>RelatedKnowledge</actionName>
+            <actionType>ActionLink</actionType>
+            <sortOrder>2</sortOrder>
+        </platformActionListItems>
+    </platformActionList>
+    <relatedObjects>Contact</relatedObjects>
+    <relatedObjects>Case</relatedObjects>
+</Layout>`;
+
+      const filePath = join(testDir, 'Account-Platform Dependencies.layout-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parseLayout(filePath, 'Account-Platform Dependencies');
+
+      expect(result.customButtons).to.include('CustomMassUpdate');
+      expect(result.customLinks).to.include('RelatedKnowledge');
+      expect(result.relatedObjects).to.deep.equal(['Contact', 'Case']);
+      expect(result.dependencies.relatedObjects).to.deep.equal(['Contact', 'Case']);
     });
 
     it('should handle layout with single item (not array)', async () => {
@@ -422,4 +507,3 @@ describe('Layout Parser', () => {
     });
   });
 });
-

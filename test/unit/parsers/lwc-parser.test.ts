@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { parseLWC } from '../../../src/parsers/lwc-parser.js';
 
 describe('LWC Parser', () => {
@@ -202,6 +203,29 @@ describe('LWC Parser', () => {
       expect(result.apiProperties).to.have.lengthOf(2);
       expect(result.apiProperties).to.include.members(['refresh', 'validate']);
     });
+
+    it('should extract @api getters and setters using the property name', () => {
+      const code = `
+        import { LightningElement, api } from 'lwc';
+
+        export default class MyComponent extends LightningElement {
+          _recordId;
+
+          @api
+          get recordId() {
+            return this._recordId;
+          }
+
+          set recordId(value) {
+            this._recordId = value;
+          }
+        }
+      `;
+
+      const result = parseLWC('myComponent', code);
+
+      expect(result.apiProperties).to.deep.equal(['recordId']);
+    });
   });
 
   describe('Navigation References', () => {
@@ -303,6 +327,27 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', code);
 
       expect(result.isTypeScript).to.be.false;
+    });
+
+    it('should preserve string and template literal content that contains comment markers', () => {
+      const code = `
+        import getAccounts from '@salesforce/apex/AccountController.getAccounts';
+        import { LightningElement, api } from 'lwc';
+
+        export default class MyComponent extends LightningElement {
+          url = 'https://example.com/path';
+          template = \`/* keep me */\`;
+
+          // Fake import in comment: import bad from 'c/notReal';
+          @api recordId;
+        }
+      `;
+
+      const result = parseLWC('myComponent', code);
+
+      expect(result.apexImports).to.include('AccountController.getAccounts');
+      expect(result.apiProperties).to.include('recordId');
+      expect(result.lwcImports).to.not.include('notReal');
     });
   });
 

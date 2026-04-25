@@ -84,6 +84,34 @@ describe('Permission Set Parser', () => {
       expect(result.dependencies.objects).to.deep.equal(['Account', 'Contact', 'Opportunity']);
     });
 
+    it('should ignore object permissions without any granted access', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Filtered Objects</label>
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>false</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Account</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <allowRead>true</allowRead>
+        <object>Contact</object>
+    </objectPermissions>
+</PermissionSet>`;
+
+      const filePath = join(testDir, 'Filtered_Objects.permissionset-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parsePermissionSet(filePath, 'Filtered_Objects');
+
+      expect(result.objectPermissions).to.deep.equal(['Contact']);
+      expect(result.dependencies.objects).to.deep.equal(['Contact']);
+    });
+
     it('should extract field-level security permissions (AC-3)', async () => {
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -111,16 +139,8 @@ describe('Permission Set Parser', () => {
       const result = await parsePermissionSet(filePath, 'Sales_FLS');
 
       expect(result.fieldPermissions).to.be.an('array').with.lengthOf(3);
-      expect(result.fieldPermissions).to.include.members([
-        'Account.Industry',
-        'Account.Revenue',
-        'Opportunity.Amount',
-      ]);
-      expect(result.dependencies.fields).to.deep.equal([
-        'Account.Industry',
-        'Account.Revenue',
-        'Opportunity.Amount',
-      ]);
+      expect(result.fieldPermissions).to.include.members(['Account.Industry', 'Account.Revenue', 'Opportunity.Amount']);
+      expect(result.dependencies.fields).to.deep.equal(['Account.Industry', 'Account.Revenue', 'Opportunity.Amount']);
     });
 
     it('should extract Apex class access permissions (AC-4)', async () => {
@@ -157,6 +177,60 @@ describe('Permission Set Parser', () => {
         'OpportunityHandler',
         'ContactTriggerHandler',
       ]);
+    });
+
+    it('should include only enabled and visible permission set references', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Enabled Only</label>
+    <classAccesses>
+        <apexClass>EnabledClass</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>DisabledClass</apexClass>
+        <enabled>false</enabled>
+    </classAccesses>
+    <pageAccesses>
+        <apexPage>EnabledPage</apexPage>
+        <enabled>true</enabled>
+    </pageAccesses>
+    <pageAccesses>
+        <apexPage>DisabledPage</apexPage>
+        <enabled>false</enabled>
+    </pageAccesses>
+    <applicationVisibilities>
+        <application>Sales</application>
+        <visible>true</visible>
+    </applicationVisibilities>
+    <applicationVisibilities>
+        <application>Marketing</application>
+        <visible>false</visible>
+    </applicationVisibilities>
+    <tabSettings>
+        <tab>standard-Account</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
+    <tabSettings>
+        <tab>standard-Contact</tab>
+        <visibility>None</visibility>
+    </tabSettings>
+</PermissionSet>`;
+
+      const filePath = join(testDir, 'Enabled_Only.permissionset-meta.xml');
+      await writeFile(filePath, xmlContent);
+
+      const result = await parsePermissionSet(filePath, 'Enabled_Only');
+
+      expect(result.apexClassAccesses).to.deep.equal(['EnabledClass']);
+      expect(result.visualforcePageAccesses).to.deep.equal(['EnabledPage']);
+      expect(result.applicationVisibilities).to.deep.equal(['Sales']);
+      expect(result.tabSettings).to.deep.equal(['standard-Account']);
+      expect(result.optionalDependencies).to.deep.equal({
+        visualforcePages: ['EnabledPage'],
+        applications: ['Sales'],
+        tabs: ['standard-Account'],
+      });
     });
 
     it('should extract Visualforce page access permissions (AC-5)', async () => {
@@ -236,9 +310,10 @@ describe('Permission Set Parser', () => {
 
       const result = await parsePermissionSet(filePath, 'App_Visibility');
 
-      expect(result.applicationVisibilities).to.be.an('array').with.lengthOf(3);
-      expect(result.applicationVisibilities).to.include.members(['Sales', 'Service', 'Marketing']);
-      expect(result.dependencies.applications).to.deep.equal(['Sales', 'Service', 'Marketing']);
+      expect(result.applicationVisibilities).to.be.an('array').with.lengthOf(2);
+      expect(result.applicationVisibilities).to.include.members(['Sales', 'Service']);
+      expect(result.applicationVisibilities).to.not.include('Marketing');
+      expect(result.dependencies.applications).to.deep.equal(['Sales', 'Service']);
     });
 
     it('should extract tab visibility settings (AC-8)', async () => {
@@ -351,6 +426,11 @@ describe('Permission Set Parser', () => {
       expect(result.dependencies.externalDataSources).to.deep.equal(['External_API']);
       expect(result.dependencies.customSettings).to.deep.equal(['AppSettings__c']);
       expect(result.dependencies.recordTypes).to.deep.equal(['Account.Enterprise']);
+      expect(result.optionalDependencies).to.deep.equal({
+        visualforcePages: ['AccountDashboard'],
+        applications: ['Sales'],
+        tabs: ['Account'],
+      });
 
       // Verify user permissions are extracted
       expect(result.userPermissions).to.deep.equal(['ViewAllData']);

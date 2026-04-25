@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { parseApexTrigger } from '../../../src/parsers/apex-trigger-parser.js';
 import { ParsingError } from '../../../src/errors/parsing-error.js';
 
@@ -330,6 +331,21 @@ describe('Apex Trigger Parser', () => {
 
       expect(result.handlers.map((h) => h.className)).to.include('RealHandler');
       expect(result.handlers.map((h) => h.className)).to.not.include('FakeHandler');
+    });
+
+    it('should preserve string literals containing URL-like content while ignoring commented handlers', () => {
+      const code = `
+        trigger AccountTrigger on Account (before insert) {
+          String endpoint = 'https://example.com/services';
+          // FakeHandler.process(Trigger.new);
+          RealHandler.process(Trigger.new);
+        }
+      `;
+
+      const result = parseApexTrigger('AccountTrigger.trigger', code);
+
+      expect(result.handlers.map((handler) => handler.className)).to.include('RealHandler');
+      expect(result.handlers.map((handler) => handler.className)).to.not.include('FakeHandler');
     });
   });
 

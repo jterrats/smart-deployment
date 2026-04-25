@@ -1,24 +1,20 @@
 /**
  * Bot Parser
  * Parses Salesforce Einstein Bot metadata files (.bot-meta.xml)
- * 
+ *
  * @ac US-024-AC-1: Extract dialog references
  * @ac US-024-AC-2: Extract GenAI prompt references
  * @ac US-024-AC-3: Extract Flow references
  * @ac US-024-AC-4: Extract Apex action references
  * @ac US-024-AC-5: Extract menu item references
  * @ac US-024-AC-6: Link to all dependencies
- * 
+ *
  * @issue #24
  */
 
 import { readFile } from 'node:fs/promises';
 import { XMLParser } from 'fast-xml-parser';
-import type {
-  BotMetadata,
-  BotDialog,
-  BotStep,
-} from '../types/salesforce/bot.js';
+import type { BotMetadata, BotDialog, BotStep } from '../types/salesforce/bot.js';
 
 /**
  * Result of parsing a Bot file
@@ -135,6 +131,25 @@ function extractInvocationsFromSteps(steps: BotStep[]): {
   return { flows, apexActions, genAiPrompts };
 }
 
+function extractDialogTargetsFromSteps(steps: BotStep[]): string[] {
+  const dialogs: string[] = [];
+
+  for (const step of steps) {
+    const links = normalizeArray(step.botNavigation?.botNavigationLinks);
+    for (const link of links) {
+      if (link.targetBotDialog) {
+        dialogs.push(link.targetBotDialog);
+      }
+    }
+
+    if (step.botSteps) {
+      dialogs.push(...extractDialogTargetsFromSteps(normalizeArray(step.botSteps)));
+    }
+  }
+
+  return dialogs;
+}
+
 /**
  * Extract SObjects from conversation record lookups in bot steps
  */
@@ -160,19 +175,28 @@ function extractSObjectsFromSteps(steps: BotStep[]): string[] {
  * Extract all references from bot dialogs
  */
 function extractReferencesFromDialogs(dialogs: BotDialog[]): {
+  dialogs: string[];
   flows: string[];
   apexActions: string[];
   genAiPrompts: string[];
   sobjects: string[];
+  mlIntents: string[];
 } {
+  const allDialogTargets: string[] = [];
   const allFlows: string[] = [];
   const allApexActions: string[] = [];
   const allGenAiPrompts: string[] = [];
   const allSObjects: string[] = [];
+  const allMlIntents: string[] = [];
 
   for (const dialog of dialogs) {
     const steps = normalizeArray(dialog.botSteps);
-    
+    if (dialog.mlIntent) {
+      allMlIntents.push(dialog.mlIntent);
+    }
+
+    allDialogTargets.push(...extractDialogTargetsFromSteps(steps));
+
     // Extract invocations
     const { flows, apexActions, genAiPrompts } = extractInvocationsFromSteps(steps);
     allFlows.push(...flows);
@@ -185,20 +209,22 @@ function extractReferencesFromDialogs(dialogs: BotDialog[]): {
   }
 
   return {
+    dialogs: [...new Set(allDialogTargets)],
     flows: [...new Set(allFlows)],
     apexActions: [...new Set(allApexActions)],
     genAiPrompts: [...new Set(allGenAiPrompts)],
     sobjects: [...new Set(allSObjects)],
+    mlIntents: [...new Set(allMlIntents)],
   };
 }
 
 /**
  * Parse a Bot metadata XML file
- * 
+ *
  * @param filePath - Path to the .bot-meta.xml file
  * @param botName - Name of the bot (typically from filename)
  * @returns Parsed bot metadata with dependencies
- * 
+ *
  * @example
  * const result = await parseBot(
  *   'force-app/main/default/bots/Support_Bot.bot-meta.xml',
@@ -208,10 +234,7 @@ function extractReferencesFromDialogs(dialogs: BotDialog[]): {
  * console.log(result.flows); // ['Case_Assignment_Flow']
  * console.log(result.genAiPrompts); // ['SummarizeCase']
  */
-export async function parseBot(
-  filePath: string,
-  botName: string
-): Promise<BotParseResult> {
+export async function parseBot(filePath: string, botName: string): Promise<BotParseResult> {
   // Read and parse XML
   const xmlContent = await readFile(filePath, 'utf-8');
   const parser = new XMLParser({
@@ -240,14 +263,16 @@ export async function parseBot(
   // Extract bot versions and dialogs
   const botVersions = normalizeArray(metadata.botVersions);
   const allDialogs: BotDialog[] = [];
-  
+
   for (const version of botVersions) {
     const versionDialogs = normalizeArray(version.botDialogs);
     allDialogs.push(...versionDialogs);
   }
 
   // Extract dialog names
-  const dialogNames = allDialogs.map((dialog) => dialog.developerName);
+  const versionDialogReferences = botVersions.flatMap((version) =>
+    [version.entryDialog, version.mainMenuDialog].filter((dialog): dialog is string => Boolean(dialog))
+  );
 
   // Extract menu items (dialogs shown in footer menu)
   const menuItems = allDialogs
@@ -258,7 +283,17 @@ export async function parseBot(
   const mlIntents = normalizeArray(metadata.mlIntents).map((intent) => intent.developerName);
 
   // Extract invocations and SObjects from all dialogs
-  const { flows, apexActions, genAiPrompts, sobjects } = extractReferencesFromDialogs(allDialogs);
+  const {
+    dialogs: referencedDialogs,
+    flows,
+    apexActions,
+    genAiPrompts,
+    sobjects,
+    mlIntents: dialogMlIntents,
+  } = extractReferencesFromDialogs(allDialogs);
+  const dialogNames = [
+    ...new Set([...allDialogs.map((dialog) => dialog.developerName), ...versionDialogReferences, ...referencedDialogs]),
+  ];
 
   // Extract SObjects from conversation variables
   const variableSObjects: string[] = [];
@@ -281,6 +316,7 @@ export async function parseBot(
 
   // Combine and deduplicate SObjects
   const allSObjects = [...new Set([...sobjects, ...variableSObjects])];
+  const allMlIntents = [...new Set([...mlIntents, ...dialogMlIntents])];
 
   // Build result
   return {
@@ -292,7 +328,7 @@ export async function parseBot(
     flows,
     apexActions,
     menuItems,
-    mlIntents,
+    mlIntents: allMlIntents,
     sobjects: allSObjects,
     dependencies: {
       dialogs: dialogNames,
@@ -300,9 +336,8 @@ export async function parseBot(
       flows,
       apexActions,
       menuItems,
-      mlIntents,
+      mlIntents: allMlIntents,
       sobjects: allSObjects,
     },
   };
 }
-
