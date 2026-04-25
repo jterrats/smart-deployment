@@ -90,7 +90,22 @@ jobs:
             exit 1
           }
 
+      - name: Check if version is already published
+        id: npm-version-check
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          if NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "${PKG_NAME}@${PKG_VERSION} is already published. Skipping npm publish."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            echo "${PKG_NAME}@${PKG_VERSION} is not published yet. Continuing with npm publish."
+          fi
+
       - name: Publish to npm with provenance
+        if: steps.npm-version-check.outputs.already_published != 'true'
         run: NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -101,6 +116,12 @@ jobs:
           PKG_VERSION=$(node -p "require('./package.json').version")
           MAX_ATTEMPTS=30
           DELAY_SECONDS=20
+
+          if [ "${{ steps.npm-version-check.outputs.already_published }}" = "true" ]; then
+            echo "${PKG_NAME}@${PKG_VERSION} was already available on npm."
+            exit 0
+          fi
+
           for i in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $i of $MAX_ATTEMPTS: verifying ${PKG_NAME}@${PKG_VERSION}"
             if NPM_CONFIG_CACHE="$RUNNER_TEMP/.npm" npm view "${PKG_NAME}@${PKG_VERSION}" version; then
@@ -121,3 +142,8 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Tag:** ${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **npm:** https://www.npmjs.com/package/${PKG_NAME}/v/${PKG_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.npm-version-check.outputs.already_published }}" = "true" ]; then
+            echo "- **Status:** already published; rerun skipped npm publish" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Status:** published in this workflow run" >> "$GITHUB_STEP_SUMMARY"
+          fi
