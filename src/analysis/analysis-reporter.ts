@@ -1,6 +1,8 @@
 import { writeFile } from 'node:fs/promises';
+import { GraphVisualizer } from '../dependencies/graph-visualizer.js';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
 import type { WaveResult } from '../waves/wave-builder.js';
+import type { DependencyEdge } from '../types/dependency.js';
 import type { MetadataDependencyKind } from '../types/metadata.js';
 
 export type AnalysisAIContext = {
@@ -37,6 +39,13 @@ export type AnalysisReport = {
     effect: AnalysisAIEffect;
   };
   componentsByType: Record<string, string[]>;
+  dependencyGraph: {
+    edges: DependencyEdge[];
+    visualizations: {
+      mermaid: string;
+      dot: string;
+    };
+  };
   issues: Array<{
     severity: 'error' | 'warning';
     message: string;
@@ -75,6 +84,7 @@ export class AnalysisReporter {
           effect: AnalysisReporter.createAIEffect(aiContext),
         }
       : undefined;
+    const dependencyGraph = AnalysisReporter.createDependencyGraph(scanResult);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -90,6 +100,7 @@ export class AnalysisReporter {
       },
       ai: aiReportContext,
       componentsByType,
+      dependencyGraph,
       issues: [
         ...scanResult.errors.map((message) => ({ severity: 'error' as const, message })),
         ...scanResult.warnings.map((message) => ({ severity: 'warning' as const, message })),
@@ -151,6 +162,24 @@ export class AnalysisReporter {
     );
   }
 
+  private static createDependencyGraph(scanResult: ScanResult): AnalysisReport['dependencyGraph'] {
+    const edges = [...scanResult.dependencyResult.edges].sort(
+      (left, right) =>
+        left.from.localeCompare(right.from) || left.to.localeCompare(right.to) || left.type.localeCompare(right.type)
+    );
+    const visualizer = new GraphVisualizer(scanResult.dependencyResult.graph, {
+      edgeMetadata: edges,
+    });
+
+    return {
+      edges,
+      visualizations: {
+        mermaid: visualizer.toMermaid(),
+        dot: visualizer.toDot(),
+      },
+    };
+  }
+
   public toHTML(report: AnalysisReport): string {
     const issueItems =
       report.issues.length > 0
@@ -172,6 +201,22 @@ export class AnalysisReporter {
     `
       )
       .join('');
+    const dependencyRows =
+      report.dependencyGraph.edges.length > 0
+        ? report.dependencyGraph.edges
+            .map(
+              (edge) => `
+      <tr>
+        <td><code>${escapeHtml(edge.from)}</code></td>
+        <td><code>${escapeHtml(edge.to)}</code></td>
+        <td>${escapeHtml(edge.type)}</td>
+        <td>${escapeHtml(edge.source ?? 'parser')}</td>
+        <td>${edge.confidence !== undefined ? edge.confidence.toFixed(2) : 'n/a'}</td>
+      </tr>
+    `
+            )
+            .join('')
+        : '<tr><td colspan="5">No dependency edges detected.</td></tr>';
 
     return `
 <!DOCTYPE html>
@@ -237,6 +282,26 @@ export class AnalysisReporter {
     </thead>
     <tbody>${waveRows}</tbody>
   </table>
+
+  <h2>Dependency Edges</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>From</th>
+        <th>To</th>
+        <th>Type</th>
+        <th>Source</th>
+        <th>Confidence</th>
+      </tr>
+    </thead>
+    <tbody>${dependencyRows}</tbody>
+  </table>
+
+  <h2>Dependency Visualizations</h2>
+  <h3>Mermaid</h3>
+  <pre>${escapeHtml(report.dependencyGraph.visualizations.mermaid)}</pre>
+  <h3>DOT</h3>
+  <pre>${escapeHtml(report.dependencyGraph.visualizations.dot)}</pre>
 </body>
 </html>
     `.trim();
