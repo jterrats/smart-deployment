@@ -182,7 +182,7 @@ export class DependencyResolver {
         }
 
         // Handle optional dependencies
-        if (this.isOptionalDependency()) {
+        if (this.isOptionalDependency(nodeId, dep)) {
           if (this.options.includeOptional) {
             filteredDeps.add(dep);
           }
@@ -324,8 +324,29 @@ export class DependencyResolver {
    * Note: Current MetadataComponent doesn't track dependency types
    */
   private findOptionalDependencies(): NodeId[] {
-    // TODO: When MetadataComponent includes dependency types, implement this properly
-    return [];
+    if (this.options.includeOptional) {
+      return [];
+    }
+
+    const optional: NodeId[] = [];
+
+    for (const [nodeId, deps] of this.graph.entries()) {
+      for (const dep of deps) {
+        if (!this.isOptionalDependency(nodeId, dep)) {
+          continue;
+        }
+
+        if (this.options.skipManaged && this.isManagedPackage(dep)) {
+          continue;
+        }
+
+        if (!optional.includes(dep)) {
+          optional.push(dep);
+        }
+      }
+    }
+
+    return optional;
   }
 
   /**
@@ -356,9 +377,9 @@ export class DependencyResolver {
    * Note: Current MetadataComponent uses Set<string> for dependencies
    * For now, we'll return false as type info is not available
    */
-  private isOptionalDependency(): boolean {
-    // TODO: When MetadataComponent includes dependency types, implement this properly
-    return false;
+  private isOptionalDependency(nodeId: NodeId, dependencyId: NodeId): boolean {
+    const component = this.components.get(nodeId);
+    return component?.optionalDependencies?.has(dependencyId) ?? false;
   }
 
   /**

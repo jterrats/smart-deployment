@@ -1,6 +1,14 @@
 import { getLogger } from '../utils/logger.js';
 import { ParsingError } from '../errors/parsing-error.js';
-import type { LWCMetadata } from '../types/salesforce/lwc.js';
+import { parseXml } from '../utils/xml.js';
+import type {
+  LWCMetadata,
+  LWCCapability,
+  LWCFormFactor,
+  LWCPropertyRole,
+  LWCPropertyType,
+  LWCTarget,
+} from '../types/salesforce/lwc.js';
 
 const logger = getLogger('LWCParser');
 
@@ -178,44 +186,145 @@ function isTypeScriptComponent(jsCode: string): boolean {
   return tsPatterns.some((pattern) => pattern.test(jsCode));
 }
 
+type ParsedLwcMetadataXml = {
+  LightningComponentBundle?: {
+    apiVersion?: string | number;
+    description?: string;
+    isExposed?: boolean | string;
+    masterLabel?: string;
+    targets?: {
+      target?: string | string[];
+    };
+    targetConfigs?: {
+      targetConfig?: ParsedLwcTargetConfig | ParsedLwcTargetConfig[];
+    };
+    capabilities?: {
+      capability?: string | string[];
+    };
+  };
+};
+
+type ParsedLwcTargetConfig = {
+  '@_targets'?: string;
+  configurationEditor?: string;
+  objects?: {
+    object?: string | string[];
+  };
+  property?: ParsedLwcProperty | ParsedLwcProperty[];
+  supportedFormFactors?: {
+    supportedFormFactor?: ParsedLwcSupportedFormFactor | ParsedLwcSupportedFormFactor[];
+  };
+};
+
+type ParsedLwcProperty = {
+  '@_name'?: string;
+  '@_type'?: string;
+  '@_default'?: string;
+  '@_required'?: boolean | string;
+  '@_label'?: string;
+  '@_description'?: string;
+  '@_placeholder'?: string;
+  '@_role'?: string;
+  '@_datasource'?: string;
+  '@_min'?: string | number;
+  '@_max'?: string | number;
+};
+
+type ParsedLwcSupportedFormFactor = {
+  '@_type'?: string;
+};
+
+function toArray<T>(value: T | T[] | undefined): T[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  return Array.isArray(value) ? value : [value];
+}
+
+function parseBoolean(value: boolean | string | undefined): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase() === 'true';
+  }
+
+  return undefined;
+}
+
+function parseOptionalNumber(value: string | number | undefined): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? undefined : value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+
+  return undefined;
+}
+
 /**
  * Parse LWC js-meta.xml file
  *
  * @ac US-016-AC-8: Parse js-meta.xml correctly
- * @deprecated - Will be refactored to return LWCMetadata type
- *
- * TODO: Refactor this function to properly parse and return LWCMetadata type
- * Currently commented out to avoid unused variable warnings during refactoring
  */
-/*
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function parseMetadataXml(metadataContent: string): { exposedAs?: string } {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unnecessary-type-assertion
-    const parsed = parseXml(metadataContent) as any;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-    const metadata = parsed.LightningComponentBundle;
+function parseMetadataXml(metadataContent: string): LWCMetadata | undefined {
+  const parsed = parseXml<ParsedLwcMetadataXml>(metadataContent);
+  const metadata = parsed.LightningComponentBundle;
 
-    if (!metadata) {
-      return {};
-    }
-
-    // Extract targets (where the component is exposed)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-    const targets = metadata.targets;
-    if (targets) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-      const targetList = Array.isArray(targets.target) ? targets.target : targets.target ? [targets.target] : [];
-      // Targets are extracted but we don't use exposedAs anymore
-      // Metadata will be parsed separately
-    }
-
-    return {};
-  } catch {
-    return {};
+  if (!metadata) {
+    return undefined;
   }
+
+  const targets = toArray(metadata.targets?.target);
+  const targetConfigs = toArray(metadata.targetConfigs?.targetConfig).map((targetConfig) => ({
+    targets: targetConfig['@_targets'] ?? '',
+    configurationEditor: targetConfig.configurationEditor,
+    objects:
+      targetConfig.objects === undefined
+        ? undefined
+        : toArray(targetConfig.objects.object).map((object) => ({ object })),
+    property: toArray(targetConfig.property)
+      .filter((property) => property['@_name'] !== undefined && property['@_type'] !== undefined)
+      .map((property) => ({
+        name: property['@_name']!,
+        type: property['@_type']! as LWCPropertyType,
+        default: property['@_default'],
+        required: parseBoolean(property['@_required']),
+        label: property['@_label'],
+        description: property['@_description'],
+        placeholder: property['@_placeholder'],
+        role: property['@_role'] as LWCPropertyRole,
+        datasource: property['@_datasource'],
+        min: parseOptionalNumber(property['@_min']),
+        max: parseOptionalNumber(property['@_max']),
+      })),
+    supportedFormFactors:
+      targetConfig.supportedFormFactors === undefined
+        ? undefined
+        : toArray(targetConfig.supportedFormFactors.supportedFormFactor)
+            .filter((formFactor) => formFactor['@_type'] !== undefined)
+            .map((formFactor) => ({
+              type: formFactor['@_type']! as LWCFormFactor,
+            })),
+  }));
+
+  const capabilities = toArray(metadata.capabilities?.capability) as LWCCapability[];
+
+  return {
+    apiVersion: metadata.apiVersion !== undefined ? String(metadata.apiVersion) : '',
+    description: metadata.description,
+    isExposed: parseBoolean(metadata.isExposed) ?? false,
+    masterLabel: metadata.masterLabel,
+    targets: targets.length > 0 ? { target: targets as LWCTarget[] } : undefined,
+    targetConfigs: targetConfigs.length > 0 ? targetConfigs : undefined,
+    capabilities: capabilities.length > 0 ? capabilities : undefined,
+  };
 }
-*/
 
 /**
  * Parse a Lightning Web Component and extract dependencies
@@ -260,8 +369,14 @@ export function parseLWC(componentName: string, jsCode: string, metadataXml?: st
 
     if (metadataXml) {
       hasMetadataXml = true;
-      // Parse the metadata but we don't have a parseMetadataXml that returns LWCMetadata yet
-      // For now, we'll skip this part
+      try {
+        metadata = parseMetadataXml(metadataXml);
+      } catch (error) {
+        logger.warn(`Failed to parse js-meta.xml for ${componentName}`, {
+          componentName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // Build dependencies array

@@ -113,6 +113,8 @@ export type MetadataComponent = {
   filePath: string;
   /** Set of dependencies (node IDs: "Type:Name") */
   dependencies: Set<string>;
+  /** Set of optional/soft dependencies (subset of dependencies) */
+  optionalDependencies?: Set<string>;
   /** Set of dependents (node IDs) */
   dependents: Set<string>;
   /** Priority boost for heuristics (negative = deploy earlier) */

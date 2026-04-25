@@ -30,6 +30,49 @@ export type TestResults = {
   failedTests: string[];
 };
 
+type SfTestFailure = {
+  name?: string;
+  methodName?: string;
+};
+
+type SfCodeCoverage = {
+  percentage?: number;
+  numLinesCovered?: number;
+  numLinesUncovered?: number;
+};
+
+type SfRunTestResult = {
+  numTestsRun?: number;
+  numFailures?: number;
+  failures?: SfTestFailure[];
+  codeCoverage?: SfCodeCoverage[];
+  codeCoverageWarnings?: Array<{ message?: string }>;
+  summary?: {
+    testsRan?: number;
+    failRate?: string | number;
+    passing?: number;
+    failing?: number;
+    orgWideCoverage?: string | number;
+    testRunCoverage?: string | number;
+  };
+};
+
+type SfDeployResultLike = {
+  testsRun?: number;
+  testFailures?: number;
+  coverage?: number;
+  result?: {
+    numberTestsTotal?: number;
+    numberTestErrors?: number;
+    details?: {
+      runTestResult?: SfRunTestResult;
+    };
+  };
+  details?: {
+    runTestResult?: SfRunTestResult;
+  };
+};
+
 /**
  * @ac US-087-AC-1: Run tests only in Apex waves
  * @ac US-087-AC-2: Support RunLocalTests
@@ -83,26 +126,123 @@ export class TestExecutor {
   }
 
   private findRelatedTests(apexComponents: string[]): string[] {
-    // Placeholder: In real implementation, this would analyze test classes
-    // and match them to the components being deployed
-    return apexComponents
-      .filter((component) => component.startsWith('ApexClass:'))
-      .map((component) => component.replace('ApexClass:', '') + 'Test');
+    const relatedTests = new Set<string>();
+
+    for (const component of apexComponents) {
+      if (!component.startsWith('ApexClass:')) {
+        continue;
+      }
+
+      const className = component.replace('ApexClass:', '');
+      if (/(?:^|_)(?:test|tests)$/i.test(className) || /(?:Test|Tests)$/u.test(className)) {
+        relatedTests.add(className);
+        continue;
+      }
+
+      relatedTests.add(`${className}Test`);
+      relatedTests.add(`${className}Tests`);
+    }
+
+    return Array.from(relatedTests);
   }
 
   /**
    * @ac US-087-AC-5: Track test results
    * @ac US-087-AC-6: Report coverage
    */
-  public analyzeTestResults(testsRun: number, testFailures: number, coverage?: number): TestResults {
-    logger.info('Analyzing test results', { testsRun, testFailures, coverage });
+  public analyzeTestResults(input: number | SfDeployResultLike, testFailures = 0, coverage?: number): TestResults {
+    if (typeof input === 'number') {
+      logger.info('Analyzing numeric test results', { testsRun: input, testFailures, coverage });
+
+      return {
+        testsRun: input,
+        testFailures,
+        coverage,
+        failedTests: [],
+      };
+    }
+
+    const runTestResult = input.result?.details?.runTestResult ?? input.details?.runTestResult;
+    const testsRun =
+      runTestResult?.numTestsRun ??
+      runTestResult?.summary?.testsRan ??
+      input.result?.numberTestsTotal ??
+      input.testsRun ??
+      0;
+    const failures =
+      runTestResult?.numFailures ??
+      runTestResult?.summary?.failing ??
+      input.result?.numberTestErrors ??
+      input.testFailures ??
+      0;
+    const failedTests =
+      runTestResult?.failures
+        ?.map((failure) =>
+          failure.name && failure.methodName
+            ? `${failure.name}.${failure.methodName}`
+            : failure.name ?? failure.methodName
+        )
+        .filter((failureName): failureName is string => failureName !== undefined && failureName !== '') ?? [];
+    const resolvedCoverage = this.resolveCoverage(runTestResult) ?? input.coverage ?? coverage;
+
+    logger.info('Analyzing structured test results', {
+      testsRun,
+      testFailures: failures,
+      coverage: resolvedCoverage,
+      failedTests: failedTests.length,
+    });
 
     return {
       testsRun,
-      testFailures,
-      coverage,
-      failedTests: [], // Would be populated from actual results
+      testFailures: failures,
+      coverage: resolvedCoverage,
+      failedTests,
     };
+  }
+
+  private resolveCoverage(runTestResult: SfRunTestResult | undefined): number | undefined {
+    const summaryCoverage = runTestResult?.summary?.orgWideCoverage ?? runTestResult?.summary?.testRunCoverage;
+    if (typeof summaryCoverage === 'number') {
+      return summaryCoverage;
+    }
+
+    if (typeof summaryCoverage === 'string' && summaryCoverage.trim() !== '') {
+      const parsedSummaryCoverage = Number(summaryCoverage);
+      if (!Number.isNaN(parsedSummaryCoverage)) {
+        return parsedSummaryCoverage;
+      }
+    }
+
+    const coverageEntries = runTestResult?.codeCoverage ?? [];
+    if (coverageEntries.length === 0) {
+      return undefined;
+    }
+
+    let coveredLines = 0;
+    let uncoveredLines = 0;
+    let percentageEntries = 0;
+    let percentageTotal = 0;
+
+    for (const entry of coverageEntries) {
+      if (typeof entry.percentage === 'number') {
+        percentageEntries++;
+        percentageTotal += entry.percentage;
+      }
+
+      coveredLines += entry.numLinesCovered ?? 0;
+      uncoveredLines += entry.numLinesUncovered ?? 0;
+    }
+
+    const totalLines = coveredLines + uncoveredLines;
+    if (totalLines > 0) {
+      return Math.round((coveredLines / totalLines) * 100);
+    }
+
+    if (percentageEntries > 0) {
+      return Math.round(percentageTotal / percentageEntries);
+    }
+
+    return undefined;
   }
 
   public formatTestResults(results: TestResults): string {

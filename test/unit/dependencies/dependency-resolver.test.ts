@@ -36,6 +36,7 @@ describe('DependencyResolver', () => {
         name,
         filePath: `/path/to/${node}`,
         dependencies: new Set<string>(),
+        optionalDependencies: new Set<string>(),
         dependents: new Set<string>(),
         priorityBoost: 0,
       });
@@ -43,14 +44,16 @@ describe('DependencyResolver', () => {
 
     // Add edges
     for (const edge of edges) {
-      const [from, to] = edge;
-      // const depType = edge.length === 3 ? edge[2] : 'hard'; // TODO: Use when MetadataComponent supports types
+      const [from, to, depType] = edge;
 
       graph.get(from)!.add(to);
 
       const component = components.get(from);
       if (component) {
         component.dependencies.add(to);
+        if (depType === 'soft') {
+          component.optionalDependencies?.add(to);
+        }
       }
     }
 
@@ -141,8 +144,8 @@ describe('DependencyResolver', () => {
       });
       const result = resolver.resolve();
 
-      expect(result.optional).to.deep.equal([]);
-      expect(result.deploymentOrder).to.include.members(['ApexClass:B', 'ApexClass:C']);
+      expect(result.optional).to.deep.equal(['ApexClass:B']);
+      expect(result.deploymentOrder).to.include.members(['ApexClass:A', 'ApexClass:B', 'ApexClass:C']);
     });
 
     it('US-033-AC-3: should include optional deps when configured', () => {
@@ -153,8 +156,7 @@ describe('DependencyResolver', () => {
       });
       const result = resolver.resolve();
 
-      // Note: Current MetadataComponent doesn't track dep types
-      // expect(result.optional).to.have.lengthOf(0);
+      expect(result.optional).to.deep.equal([]);
       expect(result.deploymentOrder).to.include('ApexClass:B');
     });
   });

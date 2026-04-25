@@ -311,7 +311,7 @@ describe('LWC Parser', () => {
      * @ac US-016-AC-8: Parse js-meta.xml correctly
      * TODO: Re-enable when metadata XML parsing is fully implemented
      */
-    it.skip('should parse js-meta.xml and extract exposure targets', () => {
+    it('should parse js-meta.xml and extract exposure targets', () => {
       const jsCode = 'export default class MyComponent extends LightningElement {}';
       const metadataXml = `<?xml version="1.0" encoding="UTF-8"?>
 <LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -326,8 +326,10 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
       expect(result.hasMetadataXml).to.be.true;
-      expect(result.metadata?.isExposed).to.include('lightning__AppPage');
-      expect(result.metadata?.isExposed).to.include('lightning__RecordPage');
+      expect(result.metadata?.apiVersion).to.equal('60');
+      expect(result.metadata?.isExposed).to.equal(true);
+      expect(result.metadata?.targets?.target).to.include('lightning__AppPage');
+      expect(result.metadata?.targets?.target).to.include('lightning__RecordPage');
     });
 
     it('should handle missing metadata XML', () => {
@@ -336,7 +338,7 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode);
 
       expect(result.hasMetadataXml).to.be.false;
-      expect(result.metadata?.isExposed).to.be.undefined;
+      expect(result.metadata).to.be.undefined;
     });
 
     it('should handle invalid metadata XML gracefully', () => {
@@ -346,7 +348,7 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
       expect(result.hasMetadataXml).to.be.true;
-      expect(result.metadata?.isExposed).to.be.undefined;
+      expect(result.metadata).to.be.undefined;
     });
   });
 
@@ -494,7 +496,7 @@ describe('LWC Parser', () => {
     /**
      * @ac US-016-AC-7: Validate bundle structure (js, html, xml)
      */
-    it.skip('should parse component with metadata XML', () => {
+    it('should parse component with metadata XML', () => {
       const jsCode = `
         import { LightningElement } from 'lwc';
         export default class MyComponent extends LightningElement {}
@@ -512,10 +514,11 @@ describe('LWC Parser', () => {
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
       expect(result.hasMetadataXml).to.be.true;
-      expect(result.metadata?.isExposed).to.equal('lightning__AppPage');
+      expect(result.metadata?.isExposed).to.equal(true);
+      expect(result.metadata?.targets?.target).to.deep.equal(['lightning__AppPage']);
     });
 
-    it.skip('should handle multiple targets in metadata XML', () => {
+    it('should handle multiple targets in metadata XML', () => {
       const jsCode = 'export default class MyComponent extends LightningElement {}';
       const metadataXml = `<?xml version="1.0" encoding="UTF-8"?>
 <LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -528,9 +531,58 @@ describe('LWC Parser', () => {
 
       const result = parseLWC('myComponent', jsCode, metadataXml);
 
-      expect(result.metadata?.isExposed).to.include('lightning__AppPage');
-      expect(result.metadata?.isExposed).to.include('lightning__RecordPage');
-      expect(result.metadata?.isExposed).to.include('lightning__HomePage');
+      expect(result.metadata?.targets?.target).to.include('lightning__AppPage');
+      expect(result.metadata?.targets?.target).to.include('lightning__RecordPage');
+      expect(result.metadata?.targets?.target).to.include('lightning__HomePage');
+    });
+
+    it('should parse target configs and capabilities from metadata XML', () => {
+      const jsCode = 'export default class MyComponent extends LightningElement {}';
+      const metadataXml = `<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+  <apiVersion>61.0</apiVersion>
+  <isExposed>true</isExposed>
+  <masterLabel>My Component</masterLabel>
+  <targets>
+    <target>lightning__RecordPage</target>
+  </targets>
+  <targetConfigs>
+    <targetConfig targets="lightning__RecordPage">
+      <objects>
+        <object>Account</object>
+        <object>Contact</object>
+      </objects>
+      <property name="recordId" type="String" required="true" label="Record Id" />
+      <supportedFormFactors>
+        <supportedFormFactor type="Small" />
+        <supportedFormFactor type="Large" />
+      </supportedFormFactors>
+    </targetConfig>
+  </targetConfigs>
+  <capabilities>
+    <capability>sfdc:allow_guest_access</capability>
+  </capabilities>
+</LightningComponentBundle>`;
+
+      const result = parseLWC('myComponent', jsCode, metadataXml);
+
+      expect(result.metadata?.masterLabel).to.equal('My Component');
+      expect(result.metadata?.targetConfigs).to.have.lengthOf(1);
+      expect(result.metadata?.targetConfigs?.[0].targets).to.equal('lightning__RecordPage');
+      expect(result.metadata?.targetConfigs?.[0].objects?.map((object) => object.object)).to.deep.equal([
+        'Account',
+        'Contact',
+      ]);
+      expect(result.metadata?.targetConfigs?.[0].property?.[0]).to.deep.include({
+        name: 'recordId',
+        type: 'String',
+        required: true,
+        label: 'Record Id',
+      });
+      expect(
+        result.metadata?.targetConfigs?.[0].supportedFormFactors?.map((formFactor) => formFactor.type)
+      ).to.deep.equal(['Small', 'Large']);
+      expect(result.metadata?.capabilities).to.deep.equal(['sfdc:allow_guest_access']);
     });
   });
 
