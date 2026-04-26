@@ -62,6 +62,24 @@ export type LayoutParseResult = {
   };
 };
 
+type LayoutSectionAnalysis = {
+  layoutSections: LayoutSection[];
+  relatedLists: NonNullable<LayoutMetadata['relatedLists']>;
+  relatedObjects: string[];
+};
+
+type LayoutReferenceAnalysis = {
+  fields: string[];
+  visualforcePages: string[];
+  canvasApps: string[];
+  customLinks: string[];
+};
+
+type LayoutActionAnalysis = {
+  customButtons: string[];
+  quickActions: string[];
+};
+
 /**
  * Normalize value to array (handles XML parser returning single object vs array)
  */
@@ -83,6 +101,38 @@ function uniqueDefined(values: Array<string | undefined>): string[] {
 function extractObjectFromLayoutName(layoutName: string): string {
   const parts = layoutName.split('-');
   return parts[0] || layoutName;
+}
+
+function parseLayoutMetadata(filePath: string, xmlContent: string): LayoutMetadata {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    parseAttributeValue: true,
+    trimValues: true,
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = parser.parse(xmlContent);
+  } catch (error) {
+    throw new Error(
+      `Failed to parse Layout XML at ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const root = parsed as { Layout?: LayoutMetadata };
+  if (!root.Layout) {
+    throw new Error(`Invalid Layout XML structure at ${filePath}: missing Layout root element`);
+  }
+
+  return root.Layout;
+}
+
+function analyzeLayoutSections(metadata: LayoutMetadata): LayoutSectionAnalysis {
+  return {
+    layoutSections: normalizeArray(metadata.layoutSections),
+    relatedLists: normalizeArray(metadata.relatedLists),
+    relatedObjects: uniqueDefined(normalizeArray(metadata.relatedObjects)),
+  };
 }
 
 /**
@@ -109,6 +159,13 @@ function extractCustomButtons(metadata: LayoutMetadata): string[] {
   }
 
   return uniqueDefined([...layoutCustomButtons, ...relatedListCustomButtons, ...platformActionCustomButtons]);
+}
+
+function analyzeLayoutActions(metadata: LayoutMetadata): LayoutActionAnalysis {
+  return {
+    customButtons: extractCustomButtons(metadata),
+    quickActions: extractQuickActions(metadata),
+  };
 }
 
 /**
@@ -347,6 +404,59 @@ function extractCanvasAppsWithRelatedContent(metadata: LayoutMetadata, layoutSec
   return uniqueDefined(apps);
 }
 
+function analyzeLayoutReferences(
+  metadata: LayoutMetadata,
+  sectionAnalysis: LayoutSectionAnalysis
+): LayoutReferenceAnalysis {
+  return {
+    fields: extractFields(metadata, sectionAnalysis.layoutSections),
+    visualforcePages: extractVFPages(metadata, sectionAnalysis.layoutSections),
+    canvasApps: extractCanvasAppsWithRelatedContent(metadata, sectionAnalysis.layoutSections),
+    customLinks: extractCustomLinks(metadata, sectionAnalysis.layoutSections),
+  };
+}
+
+function assembleLayoutResult(
+  layoutName: string,
+  objectName: string,
+  sectionAnalysis: LayoutSectionAnalysis,
+  actionAnalysis: LayoutActionAnalysis,
+  referenceAnalysis: LayoutReferenceAnalysis
+): LayoutParseResult {
+  const relatedListNames = uniqueDefined(sectionAnalysis.relatedLists.map((list) => list.relatedList));
+
+  return {
+    name: layoutName,
+    object: objectName,
+    customButtons: actionAnalysis.customButtons,
+    visualforcePages: referenceAnalysis.visualforcePages,
+    fields: referenceAnalysis.fields,
+    relatedLists: [...new Set(relatedListNames)],
+    quickActions: actionAnalysis.quickActions,
+    canvasApps: referenceAnalysis.canvasApps,
+    customLinks: referenceAnalysis.customLinks,
+    relatedObjects: sectionAnalysis.relatedObjects,
+    dependencies: {
+      object: objectName,
+      customButtons: actionAnalysis.customButtons,
+      visualforcePages: referenceAnalysis.visualforcePages,
+      fields: referenceAnalysis.fields,
+      relatedLists: relatedListNames,
+      quickActions: actionAnalysis.quickActions,
+      canvasApps: referenceAnalysis.canvasApps,
+      customLinks: referenceAnalysis.customLinks,
+      relatedObjects: sectionAnalysis.relatedObjects,
+    },
+    optionalDependencies: {
+      customButtons: actionAnalysis.customButtons,
+      visualforcePages: referenceAnalysis.visualforcePages,
+      quickActions: actionAnalysis.quickActions,
+      canvasApps: referenceAnalysis.canvasApps,
+      customLinks: referenceAnalysis.customLinks,
+    },
+  };
+}
+
 /**
  * Parse a Layout metadata XML file
  *
@@ -364,76 +474,12 @@ function extractCanvasAppsWithRelatedContent(metadata: LayoutMetadata, layoutSec
  * console.log(result.dependencies.visualforcePages); // ['AccountDashboard']
  */
 export async function parseLayout(filePath: string, layoutName: string): Promise<LayoutParseResult> {
-  // Read and parse XML
   const xmlContent = await readFile(filePath, 'utf-8');
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    parseAttributeValue: true,
-    trimValues: true,
-  });
-
-  let parsed: unknown;
-  try {
-    parsed = parser.parse(xmlContent);
-  } catch (error) {
-    throw new Error(
-      `Failed to parse Layout XML at ${filePath}: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-
-  // Type assertion with validation
-  const root = parsed as { Layout?: LayoutMetadata };
-  if (!root.Layout) {
-    throw new Error(`Invalid Layout XML structure at ${filePath}: missing Layout root element`);
-  }
-
-  const metadata = root.Layout;
-
-  // Extract object name from layout name
+  const metadata = parseLayoutMetadata(filePath, xmlContent);
   const objectName = extractObjectFromLayoutName(layoutName);
+  const sectionAnalysis = analyzeLayoutSections(metadata);
+  const actionAnalysis = analyzeLayoutActions(metadata);
+  const referenceAnalysis = analyzeLayoutReferences(metadata, sectionAnalysis);
 
-  // Extract dependencies using helper functions
-  const layoutSections = normalizeArray(metadata.layoutSections);
-  const relatedLists = normalizeArray(metadata.relatedLists);
-
-  const customButtons = extractCustomButtons(metadata);
-  const visualforcePages = extractVFPages(metadata, layoutSections);
-  const fields = extractFields(metadata, layoutSections);
-  const relatedListNames = uniqueDefined(relatedLists.map((list) => list.relatedList));
-  const quickActions = extractQuickActions(metadata);
-  const canvasApps = extractCanvasAppsWithRelatedContent(metadata, layoutSections);
-  const customLinks = extractCustomLinks(metadata, layoutSections);
-  const relatedObjects = uniqueDefined(normalizeArray(metadata.relatedObjects));
-
-  // Build result
-  return {
-    name: layoutName,
-    object: objectName,
-    customButtons,
-    visualforcePages,
-    fields,
-    relatedLists: [...new Set(relatedListNames)],
-    quickActions,
-    canvasApps,
-    customLinks,
-    relatedObjects,
-    dependencies: {
-      object: objectName,
-      customButtons,
-      visualforcePages,
-      fields,
-      relatedLists: relatedListNames,
-      quickActions,
-      canvasApps,
-      customLinks,
-      relatedObjects,
-    },
-    optionalDependencies: {
-      customButtons,
-      visualforcePages,
-      quickActions,
-      canvasApps,
-      customLinks,
-    },
-  };
+  return assembleLayoutResult(layoutName, objectName, sectionAnalysis, actionAnalysis, referenceAnalysis);
 }

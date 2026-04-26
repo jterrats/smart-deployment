@@ -77,6 +77,226 @@ const DEFAULT_CONFIG: CacheConfig = {
   enableLocking: true,
 };
 
+type LockInfo = {
+  pid: number;
+  timestamp: string;
+  hostname: string;
+};
+
+class CacheExpiryPolicy {
+  public createEntry<T>(value: T, ttlMs: number, now = Date.now()): CacheEntry<T> {
+    return {
+      value,
+      expiresAt: now + ttlMs,
+      createdAt: now,
+      hits: 0,
+    };
+  }
+
+  public isExpired(entry: CacheEntry<unknown>, now = Date.now()): boolean {
+    return now > entry.expiresAt;
+  }
+
+  public collectExpiredKeys(cache: ReadonlyMap<string, CacheEntry<unknown>>, now = Date.now()): string[] {
+    const expiredKeys: string[] = [];
+
+    for (const [key, entry] of cache.entries()) {
+      if (this.isExpired(entry, now)) {
+        expiredKeys.push(key);
+      }
+    }
+
+    return expiredKeys;
+  }
+
+  public selectOldestKey(cache: ReadonlyMap<string, CacheEntry<unknown>>): string | null {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of cache.entries()) {
+      if (entry.createdAt < oldestTime) {
+        oldestTime = entry.createdAt;
+        oldestKey = key;
+      }
+    }
+
+    return oldestKey;
+  }
+}
+
+class CacheStorage {
+  public constructor(private readonly getConfig: () => CacheConfig) {}
+
+  public async persistEntry<T>(key: string, entry: CacheEntry<T>): Promise<void> {
+    const config = this.getConfig();
+    if (!config.cacheDirectory) {
+      return;
+    }
+
+    try {
+      await fs.mkdir(config.cacheDirectory, { recursive: true });
+      const fileName = getCacheFileName(key);
+      const filePath = path.join(config.cacheDirectory, fileName);
+      await fs.writeFile(filePath, JSON.stringify(entry), 'utf-8');
+    } catch (error) {
+      logger.warn('Failed to persist cache entry', { error, key, cacheDirectory: config.cacheDirectory });
+    }
+  }
+
+  public async deletePersistedEntry(key: string): Promise<void> {
+    const config = this.getConfig();
+    if (!config.cacheDirectory) {
+      return;
+    }
+
+    try {
+      const fileName = getCacheFileName(key);
+      const filePath = path.join(config.cacheDirectory, fileName);
+      await fs.unlink(filePath);
+    } catch {
+      // Ignore if file doesn't exist
+    }
+  }
+
+  public async clearPersistedCache(): Promise<void> {
+    const config = this.getConfig();
+    if (!config.cacheDirectory) {
+      return;
+    }
+
+    try {
+      await fs.rm(config.cacheDirectory, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn('Failed to clear cache directory', { error, cacheDirectory: config.cacheDirectory });
+    }
+  }
+
+  public async loadEntriesFromDisk(
+    expiryPolicy: CacheExpiryPolicy
+  ): Promise<Array<{ key: string; entry: CacheEntry<unknown> }>> {
+    const config = this.getConfig();
+    if (!config.cacheDirectory) {
+      return [];
+    }
+
+    const files = await fs.readdir(config.cacheDirectory);
+    const cacheFiles = files.filter((file) => file.startsWith('cache_'));
+    const results = await Promise.all(cacheFiles.map(async (file) => this.loadPersistedEntry(file, expiryPolicy)));
+
+    return results.filter((result): result is { key: string; entry: CacheEntry<unknown> } => result !== null);
+  }
+
+  private async loadPersistedEntry(
+    file: string,
+    expiryPolicy: CacheExpiryPolicy
+  ): Promise<{ key: string; entry: CacheEntry<unknown> } | null> {
+    const config = this.getConfig();
+    try {
+      const filePath = path.join(config.cacheDirectory!, file);
+      const content = await fs.readFile(filePath, 'utf-8');
+      const entry = JSON.parse(content) as CacheEntry<unknown>;
+
+      if (expiryPolicy.isExpired(entry)) {
+        await fs.unlink(filePath);
+        return null;
+      }
+
+      const key = file.replace('cache_', '').replace('.json', '');
+      return { key, entry };
+    } catch (error) {
+      logger.warn('Skipping invalid cache file', { error, file });
+      return null;
+    }
+  }
+}
+
+class CacheLockLifecycle {
+  private lockFilePath: string | null = null;
+  private lockFileHandle: fs.FileHandle | null = null;
+
+  public constructor(private readonly getConfig: () => CacheConfig) {}
+
+  public hasActiveLock(): boolean {
+    return this.lockFileHandle !== null;
+  }
+
+  public async acquireLock(orgAlias: string): Promise<boolean> {
+    if (!this.getConfig().enableLocking) {
+      return true;
+    }
+
+    try {
+      const lockDir = path.join(os.tmpdir(), 'sf-smart-deployment-locks');
+      await fs.mkdir(lockDir, { recursive: true });
+
+      const lockFileName = `${orgAlias.replaceAll(/[^\w-]/g, '_')}.lock`;
+      this.lockFilePath = path.join(lockDir, lockFileName);
+      this.lockFileHandle = await fs.open(this.lockFilePath, 'wx');
+
+      const lockInfo = {
+        pid: process.pid,
+        orgAlias,
+        timestamp: new Date().toISOString(),
+        hostname: os.hostname(),
+      };
+
+      await this.lockFileHandle.writeFile(JSON.stringify(lockInfo, null, 2));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        return false;
+      }
+
+      logger.warn('Failed to acquire lock, continuing without locking', { error, orgAlias });
+      return true;
+    }
+  }
+
+  public async releaseLock(): Promise<void> {
+    if (!this.lockFileHandle || !this.lockFilePath) {
+      return;
+    }
+
+    const lockFilePath = this.lockFilePath;
+
+    try {
+      await this.lockFileHandle.close();
+      await fs.unlink(lockFilePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.warn('Failed to release lock', { error, lockFilePath });
+      }
+    } finally {
+      this.lockFileHandle = null;
+      this.lockFilePath = null;
+    }
+  }
+
+  public async isLocked(orgAlias: string): Promise<false | LockInfo> {
+    if (!this.getConfig().enableLocking) {
+      return false;
+    }
+
+    try {
+      const lockDir = path.join(os.tmpdir(), 'sf-smart-deployment-locks');
+      const lockFileName = `${orgAlias.replaceAll(/[^\w-]/g, '_')}.lock`;
+      const lockFilePath = path.join(lockDir, lockFileName);
+      const lockContent = await fs.readFile(lockFilePath, 'utf-8');
+      const lockInfo = JSON.parse(lockContent) as LockInfo;
+
+      try {
+        process.kill(lockInfo.pid, 0);
+        return lockInfo;
+      } catch {
+        await fs.unlink(lockFilePath);
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+}
+
 /**
  * Singleton Cache Manager with TTL, persistence, and locking
  *
@@ -93,12 +313,13 @@ const DEFAULT_CONFIG: CacheConfig = {
  */
 export class CacheManager {
   private static instance: CacheManager | null = null;
-  private static lockFilePath: string | null = null;
 
   private cache: Map<string, CacheEntry<unknown>>;
   private config: CacheConfig;
   private stats: CacheStats;
-  private lockFileHandle: fs.FileHandle | null = null;
+  private readonly storage: CacheStorage;
+  private readonly expiryPolicy: CacheExpiryPolicy;
+  private readonly lockLifecycle: CacheLockLifecycle;
 
   /**
    * Private constructor - use getInstance() instead
@@ -107,6 +328,9 @@ export class CacheManager {
   private constructor(config?: Partial<CacheConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.cache = new Map();
+    this.expiryPolicy = new CacheExpiryPolicy();
+    this.storage = new CacheStorage(() => this.config);
+    this.lockLifecycle = new CacheLockLifecycle(() => this.config);
     this.stats = {
       hits: 0,
       misses: 0,
@@ -133,12 +357,11 @@ export class CacheManager {
    * Reset singleton (for testing only)
    */
   public static resetInstance(): void {
-    if (CacheManager.instance?.lockFileHandle) {
+    if (CacheManager.instance?.lockLifecycle.hasActiveLock()) {
       void CacheManager.instance.releaseLock();
     }
 
     CacheManager.instance = null;
-    CacheManager.lockFilePath = null;
   }
 
   /**
@@ -148,101 +371,21 @@ export class CacheManager {
    * @returns True if lock acquired, false if already locked
    */
   public async acquireLock(orgAlias: string): Promise<boolean> {
-    if (!this.config.enableLocking) {
-      return true;
-    }
-
-    try {
-      const lockDir = path.join(os.tmpdir(), 'sf-smart-deployment-locks');
-      await fs.mkdir(lockDir, { recursive: true });
-
-      const lockFileName = `${orgAlias.replaceAll(/[^\w-]/g, '_')}.lock`;
-      CacheManager.lockFilePath = path.join(lockDir, lockFileName);
-
-      // Try to open lock file exclusively (fails if already locked)
-      this.lockFileHandle = await fs.open(CacheManager.lockFilePath, 'wx');
-
-      // Write process info to lock file
-      const lockInfo = {
-        pid: process.pid,
-        orgAlias,
-        timestamp: new Date().toISOString(),
-        hostname: os.hostname(),
-      };
-
-      await this.lockFileHandle.writeFile(JSON.stringify(lockInfo, null, 2));
-
-      return true;
-    } catch (error) {
-      // Lock file already exists - another process is running
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-        return false;
-      }
-
-      // Other errors - log but don't block deployments
-      logger.warn('Failed to acquire lock, continuing without locking', { error, orgAlias });
-      return true;
-    }
+    return this.lockLifecycle.acquireLock(orgAlias);
   }
 
   /**
    * Release file lock
    */
   public async releaseLock(): Promise<void> {
-    if (!this.lockFileHandle || !CacheManager.lockFilePath) {
-      return;
-    }
-
-    try {
-      await this.lockFileHandle.close();
-      await fs.unlink(CacheManager.lockFilePath);
-      this.lockFileHandle = null;
-      CacheManager.lockFilePath = null;
-    } catch (error) {
-      logger.warn('Failed to release lock', { error, lockFilePath: CacheManager.lockFilePath });
-    }
+    await this.lockLifecycle.releaseLock();
   }
 
   /**
    * Check if another instance is running for the same org
    */
-  public async isLocked(orgAlias: string): Promise<
-    | false
-    | {
-        pid: number;
-        timestamp: string;
-        hostname: string;
-      }
-  > {
-    if (!this.config.enableLocking) {
-      return false;
-    }
-
-    try {
-      const lockDir = path.join(os.tmpdir(), 'sf-smart-deployment-locks');
-      const lockFileName = `${orgAlias.replaceAll(/[^\w-]/g, '_')}.lock`;
-      const lockFilePath = path.join(lockDir, lockFileName);
-
-      const lockContent = await fs.readFile(lockFilePath, 'utf-8');
-      const lockInfo = JSON.parse(lockContent) as {
-        pid: number;
-        timestamp: string;
-        hostname: string;
-      };
-
-      // Check if process is still running
-      try {
-        process.kill(lockInfo.pid, 0); // Signal 0 = check existence
-        return lockInfo; // Process exists
-      } catch {
-        // Process doesn't exist - stale lock, remove it
-        await fs.unlink(lockFilePath);
-        return false;
-      }
-    } catch {
-      // Lock file doesn't exist
-      return false;
-    }
+  public async isLocked(orgAlias: string): Promise<false | LockInfo> {
+    return this.lockLifecycle.isLocked(orgAlias);
   }
 
   /**
@@ -252,23 +395,18 @@ export class CacheManager {
     const entry = this.cache.get(key) as CacheEntry<T> | undefined;
 
     if (!entry) {
-      this.stats.misses++;
-      this.updateHitRate();
+      this.recordMiss();
       return null;
     }
 
-    // Check if expired
-    if (Date.now() > entry.expiresAt) {
+    if (this.expiryPolicy.isExpired(entry)) {
       this.cache.delete(key);
-      this.stats.misses++;
-      this.updateHitRate();
+      this.recordMiss();
       return null;
     }
 
-    // Update hit count
     entry.hits++;
-    this.stats.hits++;
-    this.updateHitRate();
+    this.recordHit();
 
     return entry.value;
   }
@@ -278,26 +416,16 @@ export class CacheManager {
    */
   public async set<T>(key: string, value: T, ttlMs?: number): Promise<void> {
     const ttl = ttlMs ?? this.config.ttlMs;
-    const now = Date.now();
-
-    // Evict if at capacity
     if (this.cache.size >= this.config.maxSize) {
       this.evictOldest();
     }
 
-    const entry: CacheEntry<T> = {
-      value,
-      expiresAt: now + ttl,
-      createdAt: now,
-      hits: 0,
-    };
-
+    const entry = this.expiryPolicy.createEntry(value, ttl);
     this.cache.set(key, entry as CacheEntry<unknown>);
     this.stats.size = this.cache.size;
 
-    // Persist to disk if enabled
     if (this.config.enablePersistence) {
-      await this.persistEntry(key, entry);
+      await this.storage.persistEntry(key, entry);
     }
   }
 
@@ -317,7 +445,7 @@ export class CacheManager {
     this.stats.size = this.cache.size;
 
     if (deleted && this.config.enablePersistence) {
-      await this.deletePersistedEntry(key);
+      await this.storage.deletePersistedEntry(key);
     }
 
     return deleted;
@@ -332,11 +460,7 @@ export class CacheManager {
     this.stats.evictions = 0;
 
     if (this.config.enablePersistence && this.config.cacheDirectory) {
-      try {
-        await fs.rm(this.config.cacheDirectory, { recursive: true, force: true });
-      } catch (error) {
-        logger.warn('Failed to clear cache directory', { error, cacheDirectory: this.config.cacheDirectory });
-      }
+      await this.storage.clearPersistedCache();
     }
   }
 
@@ -357,40 +481,11 @@ export class CacheManager {
     }
 
     try {
-      const files = await fs.readdir(this.config.cacheDirectory);
-      const cacheFiles = files.filter((file) => file.startsWith('cache_'));
-
-      // Load all files in parallel
-      const results = await Promise.all(
-        cacheFiles.map(async (file) => {
-          try {
-            const filePath = path.join(this.config.cacheDirectory!, file);
-            const content = await fs.readFile(filePath, 'utf-8');
-            const entry = JSON.parse(content) as CacheEntry<unknown>;
-
-            // Skip expired entries
-            if (Date.now() > entry.expiresAt) {
-              await fs.unlink(filePath);
-              return null;
-            }
-
-            // Reconstruct key from filename
-            const hash = file.replace('cache_', '').replace('.json', '');
-            return { hash, entry };
-          } catch (error) {
-            logger.warn('Skipping invalid cache file', { error, file });
-            return null;
-          }
-        })
-      );
-
-      // Load valid entries into cache
+      const results = await this.storage.loadEntriesFromDisk(this.expiryPolicy);
       let loaded = 0;
       for (const result of results) {
-        if (result) {
-          this.cache.set(result.hash, result.entry);
-          loaded++;
-        }
+        this.cache.set(result.key, result.entry);
+        loaded++;
       }
 
       this.stats.size = this.cache.size;
@@ -405,24 +500,13 @@ export class CacheManager {
    * Clean expired entries (garbage collection)
    */
   public async cleanExpired(): Promise<number> {
-    const now = Date.now();
-    const expiredKeys: string[] = [];
-
-    // Collect expired keys
-    for (const [key, entry] of this.cache.entries()) {
-      if (now > entry.expiresAt) {
-        expiredKeys.push(key);
-      }
-    }
-
-    // Delete from cache (synchronous)
+    const expiredKeys = this.expiryPolicy.collectExpiredKeys(this.cache);
     for (const key of expiredKeys) {
       this.cache.delete(key);
     }
 
-    // Delete persisted entries in parallel
     if (this.config.enablePersistence && expiredKeys.length > 0) {
-      await Promise.all(expiredKeys.map((key) => this.deletePersistedEntry(key)));
+      await Promise.all(expiredKeys.map(async (key) => this.storage.deletePersistedEntry(key)));
     }
 
     this.stats.size = this.cache.size;
@@ -454,20 +538,21 @@ export class CacheManager {
    * Evict oldest entry (LRU-like)
    */
   private evictOldest(): void {
-    let oldestKey: string | null = null;
-    let oldestTime = Infinity;
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (entry.createdAt < oldestTime) {
-        oldestTime = entry.createdAt;
-        oldestKey = key;
-      }
-    }
-
+    const oldestKey = this.expiryPolicy.selectOldestKey(this.cache);
     if (oldestKey) {
       this.cache.delete(oldestKey);
       this.stats.evictions++;
     }
+  }
+
+  private recordHit(): void {
+    this.stats.hits++;
+    this.updateHitRate();
+  }
+
+  private recordMiss(): void {
+    this.stats.misses++;
+    this.updateHitRate();
   }
 
   /**
@@ -492,43 +577,6 @@ export class CacheManager {
     }
 
     this.stats.memorySizeBytes = totalSize;
-  }
-
-  /**
-   * Persist entry to disk
-   */
-  private async persistEntry<T>(key: string, entry: CacheEntry<T>): Promise<void> {
-    if (!this.config.cacheDirectory) {
-      return;
-    }
-
-    try {
-      await fs.mkdir(this.config.cacheDirectory, { recursive: true });
-
-      const fileName = getCacheFileName(key);
-      const filePath = path.join(this.config.cacheDirectory, fileName);
-
-      await fs.writeFile(filePath, JSON.stringify(entry), 'utf-8');
-    } catch (error) {
-      logger.warn('Failed to persist cache entry', { error, key, cacheDirectory: this.config.cacheDirectory });
-    }
-  }
-
-  /**
-   * Delete persisted entry
-   */
-  private async deletePersistedEntry(key: string): Promise<void> {
-    if (!this.config.cacheDirectory) {
-      return;
-    }
-
-    try {
-      const fileName = getCacheFileName(key);
-      const filePath = path.join(this.config.cacheDirectory, fileName);
-      await fs.unlink(filePath);
-    } catch {
-      // Ignore if file doesn't exist
-    }
   }
 }
 
