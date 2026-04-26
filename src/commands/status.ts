@@ -13,13 +13,15 @@
 import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
+import { DeploymentStatusService } from '../deployment/deployment-status-service.js';
+import { StatusCommandPresenter } from '../presentation/status-command-presenter.js';
 import { getLogger } from '../utils/logger.js';
 import { StateManager } from '../deployment/state-manager.js';
-import { formatDeploymentStatus, summarizeDeploymentState } from '../deployment/deployment-state-summary.js';
 
 const logger = getLogger('StatusCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'status');
+const presenter = new StatusCommandPresenter();
 
 type StatusResult = {
   currentWave: number;
@@ -57,11 +59,13 @@ export default class Status extends SfCommand<StatusResult> {
     try {
       logger.info('Getting status', { flags });
 
-      const stateManager = new StateManager({ baseDir: sourcePath });
-      const state = await stateManager.loadState();
+      const statusService = new DeploymentStatusService(new StateManager({ baseDir: sourcePath }));
+      const summary = await statusService.getStatus();
+      const formattedStatus = statusService.formatStatus(summary);
 
-      if (!state) {
-        this.log('ℹ️ No deployment state found.');
+      presenter.reportStatus(this, summary, formattedStatus);
+
+      if (!summary.hasState) {
         return {
           currentWave: 0,
           totalWaves: 0,
@@ -72,20 +76,46 @@ export default class Status extends SfCommand<StatusResult> {
         };
       }
 
-      const summary = summarizeDeploymentState(state);
-      formatDeploymentStatus(summary).forEach((line) => this.log(line));
-
       const result: StatusResult = {
         currentWave: summary.currentWave,
         totalWaves: summary.totalWaves,
         completedWaves: summary.completedWaves,
-        remainingWaves: summary.remainingWaves,
-        status: summary.status,
-        canResume: summary.canResume,
+        remainingWaves: summary.remainingWaves.length,
+        status:
+          summary.status === 'in-progress'
+            ? 'In Progress'
+            : summary.status === 'failed'
+            ? 'Failed'
+            : summary.status === 'completed'
+            ? 'Completed'
+            : 'Not Started',
+        canResume: summary.resumable,
       };
 
-      if (summary.ai !== undefined) {
-        result.ai = summary.ai;
+      if (summary.hasState && summary.status !== 'not-started') {
+        const stateSummary = await new StateManager({ baseDir: sourcePath }).loadState();
+        if (stateSummary?.metadata) {
+          result.ai = {
+            provider:
+              typeof stateSummary.metadata.aiProvider === 'string' ? stateSummary.metadata.aiProvider : undefined,
+            model: typeof stateSummary.metadata.aiModel === 'string' ? stateSummary.metadata.aiModel : undefined,
+            fallback:
+              typeof stateSummary.metadata.aiFallback === 'boolean' ? stateSummary.metadata.aiFallback : undefined,
+            aiAdjustments:
+              typeof stateSummary.metadata.aiAdjustments === 'number' ? stateSummary.metadata.aiAdjustments : undefined,
+            unknownTypes: Array.isArray(stateSummary.metadata.aiUnknownTypes)
+              ? stateSummary.metadata.aiUnknownTypes.filter((item): item is string => typeof item === 'string')
+              : undefined,
+            inferenceFallback:
+              typeof stateSummary.metadata.aiInferenceFallback === 'boolean'
+                ? stateSummary.metadata.aiInferenceFallback
+                : undefined,
+            inferredDependencies:
+              typeof stateSummary.metadata.aiInferredDependencies === 'number'
+                ? stateSummary.metadata.aiInferredDependencies
+                : undefined,
+          };
+        }
       }
 
       return result;

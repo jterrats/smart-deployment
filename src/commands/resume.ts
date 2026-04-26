@@ -13,13 +13,15 @@
 import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
+import { ResumeDeploymentService, type ResumeRetryStrategy } from '../deployment/resume-deployment-service.js';
+import { ResumeCommandPresenter } from '../presentation/resume-command-presenter.js';
 import { getLogger } from '../utils/logger.js';
 import { StateManager } from '../deployment/state-manager.js';
-import { createResumedState, summarizeDeploymentState } from '../deployment/deployment-state-summary.js';
 
 const logger = getLogger('ResumeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'resume');
+const presenter = new ResumeCommandPresenter();
 
 type ResumeResult = {
   success: boolean;
@@ -51,26 +53,10 @@ export default class Resume extends SfCommand<ResumeResult> {
     try {
       logger.info('Resuming deployment', { flags });
 
-      const stateManager = new StateManager({ baseDir: sourcePath });
-      const state = await stateManager.loadState();
-
-      if (!state?.failedWave) {
-        this.error('No failed deployment state found to resume');
-      }
-
-      const summary = summarizeDeploymentState(state);
-      const retryStrategy = flags['retry-strategy'] as 'standard' | 'quick' | 'validate-only';
-      const resumedState = createResumedState(state, retryStrategy);
-
-      await stateManager.saveState(resumedState);
-
-      this.log(`🔄 Resume prepared for deployment ${summary.deploymentId}`);
-      this.log(`Retry strategy: ${retryStrategy}`);
-      this.log(`Resuming from wave ${summary.currentWave}/${summary.totalWaves}`);
-      this.log(`Remaining waves: ${summary.remainingWaves}`);
-      if (summary.failureReason) {
-        this.log(`Previous failure: ${summary.failureReason}`);
-      }
+      const retryStrategy = flags['retry-strategy'] as ResumeRetryStrategy;
+      const resumeService = new ResumeDeploymentService(new StateManager({ baseDir: sourcePath }));
+      const summary = await resumeService.prepareResume(retryStrategy);
+      presenter.reportResumePreparation(this, summary, retryStrategy);
 
       return {
         success: true,

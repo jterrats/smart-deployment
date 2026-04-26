@@ -17,6 +17,7 @@ export type DeploymentStatusSummary = {
   failedWaveError?: string;
   resumable: boolean;
   testStatus: 'unknown' | 'pending' | 'not-run';
+  testStatusText: string;
   timestamp?: string;
   stateFilePath: string;
 };
@@ -47,6 +48,7 @@ export class DeploymentStatusService {
         remainingWaves: [],
         resumable: false,
         testStatus: 'unknown',
+        testStatusText: 'Not started',
         stateFilePath: this.stateManager.getStateFilePath(),
       };
     }
@@ -72,6 +74,7 @@ export class DeploymentStatusService {
       failedWaveError: summary.failureReason,
       resumable: summary.canResume,
       testStatus: this.normalizeTestStatus(summary.testStatus),
+      testStatusText: summary.testStatus,
       timestamp: summary.lastUpdated,
       stateFilePath: this.stateManager.getStateFilePath(),
     };
@@ -122,7 +125,8 @@ export class DeploymentStatusService {
       `Current Wave: ${summary.currentWave}/${summary.totalWaves}`,
       `Completed Waves: ${summary.completedWaves.length > 0 ? summary.completedWaves.join(', ') : 'none'}`,
       `Remaining Waves: ${summary.remainingWaves.length > 0 ? summary.remainingWaves.join(', ') : 'none'}`,
-      `Test Status: ${summary.testStatus}`,
+      `Estimated Time Remaining: ${summary.timestamp !== undefined ? this.estimateTimeRemaining(summary) : 'unknown'}`,
+      `Test Status: ${summary.testStatusText}`,
       `Updated: ${summary.timestamp ?? 'unknown'}`,
     ];
 
@@ -172,5 +176,18 @@ export class DeploymentStatusService {
     }
 
     return 'pending';
+  }
+
+  private estimateTimeRemaining(summary: DeploymentStatusSummary): string {
+    const remainingCount = summary.remainingWaves.length;
+    if (remainingCount === 0) {
+      return '0s';
+    }
+
+    if (summary.failedWaveNumber !== undefined) {
+      return `${remainingCount * 60}s`;
+    }
+
+    return `${remainingCount * 60}s`;
   }
 }
