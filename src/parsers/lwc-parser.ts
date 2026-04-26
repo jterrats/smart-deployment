@@ -44,6 +44,21 @@ export type LWCParseResult = {
   metadata?: LWCMetadata;
 };
 
+type LwcCodeAnalysis = {
+  cleanCode: string;
+  isTypeScript: boolean;
+  apexImports: string[];
+  lwcImports: string[];
+  wireAdapters: string[];
+  apiProperties: string[];
+  navigationRefs: string[];
+};
+
+type LwcMetadataAnalysis = {
+  hasMetadataXml: boolean;
+  metadata?: LWCMetadata;
+};
+
 /**
  * Remove comments from JavaScript/TypeScript code
  */
@@ -325,6 +340,21 @@ function parseOptionalNumber(value: string | number | undefined): number | undef
   return undefined;
 }
 
+function analyzeComponentCode(jsCode: string): LwcCodeAnalysis {
+  const cleanCode = removeComments(jsCode);
+  const isTypeScript = isTypeScriptComponent(cleanCode);
+
+  return {
+    cleanCode,
+    isTypeScript,
+    apexImports: extractApexImports(cleanCode),
+    lwcImports: extractLWCImports(cleanCode),
+    wireAdapters: extractWireAdapters(cleanCode),
+    apiProperties: extractApiProperties(cleanCode),
+    navigationRefs: extractNavigationRefs(cleanCode),
+  };
+}
+
 /**
  * Parse LWC js-meta.xml file
  *
@@ -384,6 +414,85 @@ function parseMetadataXml(metadataContent: string): LWCMetadata | undefined {
   };
 }
 
+function analyzeMetadataXml(componentName: string, metadataXml?: string): LwcMetadataAnalysis {
+  if (!metadataXml) {
+    return {
+      hasMetadataXml: false,
+      metadata: undefined,
+    };
+  }
+
+  try {
+    return {
+      hasMetadataXml: true,
+      metadata: parseMetadataXml(metadataXml),
+    };
+  } catch (error) {
+    logger.warn(`Failed to parse js-meta.xml for ${componentName}`, {
+      componentName,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
+      hasMetadataXml: true,
+      metadata: undefined,
+    };
+  }
+}
+
+function buildDependencies(analysis: LwcCodeAnalysis): LWCDependency[] {
+  return [
+    ...analysis.apexImports.map((name) => ({
+      type: 'apex_import' as const,
+      name,
+      source: '@salesforce/apex',
+      isTypeScript: analysis.isTypeScript,
+    })),
+    ...analysis.lwcImports.map((name) => ({
+      type: 'lwc_import' as const,
+      name,
+      source: 'c',
+      isTypeScript: analysis.isTypeScript,
+    })),
+    ...analysis.wireAdapters.map((name) => ({
+      type: 'wire_adapter' as const,
+      name,
+      isTypeScript: analysis.isTypeScript,
+    })),
+    ...analysis.apiProperties.map((name) => ({
+      type: 'api_property' as const,
+      name,
+      isTypeScript: analysis.isTypeScript,
+    })),
+    ...analysis.navigationRefs.map((name) => ({
+      type: 'navigation' as const,
+      name,
+      isTypeScript: analysis.isTypeScript,
+    })),
+  ];
+}
+
+function assembleParseResult(
+  componentName: string,
+  codeAnalysis: LwcCodeAnalysis,
+  metadataAnalysis: LwcMetadataAnalysis
+): LWCParseResult {
+  const dependencies = buildDependencies(codeAnalysis);
+
+  return {
+    componentName,
+    isTypeScript: codeAnalysis.isTypeScript,
+    apexImports: codeAnalysis.apexImports,
+    lwcImports: codeAnalysis.lwcImports,
+    wireAdapters: codeAnalysis.wireAdapters,
+    apiProperties: codeAnalysis.apiProperties,
+    navigationRefs: codeAnalysis.navigationRefs,
+    dependencies,
+    hasMetadataXml: metadataAnalysis.hasMetadataXml,
+    metadata: metadataAnalysis.metadata,
+  };
+}
+
 /**
  * Parse a Lightning Web Component and extract dependencies
  *
@@ -408,85 +517,16 @@ export function parseLWC(componentName: string, jsCode: string, metadataXml?: st
   try {
     logger.debug(`Parsing LWC: ${componentName}`);
 
-    // Remove comments
-    const cleanCode = removeComments(jsCode);
-
-    // Detect TypeScript
-    const isTS = isTypeScriptComponent(cleanCode);
-
-    // Extract dependencies
-    const apexImports = extractApexImports(cleanCode);
-    const lwcImports = extractLWCImports(cleanCode);
-    const wireAdapters = extractWireAdapters(cleanCode);
-    const apiProperties = extractApiProperties(cleanCode);
-    const navigationRefs = extractNavigationRefs(cleanCode);
-
-    // Parse metadata XML if provided
-    let metadata: LWCMetadata | undefined;
-    let hasMetadataXml = false;
-
-    if (metadataXml) {
-      hasMetadataXml = true;
-      try {
-        metadata = parseMetadataXml(metadataXml);
-      } catch (error) {
-        logger.warn(`Failed to parse js-meta.xml for ${componentName}`, {
-          componentName,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    // Build dependencies array
-    const dependencies: LWCDependency[] = [
-      ...apexImports.map((name) => ({
-        type: 'apex_import' as LWCDependencyType,
-        name,
-        source: '@salesforce/apex',
-        isTypeScript: isTS,
-      })),
-      ...lwcImports.map((name) => ({
-        type: 'lwc_import' as LWCDependencyType,
-        name,
-        source: 'c',
-        isTypeScript: isTS,
-      })),
-      ...wireAdapters.map((name) => ({
-        type: 'wire_adapter' as LWCDependencyType,
-        name,
-        isTypeScript: isTS,
-      })),
-      ...apiProperties.map((name) => ({
-        type: 'api_property' as LWCDependencyType,
-        name,
-        isTypeScript: isTS,
-      })),
-      ...navigationRefs.map((name) => ({
-        type: 'navigation' as LWCDependencyType,
-        name,
-        isTypeScript: isTS,
-      })),
-    ];
-
-    const result: LWCParseResult = {
-      componentName,
-      isTypeScript: isTS,
-      apexImports,
-      lwcImports,
-      wireAdapters,
-      apiProperties,
-      navigationRefs,
-      dependencies,
-      hasMetadataXml,
-      metadata,
-    };
+    const codeAnalysis = analyzeComponentCode(jsCode);
+    const metadataAnalysis = analyzeMetadataXml(componentName, metadataXml);
+    const result = assembleParseResult(componentName, codeAnalysis, metadataAnalysis);
 
     logger.debug(`Parsed LWC: ${componentName}`, {
-      isTypeScript: isTS,
-      apexImports: apexImports.length,
-      lwcImports: lwcImports.length,
-      wireAdapters: wireAdapters.length,
-      dependencies: dependencies.length,
+      isTypeScript: result.isTypeScript,
+      apexImports: result.apexImports.length,
+      lwcImports: result.lwcImports.length,
+      wireAdapters: result.wireAdapters.length,
+      dependencies: result.dependencies.length,
     });
 
     return result;

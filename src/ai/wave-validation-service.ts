@@ -18,6 +18,19 @@ import { createLLMProvider } from './llm-provider-factory.js';
 
 const logger = getLogger('WaveValidationService');
 
+type WaveValidationPayload = {
+  issues: WaveValidationIssue[];
+  optimizations: WaveOptimization[];
+  riskAssessments: WaveRiskAssessment[];
+};
+
+type PromptWaveSummary = {
+  number: number;
+  componentCount: number;
+  types: Wave['metadata']['types'];
+  components: string[];
+};
+
 export type WaveValidationIssue = {
   waveNumber: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -85,45 +98,23 @@ export class WaveValidationService {
    */
   public async validateWaves(waves: Wave[]): Promise<WaveValidationResult> {
     const startTime = Date.now();
-
-    const result: WaveValidationResult = {
-      isValid: true,
-      issues: [],
-      optimizations: [],
-      riskAssessments: [],
-      overallRisk: 'low',
-      executionTime: 0,
-      aiAnalyzed: false,
-    };
+    const result = this.createDefaultResult();
 
     try {
-      // Check if Agentforce is enabled
       if (!this.llmProvider.isEnabled()) {
         logger.info('Agentforce disabled, skipping AI validation');
         return result;
       }
 
-      // Build validation prompt
-      const prompt = this.buildValidationPrompt(waves);
-
-      // Send to Agentforce
-      const response = await this.llmProvider.sendRequest({
-        model: this.llmProvider.getConfig().model,
-        prompt,
-        temperature: 0.1, // Very low for consistent validation
-        maxTokens: 3000,
-      });
-
-      // Parse response
-      const validation = this.parseValidationResponse(response.content, waves);
-
-      result.issues = validation.issues;
-      result.optimizations = validation.optimizations;
-      result.riskAssessments = validation.riskAssessments;
-      result.overallRisk = this.calculateOverallRisk(validation.riskAssessments);
-      result.isValid = validation.issues.filter((i) => i.severity === 'critical').length === 0;
+      const validation = await this.runAIValidation(waves);
+      const evaluated = this.evaluateValidationPayload(validation);
+      result.issues = evaluated.issues;
+      result.optimizations = evaluated.optimizations;
+      result.riskAssessments = evaluated.riskAssessments;
+      result.overallRisk = evaluated.overallRisk;
+      result.isValid = evaluated.isValid;
       result.aiAnalyzed = true;
-      result.executionTime = Date.now() - startTime;
+      result.executionTime = this.calculateExecutionTime(startTime);
 
       logger.info('Wave validation completed', {
         waves: waves.length,
@@ -138,21 +129,60 @@ export class WaveValidationService {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      result.executionTime = Date.now() - startTime;
+      result.executionTime = this.calculateExecutionTime(startTime);
       return result;
     }
+  }
+
+  private createDefaultResult(): WaveValidationResult {
+    return {
+      isValid: true,
+      issues: [],
+      optimizations: [],
+      riskAssessments: [],
+      overallRisk: 'low',
+      executionTime: 0,
+      aiAnalyzed: false,
+    };
+  }
+
+  private calculateExecutionTime(startTime: number): number {
+    return Date.now() - startTime;
+  }
+
+  private async runAIValidation(waves: Wave[]): Promise<WaveValidationPayload> {
+    const response = await this.sendValidationRequest(waves);
+    return this.parseValidationResponse(response.content, waves);
+  }
+
+  private async sendValidationRequest(waves: Wave[]): Promise<{ content: string }> {
+    const prompt = this.buildValidationPrompt(waves);
+
+    return this.llmProvider.sendRequest({
+      model: this.llmProvider.getConfig().model,
+      prompt,
+      temperature: 0.1,
+      maxTokens: 3000,
+    });
+  }
+
+  private evaluateValidationPayload(validation: WaveValidationPayload): WaveValidationResult {
+    return {
+      isValid: !validation.issues.some((issue) => issue.severity === 'critical'),
+      issues: validation.issues,
+      optimizations: validation.optimizations,
+      riskAssessments: validation.riskAssessments,
+      overallRisk: this.calculateOverallRisk(validation.riskAssessments),
+      executionTime: 0,
+      aiAnalyzed: false,
+    };
   }
 
   /**
    * Build validation prompt
    */
   private buildValidationPrompt(waves: Wave[]): string {
-    const waveSummaries = waves.map((w) => ({
-      number: w.number,
-      componentCount: w.metadata.componentCount,
-      types: w.metadata.types,
-      components: w.components.slice(0, 20), // Limit for token optimization
-    }));
+    const waveSummaries = this.summarizeWavesForPrompt(waves);
 
     return `You are an expert Salesforce deployment architect. Analyze the following deployment waves and identify potential issues.
 
@@ -200,45 +230,65 @@ Return ONLY a JSON object in this format:
 Be conservative - only report issues with high confidence.`;
   }
 
+  private summarizeWavesForPrompt(waves: Wave[]): PromptWaveSummary[] {
+    return waves.map((w) => ({
+      number: w.number,
+      componentCount: w.metadata.componentCount,
+      types: w.metadata.types,
+      components: w.components.slice(0, 20),
+    }));
+  }
+
   /**
    * @ac US-056-AC-2: Receive validation feedback
    * @ac US-056-AC-3: Identify potential issues
    * @ac US-056-AC-4: Suggest optimizations
    * @ac US-056-AC-5: Risk assessment per wave
    */
-  private parseValidationResponse(
-    content: string,
-    waves: Wave[]
-  ): {
-    issues: WaveValidationIssue[];
-    optimizations: WaveOptimization[];
-    riskAssessments: WaveRiskAssessment[];
-  } {
+  private parseValidationResponse(content: string, waves: Wave[]): WaveValidationPayload {
     try {
-      // Extract JSON from response
-      const jsonMatch = /\{[\s\S]*\}/.exec(content);
-      if (!jsonMatch) {
+      const parsed = this.extractValidationJson(content);
+      if (!parsed) {
         logger.warn('No JSON found in validation response');
         return this.getMockValidation(waves);
       }
 
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        issues?: unknown[];
-        optimizations?: unknown[];
-        riskAssessments?: unknown[];
-      };
-
-      return {
-        issues: this.parseIssues(parsed.issues ?? []),
-        optimizations: this.parseOptimizations(parsed.optimizations ?? []),
-        riskAssessments: this.parseRiskAssessments(parsed.riskAssessments ?? []),
-      };
+      return this.normalizeValidationPayload(parsed);
     } catch (error) {
       logger.error('Failed to parse validation response', {
         error: error instanceof Error ? error.message : String(error),
       });
       return this.getMockValidation(waves);
     }
+  }
+
+  private extractValidationJson(content: string): {
+    issues?: unknown[];
+    optimizations?: unknown[];
+    riskAssessments?: unknown[];
+  } | null {
+    const jsonMatch = /\{[\s\S]*\}/.exec(content);
+    if (!jsonMatch) {
+      return null;
+    }
+
+    return JSON.parse(jsonMatch[0]) as {
+      issues?: unknown[];
+      optimizations?: unknown[];
+      riskAssessments?: unknown[];
+    };
+  }
+
+  private normalizeValidationPayload(parsed: {
+    issues?: unknown[];
+    optimizations?: unknown[];
+    riskAssessments?: unknown[];
+  }): WaveValidationPayload {
+    return {
+      issues: this.parseIssues(parsed.issues ?? []),
+      optimizations: this.parseOptimizations(parsed.optimizations ?? []),
+      riskAssessments: this.parseRiskAssessments(parsed.riskAssessments ?? []),
+    };
   }
 
   /**
@@ -324,11 +374,7 @@ Be conservative - only report issues with high confidence.`;
   /**
    * Get mock validation (fallback when AI unavailable)
    */
-  private getMockValidation(waves: Wave[]): {
-    issues: WaveValidationIssue[];
-    optimizations: WaveOptimization[];
-    riskAssessments: WaveRiskAssessment[];
-  } {
+  private getMockValidation(waves: Wave[]): WaveValidationPayload {
     const riskAssessments: WaveRiskAssessment[] = waves.map((wave) => ({
       waveNumber: wave.number,
       riskLevel: wave.metadata.componentCount > 200 ? 'high' : 'low',
@@ -395,73 +441,91 @@ Be conservative - only report issues with high confidence.`;
     lines.push(`Execution Time: ${result.executionTime}ms`);
     lines.push('');
 
-    // Issues
-    if (result.issues.length > 0) {
-      lines.push(`❌ Issues Found: ${result.issues.length}`);
-      lines.push('');
-
-      const bySeverity = new Map<string, WaveValidationIssue[]>();
-      for (const issue of result.issues) {
-        const issues = bySeverity.get(issue.severity) ?? [];
-        issues.push(issue);
-        bySeverity.set(issue.severity, issues);
-      }
-
-      for (const [severity, issues] of bySeverity.entries()) {
-        lines.push(`${this.getSeverityIcon(severity)} ${severity.toUpperCase()} (${issues.length}):`);
-        for (const issue of issues.slice(0, 5)) {
-          lines.push(`   Wave ${issue.waveNumber}: ${issue.message}`);
-          if (issue.suggestion) {
-            lines.push(`   💡 ${issue.suggestion}`);
-          }
-        }
-        if (issues.length > 5) {
-          lines.push(`   ... and ${issues.length - 5} more`);
-        }
-        lines.push('');
-      }
-    } else {
-      lines.push('✅ No critical issues found');
-      lines.push('');
-    }
-
-    // Optimizations
-    if (result.optimizations.length > 0) {
-      lines.push(`💡 Optimization Suggestions: ${result.optimizations.length}`);
-      lines.push('');
-
-      for (const opt of result.optimizations.slice(0, 5)) {
-        lines.push(`   Wave ${opt.waveNumber}: ${opt.type.toUpperCase()}`);
-        lines.push(`   ${opt.description}`);
-        lines.push(`   Confidence: ${(opt.confidence * 100).toFixed(0)}%`);
-        lines.push(`   Impact: ${opt.estimatedImprovement}`);
-        lines.push('');
-      }
-    }
-
-    // Risk Assessments
-    if (result.riskAssessments.length > 0) {
-      lines.push('📊 Risk Assessment by Wave:');
-      lines.push('');
-
-      for (const assessment of result.riskAssessments) {
-        lines.push(
-          `   Wave ${assessment.waveNumber}: ${this.getRiskIcon(
-            assessment.riskLevel
-          )} ${assessment.riskLevel.toUpperCase()}`
-        );
-
-        if (assessment.riskFactors.length > 0) {
-          lines.push(`   Factors: ${assessment.riskFactors.join(', ')}`);
-        }
-
-        if (assessment.mitigation.length > 0) {
-          lines.push(`   Mitigation: ${assessment.mitigation.join(', ')}`);
-        }
-      }
-    }
+    this.appendIssueSection(lines, result);
+    this.appendOptimizationSection(lines, result);
+    this.appendRiskAssessmentSection(lines, result);
 
     return lines.join('\n');
+  }
+
+  private appendIssueSection(lines: string[], result: WaveValidationResult): void {
+    if (result.issues.length === 0) {
+      lines.push('✅ No critical issues found');
+      lines.push('');
+      return;
+    }
+
+    lines.push(`❌ Issues Found: ${result.issues.length}`);
+    lines.push('');
+
+    const bySeverity = this.groupIssuesBySeverity(result.issues);
+    for (const [severity, issues] of bySeverity.entries()) {
+      lines.push(`${this.getSeverityIcon(severity)} ${severity.toUpperCase()} (${issues.length}):`);
+      for (const issue of issues.slice(0, 5)) {
+        lines.push(`   Wave ${issue.waveNumber}: ${issue.message}`);
+        if (issue.suggestion) {
+          lines.push(`   💡 ${issue.suggestion}`);
+        }
+      }
+      if (issues.length > 5) {
+        lines.push(`   ... and ${issues.length - 5} more`);
+      }
+      lines.push('');
+    }
+  }
+
+  private groupIssuesBySeverity(issues: WaveValidationIssue[]): Map<string, WaveValidationIssue[]> {
+    const bySeverity = new Map<string, WaveValidationIssue[]>();
+
+    for (const issue of issues) {
+      const currentIssues = bySeverity.get(issue.severity) ?? [];
+      currentIssues.push(issue);
+      bySeverity.set(issue.severity, currentIssues);
+    }
+
+    return bySeverity;
+  }
+
+  private appendOptimizationSection(lines: string[], result: WaveValidationResult): void {
+    if (result.optimizations.length === 0) {
+      return;
+    }
+
+    lines.push(`💡 Optimization Suggestions: ${result.optimizations.length}`);
+    lines.push('');
+
+    for (const opt of result.optimizations.slice(0, 5)) {
+      lines.push(`   Wave ${opt.waveNumber}: ${opt.type.toUpperCase()}`);
+      lines.push(`   ${opt.description}`);
+      lines.push(`   Confidence: ${(opt.confidence * 100).toFixed(0)}%`);
+      lines.push(`   Impact: ${opt.estimatedImprovement}`);
+      lines.push('');
+    }
+  }
+
+  private appendRiskAssessmentSection(lines: string[], result: WaveValidationResult): void {
+    if (result.riskAssessments.length === 0) {
+      return;
+    }
+
+    lines.push('📊 Risk Assessment by Wave:');
+    lines.push('');
+
+    for (const assessment of result.riskAssessments) {
+      lines.push(
+        `   Wave ${assessment.waveNumber}: ${this.getRiskIcon(
+          assessment.riskLevel
+        )} ${assessment.riskLevel.toUpperCase()}`
+      );
+
+      if (assessment.riskFactors.length > 0) {
+        lines.push(`   Factors: ${assessment.riskFactors.join(', ')}`);
+      }
+
+      if (assessment.mitigation.length > 0) {
+        lines.push(`   Mitigation: ${assessment.mitigation.join(', ')}`);
+      }
+    }
   }
 
   /**

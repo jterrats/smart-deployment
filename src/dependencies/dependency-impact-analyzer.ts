@@ -1,13 +1,13 @@
 /**
  * Dependency Impact Analyzer
  * Analyzes the impact of changes to components in the dependency graph
- * 
+ *
  * @ac US-032-AC-1: Given a component, find all dependents
  * @ac US-032-AC-2: Calculate impact radius
  * @ac US-032-AC-3: Identify critical components
  * @ac US-032-AC-4: Generate impact report
  * @ac US-032-AC-5: Suggest test scope based on impact
- * 
+ *
  * @issue #32
  */
 
@@ -15,6 +15,27 @@ import { getLogger } from '../utils/logger.js';
 import type { NodeId, DependencyGraph } from '../types/dependency.js';
 
 const logger = getLogger('DependencyImpactAnalyzer');
+
+type TraversalNode = {
+  nodeId: NodeId;
+  depth: number;
+};
+
+type DistanceNode = {
+  nodeId: NodeId;
+  distance: number;
+};
+
+type ImpactAggregate = {
+  impacts: Map<NodeId, ComponentImpact>;
+  allAffected: Set<NodeId>;
+};
+
+type TestBuckets = {
+  requiredTests: NodeId[];
+  recommendedTests: NodeId[];
+  optionalTests: NodeId[];
+};
 
 /**
  * Impact level classification
@@ -71,15 +92,15 @@ export type ImpactAnalysisOptions = {
 
 /**
  * Dependency Impact Analyzer
- * 
+ *
  * Analyzes the impact of changes to determine:
  * - Which components are affected
  * - Impact radius and severity
  * - Critical components
  * - Test scope recommendations
- * 
+ *
  * Performance: O(V + E) using BFS
- * 
+ *
  * @example
  * const analyzer = new DependencyImpactAnalyzer(graph, reverseGraph);
  * const result = analyzer.analyze(['ApexClass:AccountService']);
@@ -92,11 +113,7 @@ export class DependencyImpactAnalyzer {
   private reverseGraph: DependencyGraph;
   private options: Required<ImpactAnalysisOptions>;
 
-  public constructor(
-    graph: DependencyGraph,
-    reverseGraph: DependencyGraph,
-    options: ImpactAnalysisOptions = {}
-  ) {
+  public constructor(graph: DependencyGraph, reverseGraph: DependencyGraph, options: ImpactAnalysisOptions = {}) {
     this.graph = graph;
     this.reverseGraph = reverseGraph;
     this.options = {
@@ -113,43 +130,22 @@ export class DependencyImpactAnalyzer {
 
   /**
    * Analyze impact of changes to one or more components
-   * 
+   *
    * @ac US-032-AC-1: Given a component, find all dependents
    * @ac US-032-AC-2: Calculate impact radius
    * @ac US-032-AC-4: Generate impact report
    */
   public analyze(changedComponents: NodeId[]): ImpactAnalysisResult {
     const startTime = Date.now();
-
-    // Calculate impact for each changed component
-    const impacts = new Map<NodeId, ComponentImpact>();
-    const allAffected = new Set<NodeId>();
-
-    for (const nodeId of changedComponents) {
-      const impact = this.calculateImpact(nodeId);
-      impacts.set(nodeId, impact);
-
-      // Collect all affected components (including transitive)
-      allAffected.add(nodeId);
-      const transitiveAffected = this.findAllDependents(nodeId);
-      for (const affected of transitiveAffected) {
-        allAffected.add(affected);
-      }
-    }
-
-    // Find critical components
+    const aggregate = this.collectImpactAggregate(changedComponents);
     const criticalComponents = this.identifyCriticalComponents();
-
-    // Calculate overall impact level
-    const overallImpactLevel = this.calculateOverallImpactLevel(impacts);
-
-    // Generate test scope recommendations
-    const testScope = this.generateTestScope(Array.from(allAffected), impacts);
+    const overallImpactLevel = this.calculateOverallImpactLevel(aggregate.impacts);
+    const testScope = this.generateTestScope(Array.from(aggregate.allAffected), aggregate.impacts);
 
     const duration = Date.now() - startTime;
     logger.info('Impact analysis completed', {
       changedComponents: changedComponents.length,
-      totalAffected: allAffected.size,
+      totalAffected: aggregate.allAffected.size,
       impactLevel: overallImpactLevel,
       criticalComponents: criticalComponents.length,
       durationMs: duration,
@@ -157,8 +153,8 @@ export class DependencyImpactAnalyzer {
 
     return {
       changedComponents,
-      impacts,
-      totalAffected: allAffected.size,
+      impacts: aggregate.impacts,
+      totalAffected: aggregate.allAffected.size,
       overallImpactLevel,
       criticalComponents,
       testScope,
@@ -191,7 +187,7 @@ export class DependencyImpactAnalyzer {
    */
   private findAllDependents(nodeId: NodeId): Set<NodeId> {
     const affected = new Set<NodeId>();
-    const queue: Array<{ nodeId: NodeId; depth: number }> = [{ nodeId, depth: 0 }];
+    const queue: TraversalNode[] = [{ nodeId, depth: 0 }];
     const visited = new Set<NodeId>();
 
     while (queue.length > 0) {
@@ -204,13 +200,8 @@ export class DependencyImpactAnalyzer {
       visited.add(current);
       affected.add(current);
 
-      const dependents = this.reverseGraph.get(current) ?? new Set();
+      const dependents = this.collectTraversableDependents(current);
       for (const dependent of dependents) {
-        // Filter out test classes if configured
-        if (!this.options.includeTests && this.isTestClass(dependent)) {
-          continue;
-        }
-        
         if (!visited.has(dependent)) {
           queue.push({ nodeId: dependent, depth: depth + 1 });
         }
@@ -228,7 +219,7 @@ export class DependencyImpactAnalyzer {
    */
   private calculateImpactRadius(nodeId: NodeId, affected: Set<NodeId>): number {
     let maxRadius = 0;
-    const queue: Array<{ nodeId: NodeId; distance: number }> = [{ nodeId, distance: 0 }];
+    const queue: DistanceNode[] = [{ nodeId, distance: 0 }];
     const visited = new Set<NodeId>();
 
     while (queue.length > 0) {
@@ -259,7 +250,7 @@ export class DependencyImpactAnalyzer {
     // Risk factors:
     // - Direct dependents (40% weight)
     // - Total affected (60% weight)
-    
+
     const directScore = Math.min((directDependents / this.options.criticalThreshold) * 40, 40);
     const totalScore = Math.min((totalAffected / (this.options.criticalThreshold * 3)) * 60, 60);
 
@@ -279,24 +270,12 @@ export class DependencyImpactAnalyzer {
 
   /**
    * @ac US-032-AC-3: Identify critical components
-   * 
+   *
    * Find components with many dependents
    */
   private identifyCriticalComponents(): NodeId[] {
-    const critical: NodeId[] = [];
-
-    for (const [nodeId, dependents] of this.reverseGraph.entries()) {
-      if (dependents.size >= this.options.criticalThreshold) {
-        critical.push(nodeId);
-      }
-    }
-
-    // Sort by number of dependents (descending)
-    critical.sort((a, b) => {
-      const aCount = this.reverseGraph.get(a)?.size ?? 0;
-      const bCount = this.reverseGraph.get(b)?.size ?? 0;
-      return bCount - aCount;
-    });
+    const critical = this.collectCriticalComponentCandidates();
+    critical.sort((a, b) => this.getDependentCount(b) - this.getDependentCount(a));
 
     logger.info('Critical components identified', {
       count: critical.length,
@@ -321,63 +300,24 @@ export class DependencyImpactAnalyzer {
 
   /**
    * @ac US-032-AC-5: Suggest test scope based on impact
-   * 
+   *
    * Generate test scope recommendations
    */
   private generateTestScope(affectedComponents: NodeId[], impacts: Map<NodeId, ComponentImpact>): TestScope {
-    const requiredTests: NodeId[] = [];
-    const recommendedTests: NodeId[] = [];
-    const optionalTests: NodeId[] = [];
-
-    for (const nodeId of affectedComponents) {
-      // Check if it's a test class
-      if (this.isTestClass(nodeId)) {
-        // Direct changes to test classes are required
-        if (impacts.has(nodeId)) {
-          requiredTests.push(nodeId);
-        } else {
-          recommendedTests.push(nodeId);
-        }
-        continue;
-      }
-
-      // Find associated test class
-      const testClass = this.findTestClass(nodeId);
-      if (testClass) {
-        const impact = impacts.get(nodeId);
-        if (impact) {
-          // High/critical impact = required
-          if (impact.impactLevel === 'high' || impact.impactLevel === 'critical') {
-            requiredTests.push(testClass);
-          } else if (impact.impactLevel === 'medium') {
-            recommendedTests.push(testClass);
-          } else {
-            optionalTests.push(testClass);
-          }
-        } else {
-          // Affected but not directly changed
-          recommendedTests.push(testClass);
-        }
-      }
-    }
-
-    // Determine priority
-    let priority: 'low' | 'medium' | 'high' = 'low';
-    const totalTests = requiredTests.length + recommendedTests.length;
-    
-    if (requiredTests.length >= 1 && affectedComponents.length > 15) {
-      priority = 'high';
-    } else if (requiredTests.length > 10 || impacts.size > 5) {
-      priority = 'high';
-    } else if (requiredTests.length > 3 || totalTests > 10) {
-      priority = 'medium';
-    }
+    const buckets = this.collectTestBuckets(affectedComponents, impacts);
+    const estimatedTestCount = buckets.requiredTests.length + buckets.recommendedTests.length;
+    const priority = this.determineTestPriority(
+      buckets.requiredTests.length,
+      estimatedTestCount,
+      affectedComponents.length,
+      impacts.size
+    );
 
     return {
-      requiredTests: Array.from(new Set(requiredTests)),
-      recommendedTests: Array.from(new Set(recommendedTests)),
-      optionalTests: Array.from(new Set(optionalTests)),
-      estimatedTestCount: requiredTests.length + recommendedTests.length,
+      requiredTests: this.deduplicateNodeIds(buckets.requiredTests),
+      recommendedTests: this.deduplicateNodeIds(buckets.recommendedTests),
+      optionalTests: this.deduplicateNodeIds(buckets.optionalTests),
+      estimatedTestCount,
       priority,
     };
   }
@@ -400,12 +340,7 @@ export class DependencyImpactAnalyzer {
     const [type, name] = parts;
 
     // Common test naming patterns
-    const testPatterns = [
-      `${type}:${name}Test`,
-      `${type}:Test${name}`,
-      `${type}:${name}_Test`,
-      `${type}:${name}Tests`,
-    ];
+    const testPatterns = [`${type}:${name}Test`, `${type}:Test${name}`, `${type}:${name}_Test`, `${type}:${name}Tests`];
 
     for (const pattern of testPatterns) {
       if (this.graph.has(pattern)) {
@@ -414,6 +349,132 @@ export class DependencyImpactAnalyzer {
     }
 
     return undefined;
+  }
+
+  private collectImpactAggregate(changedComponents: NodeId[]): ImpactAggregate {
+    const impacts = new Map<NodeId, ComponentImpact>();
+    const allAffected = new Set<NodeId>();
+
+    for (const nodeId of changedComponents) {
+      const impact = this.calculateImpact(nodeId);
+      impacts.set(nodeId, impact);
+      allAffected.add(nodeId);
+
+      const transitiveAffected = this.findAllDependents(nodeId);
+      for (const affected of transitiveAffected) {
+        allAffected.add(affected);
+      }
+    }
+
+    return { impacts, allAffected };
+  }
+
+  private collectTraversableDependents(nodeId: NodeId): NodeId[] {
+    const dependents = this.reverseGraph.get(nodeId) ?? new Set();
+    const traversable: NodeId[] = [];
+
+    for (const dependent of dependents) {
+      if (!this.options.includeTests && this.isTestClass(dependent)) {
+        continue;
+      }
+
+      traversable.push(dependent);
+    }
+
+    return traversable;
+  }
+
+  private collectCriticalComponentCandidates(): NodeId[] {
+    const critical: NodeId[] = [];
+
+    for (const [nodeId, dependents] of this.reverseGraph.entries()) {
+      if (dependents.size >= this.options.criticalThreshold) {
+        critical.push(nodeId);
+      }
+    }
+
+    return critical;
+  }
+
+  private getDependentCount(nodeId: NodeId): number {
+    return this.reverseGraph.get(nodeId)?.size ?? 0;
+  }
+
+  private collectTestBuckets(affectedComponents: NodeId[], impacts: Map<NodeId, ComponentImpact>): TestBuckets {
+    const requiredTests: NodeId[] = [];
+    const recommendedTests: NodeId[] = [];
+    const optionalTests: NodeId[] = [];
+
+    for (const nodeId of affectedComponents) {
+      if (this.isTestClass(nodeId)) {
+        if (impacts.has(nodeId)) {
+          requiredTests.push(nodeId);
+        } else {
+          recommendedTests.push(nodeId);
+        }
+
+        continue;
+      }
+
+      const testClass = this.findTestClass(nodeId);
+      if (!testClass) {
+        continue;
+      }
+
+      this.assignAssociatedTest(testClass, impacts.get(nodeId), requiredTests, recommendedTests, optionalTests);
+    }
+
+    return {
+      requiredTests,
+      recommendedTests,
+      optionalTests,
+    };
+  }
+
+  private assignAssociatedTest(
+    testClass: NodeId,
+    impact: ComponentImpact | undefined,
+    requiredTests: NodeId[],
+    recommendedTests: NodeId[],
+    optionalTests: NodeId[]
+  ): void {
+    if (!impact) {
+      recommendedTests.push(testClass);
+      return;
+    }
+
+    if (impact.impactLevel === 'high' || impact.impactLevel === 'critical') {
+      requiredTests.push(testClass);
+    } else if (impact.impactLevel === 'medium') {
+      recommendedTests.push(testClass);
+    } else {
+      optionalTests.push(testClass);
+    }
+  }
+
+  private determineTestPriority(
+    requiredTestCount: number,
+    estimatedTestCount: number,
+    affectedComponentCount: number,
+    changedImpactCount: number
+  ): 'low' | 'medium' | 'high' {
+    if (requiredTestCount >= 1 && affectedComponentCount > 15) {
+      return 'high';
+    }
+
+    if (requiredTestCount > 10 || changedImpactCount > 5) {
+      return 'high';
+    }
+
+    if (requiredTestCount > 3 || estimatedTestCount > 10) {
+      return 'medium';
+    }
+
+    return 'low';
+  }
+
+  private deduplicateNodeIds(nodeIds: NodeId[]): NodeId[] {
+    return Array.from(new Set(nodeIds));
   }
 
   /**
@@ -430,4 +491,3 @@ export class DependencyImpactAnalyzer {
     return this.identifyCriticalComponents();
   }
 }
-
