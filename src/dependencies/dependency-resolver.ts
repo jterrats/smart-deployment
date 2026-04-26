@@ -18,6 +18,17 @@ import type { MetadataComponent } from '../types/metadata.js';
 
 const logger = getLogger('DependencyResolver');
 
+type FilterDecision = 'include' | 'exclude-managed' | 'exclude-optional';
+
+type ResolutionPipelineState = {
+  filteredGraph: DependencyGraph;
+  deploymentOrder: NodeId[];
+  unresolved: Array<{ nodeId: NodeId; missingDependencies: NodeId[] }>;
+  resolved: Map<NodeId, ResolvedDependency>;
+  optional: NodeId[];
+  managed: NodeId[];
+};
+
 /**
  * Dependency resolution status
  */
@@ -124,87 +135,75 @@ export class DependencyResolver {
    */
   public resolve(): ResolutionResult {
     const startTime = Date.now();
-
-    // Build filtered graph
-    const filteredGraph = this.buildFilteredGraph();
-
-    // Perform topological sort
-    const { deploymentOrder, unresolved } = this.topologicalSort(filteredGraph);
-
-    // Build resolved dependencies map
-    const resolved = this.buildResolvedMap(deploymentOrder, filteredGraph);
-
-    // Categorize components
-    const optional = this.findOptionalDependencies();
-    const managed = this.findManagedPackages();
-
-    // Generate report
-    const report = this.generateReport(resolved, unresolved, optional, managed);
+    const pipelineState = this.runResolutionPipeline();
+    const report = this.generateReport(
+      pipelineState.resolved,
+      pipelineState.unresolved,
+      pipelineState.optional,
+      pipelineState.managed
+    );
 
     const duration = Date.now() - startTime;
     logger.info('Dependency resolution completed', {
       totalComponents: this.components.size,
-      resolved: resolved.size,
-      unresolved: unresolved.length,
+      resolved: pipelineState.resolved.size,
+      unresolved: pipelineState.unresolved.length,
       deploymentLevels: report.deploymentLevels,
       durationMs: duration,
     });
 
     return {
-      resolved,
-      deploymentOrder,
-      unresolved,
-      optional,
-      managed,
+      resolved: pipelineState.resolved,
+      deploymentOrder: pipelineState.deploymentOrder,
+      unresolved: pipelineState.unresolved,
+      optional: pipelineState.optional,
+      managed: pipelineState.managed,
       circular: this.options.circularDependencies,
       report,
     };
   }
 
   /**
-   * Build filtered graph based on options
+   * Orchestrate the staged resolution pipeline.
+   */
+  private runResolutionPipeline(): ResolutionPipelineState {
+    const filteredGraph = this.buildFilteredGraph();
+    const { deploymentOrder, unresolved } = this.topologicalSort(filteredGraph);
+    const resolved = this.buildResolvedMap(deploymentOrder, filteredGraph);
+    const optional = this.findOptionalDependencies();
+    const managed = this.findManagedPackages();
+
+    return {
+      filteredGraph,
+      deploymentOrder,
+      unresolved,
+      resolved,
+      optional,
+      managed,
+    };
+  }
+
+  /**
+   * Stage 1: build a graph filtered by component/dependency classification.
    */
   private buildFilteredGraph(): DependencyGraph {
     const filtered: DependencyGraph = new Map();
 
     for (const [nodeId, deps] of this.graph.entries()) {
-      // Skip managed packages if configured
-      if (this.options.skipManaged && this.isManagedPackage(nodeId)) {
+      if (!this.shouldIncludeNode(nodeId)) {
         continue;
       }
 
-      const filteredDeps = new Set<NodeId>();
-
-      for (const dep of deps) {
-        // Skip managed dependencies
-        if (this.options.skipManaged && this.isManagedPackage(dep)) {
-          continue;
-        }
-
-        // Handle optional dependencies
-        if (this.isOptionalDependency(nodeId, dep)) {
-          if (this.options.includeOptional) {
-            filteredDeps.add(dep);
-          }
-          continue;
-        }
-
-        filteredDeps.add(dep);
-      }
-
-      filtered.set(nodeId, filteredDeps);
+      filtered.set(nodeId, this.collectIncludedDependencies(nodeId, deps));
     }
 
-    // Apply ordering constraints
     this.applyOrderingConstraints(filtered);
 
     return filtered;
   }
 
   /**
-   * Apply manual ordering constraints to the graph
-   *
-   * @ac US-033-AC-5: Support manual ordering constraints
+   * Stage 2: apply manual ordering constraints after filtering.
    */
   private applyOrderingConstraints(graph: DependencyGraph): void {
     for (const { before, after } of this.options.orderingConstraints) {
@@ -217,7 +216,7 @@ export class DependencyResolver {
   }
 
   /**
-   * Perform topological sort using Kahn's algorithm
+   * Stage 3: perform topological ordering on the filtered graph.
    */
   private topologicalSort(graph: DependencyGraph): {
     deploymentOrder: NodeId[];
@@ -226,31 +225,9 @@ export class DependencyResolver {
     const deploymentOrder: NodeId[] = [];
     const unresolved: Array<{ nodeId: NodeId; missingDependencies: NodeId[] }> = [];
 
-    // Calculate in-degree for each node
-    const inDegree = new Map<NodeId, number>();
-    for (const nodeId of graph.keys()) {
-      inDegree.set(nodeId, 0);
-    }
+    const inDegree = this.calculateInDegree(graph);
+    const queue = this.collectZeroDegreeNodes(inDegree);
 
-    for (const deps of graph.values()) {
-      for (const dep of deps) {
-        if (!inDegree.has(dep)) {
-          // Dependency not in graph - external/missing
-          continue;
-        }
-        inDegree.set(dep, (inDegree.get(dep) ?? 0) + 1);
-      }
-    }
-
-    // Start with nodes that have no dependencies (in-degree = 0)
-    const queue: NodeId[] = [];
-    for (const [nodeId, degree] of inDegree.entries()) {
-      if (degree === 0) {
-        queue.push(nodeId);
-      }
-    }
-
-    // Process nodes in topological order
     while (queue.length > 0) {
       const nodeId = queue.shift()!;
       deploymentOrder.push(nodeId);
@@ -270,10 +247,8 @@ export class DependencyResolver {
       }
     }
 
-    // Check for unresolved dependencies (cycles or missing)
     for (const [nodeId, degree] of inDegree.entries()) {
       if (degree > 0) {
-        // Node not processed - part of cycle or has missing deps
         const missingDeps = this.findMissingDependencies(nodeId, graph);
         unresolved.push({ nodeId, missingDependencies: missingDeps });
       }
@@ -283,23 +258,7 @@ export class DependencyResolver {
   }
 
   /**
-   * Find missing dependencies for a node
-   */
-  private findMissingDependencies(nodeId: NodeId, graph: DependencyGraph): NodeId[] {
-    const deps = graph.get(nodeId) ?? new Set();
-    const missing: NodeId[] = [];
-
-    for (const dep of deps) {
-      if (!graph.has(dep)) {
-        missing.push(dep);
-      }
-    }
-
-    return missing;
-  }
-
-  /**
-   * Build resolved dependencies map with deployment order
+   * Stage 4: project the deployment order into resolved entries.
    */
   private buildResolvedMap(deploymentOrder: NodeId[], graph: DependencyGraph): Map<NodeId, ResolvedDependency> {
     const resolved = new Map<NodeId, ResolvedDependency>();
@@ -317,6 +276,22 @@ export class DependencyResolver {
     }
 
     return resolved;
+  }
+
+  /**
+   * Find missing dependencies for a node
+   */
+  private findMissingDependencies(nodeId: NodeId, graph: DependencyGraph): NodeId[] {
+    const deps = graph.get(nodeId) ?? new Set();
+    const missing: NodeId[] = [];
+
+    for (const dep of deps) {
+      if (!graph.has(dep)) {
+        missing.push(dep);
+      }
+    }
+
+    return missing;
   }
 
   /**
@@ -412,6 +387,67 @@ export class DependencyResolver {
       circularCount: this.options.circularDependencies.length,
       deploymentLevels: maxOrder + 1,
     };
+  }
+
+  private shouldIncludeNode(nodeId: NodeId): boolean {
+    return !(this.options.skipManaged && this.isManagedPackage(nodeId));
+  }
+
+  private collectIncludedDependencies(nodeId: NodeId, dependencies: ReadonlySet<NodeId>): Set<NodeId> {
+    const filteredDependencies = new Set<NodeId>();
+
+    for (const dependencyId of dependencies) {
+      const decision = this.classifyDependency(nodeId, dependencyId);
+      if (decision === 'include') {
+        filteredDependencies.add(dependencyId);
+      }
+    }
+
+    return filteredDependencies;
+  }
+
+  private classifyDependency(nodeId: NodeId, dependencyId: NodeId): FilterDecision {
+    if (this.options.skipManaged && this.isManagedPackage(dependencyId)) {
+      return 'exclude-managed';
+    }
+
+    if (this.isOptionalDependency(nodeId, dependencyId) && !this.options.includeOptional) {
+      return 'exclude-optional';
+    }
+
+    return 'include';
+  }
+
+  private calculateInDegree(graph: DependencyGraph): Map<NodeId, number> {
+    const inDegree = new Map<NodeId, number>();
+
+    for (const nodeId of graph.keys()) {
+      inDegree.set(nodeId, 0);
+    }
+
+    for (const dependencies of graph.values()) {
+      for (const dependencyId of dependencies) {
+        if (!inDegree.has(dependencyId)) {
+          continue;
+        }
+
+        inDegree.set(dependencyId, (inDegree.get(dependencyId) ?? 0) + 1);
+      }
+    }
+
+    return inDegree;
+  }
+
+  private collectZeroDegreeNodes(inDegree: ReadonlyMap<NodeId, number>): NodeId[] {
+    const queue: NodeId[] = [];
+
+    for (const [nodeId, degree] of inDegree.entries()) {
+      if (degree === 0) {
+        queue.push(nodeId);
+      }
+    }
+
+    return queue;
   }
 
   /**

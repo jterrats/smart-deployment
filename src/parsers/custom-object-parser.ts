@@ -69,6 +69,13 @@ export type CustomObjectParseResult = Omit<
   dependencies: CustomObjectDependency[];
 };
 
+type CustomObjectBaseSections = {
+  fields: CustomField[];
+  validationRules: ValidationRule[];
+  recordTypes: RecordType[];
+  listViews: ListView[];
+};
+
 /**
  * Extract object references from formula
  *
@@ -249,6 +256,142 @@ function extractSharingRules(metadata: Record<string, unknown>): SharingRule[] {
   return sharingRules;
 }
 
+function extractBaseSections(metadata: CustomObjectMetadata): CustomObjectBaseSections {
+  return {
+    fields: metadata.fields ?? [],
+    validationRules: metadata.validationRules ?? [],
+    recordTypes: metadata.recordTypes ?? [],
+    listViews: metadata.listViews ?? [],
+  };
+}
+
+function extractFieldDependencies(fields: CustomField[]): CustomObjectDependency[] {
+  const dependencies: CustomObjectDependency[] = [];
+
+  for (const field of fields) {
+    if (field.referenceTo && (field.type === 'Lookup' || field.type === 'MasterDetail')) {
+      for (const referencedObject of field.referenceTo) {
+        dependencies.push({
+          type: field.type === 'MasterDetail' ? 'master_detail_field' : 'lookup_field',
+          name: field.fullName,
+          referencedObject,
+          fieldName: field.fullName,
+        });
+      }
+    }
+
+    if (field.formula) {
+      const formulaRefs = resolveFormulaReferences(field.formula, fields);
+      for (const referencedObject of formulaRefs) {
+        dependencies.push({
+          type: 'formula_field',
+          name: field.fullName,
+          referencedObject,
+          fieldName: field.fullName,
+        });
+      }
+
+      const apexRefs = extractApexReferences(field.formula);
+      for (const apexClass of apexRefs) {
+        dependencies.push({
+          type: 'apex_class',
+          name: apexClass,
+          fieldName: field.fullName,
+        });
+      }
+
+      const customFieldRefs = extractCustomFieldReferences(field.formula, fields, field.fullName);
+      for (const customFieldRef of customFieldRefs) {
+        dependencies.push({
+          type: 'custom_field',
+          name: customFieldRef,
+          fieldName: customFieldRef,
+        });
+      }
+    }
+
+    if (field.type === 'Summary') {
+      if (field.summaryForeignKey) {
+        dependencies.push({
+          type: 'custom_field',
+          name: field.summaryForeignKey,
+          fieldName: field.summaryForeignKey,
+        });
+      }
+
+      if (field.summarizedField) {
+        dependencies.push({
+          type: 'custom_field',
+          name: field.summarizedField,
+          fieldName: field.summarizedField,
+        });
+      }
+    }
+  }
+
+  return dependencies;
+}
+
+function extractValidationRuleDependencies(
+  validationRules: ValidationRule[],
+  fields: CustomField[]
+): CustomObjectDependency[] {
+  const dependencies: CustomObjectDependency[] = [];
+
+  for (const rule of validationRules) {
+    if (!rule.errorConditionFormula) {
+      continue;
+    }
+
+    const formulaRefs = resolveFormulaReferences(rule.errorConditionFormula, fields);
+    for (const referencedObject of formulaRefs) {
+      dependencies.push({
+        type: 'validation_rule',
+        name: rule.fullName,
+        referencedObject,
+      });
+    }
+
+    const apexRefs = extractApexReferences(rule.errorConditionFormula);
+    for (const apexClass of apexRefs) {
+      dependencies.push({
+        type: 'apex_class',
+        name: apexClass,
+      });
+    }
+
+    const customFieldRefs = extractCustomFieldReferences(rule.errorConditionFormula, fields);
+    for (const customFieldRef of customFieldRefs) {
+      dependencies.push({
+        type: 'custom_field',
+        name: customFieldRef,
+        fieldName: customFieldRef,
+      });
+    }
+  }
+
+  return dependencies;
+}
+
+function extractRecordTypeDependencies(recordTypes: RecordType[]): CustomObjectDependency[] {
+  return recordTypes.map((recordType) => ({
+    type: 'record_type',
+    name: recordType.fullName,
+  }));
+}
+
+function buildDependencies(
+  fields: CustomField[],
+  validationRules: ValidationRule[],
+  recordTypes: RecordType[]
+): CustomObjectDependency[] {
+  return [
+    ...extractFieldDependencies(fields),
+    ...extractValidationRuleDependencies(validationRules, fields),
+    ...extractRecordTypeDependencies(recordTypes),
+  ];
+}
+
 /**
  * Parse custom object metadata XML
  */
@@ -371,120 +514,8 @@ export async function parseCustomObject(objectName: string, metadataContent: str
     const customObject = ((parsedRaw as Record<string, unknown>).CustomObject as Record<string, unknown>) || parsedRaw;
     const sharingRules = extractSharingRules(customObject);
 
-    // Extract fields
-    const fields = metadata.fields ?? [];
-    const validationRules = metadata.validationRules ?? [];
-    const recordTypes = metadata.recordTypes ?? [];
-    const listViews = metadata.listViews ?? [];
-
-    // Build dependencies array
-    const dependencies: CustomObjectDependency[] = [];
-
-    // Add field dependencies
-    for (const field of fields) {
-      // Lookup/Master-Detail relationships
-      if (field.referenceTo && (field.type === 'Lookup' || field.type === 'MasterDetail')) {
-        const refObjects = field.referenceTo;
-        for (const refObject of refObjects) {
-          dependencies.push({
-            type: field.type === 'MasterDetail' ? 'master_detail_field' : 'lookup_field',
-            name: field.fullName,
-            referencedObject: refObject,
-            fieldName: field.fullName,
-          });
-        }
-      }
-
-      // Formula fields
-      if (field.formula) {
-        const formulaRefs = resolveFormulaReferences(field.formula, fields);
-        for (const ref of formulaRefs) {
-          dependencies.push({
-            type: 'formula_field',
-            name: field.fullName,
-            referencedObject: ref,
-            fieldName: field.fullName,
-          });
-        }
-
-        // Apex class references in formulas
-        const apexRefs = extractApexReferences(field.formula);
-        for (const apexClass of apexRefs) {
-          dependencies.push({
-            type: 'apex_class',
-            name: apexClass,
-            fieldName: field.fullName,
-          });
-        }
-
-        const customFieldRefs = extractCustomFieldReferences(field.formula, fields, field.fullName);
-        for (const customFieldRef of customFieldRefs) {
-          dependencies.push({
-            type: 'custom_field',
-            name: customFieldRef,
-            fieldName: customFieldRef,
-          });
-        }
-      }
-
-      if (field.type === 'Summary') {
-        if (field.summaryForeignKey) {
-          dependencies.push({
-            type: 'custom_field',
-            name: field.summaryForeignKey,
-            fieldName: field.summaryForeignKey,
-          });
-        }
-
-        if (field.summarizedField) {
-          dependencies.push({
-            type: 'custom_field',
-            name: field.summarizedField,
-            fieldName: field.summarizedField,
-          });
-        }
-      }
-    }
-
-    // Add validation rule dependencies
-    for (const rule of validationRules) {
-      if (rule.errorConditionFormula) {
-        const formulaRefs = resolveFormulaReferences(rule.errorConditionFormula, fields);
-        for (const ref of formulaRefs) {
-          dependencies.push({
-            type: 'validation_rule',
-            name: rule.fullName,
-            referencedObject: ref,
-          });
-        }
-
-        // Apex class references in validation rules
-        const apexRefs = extractApexReferences(rule.errorConditionFormula);
-        for (const apexClass of apexRefs) {
-          dependencies.push({
-            type: 'apex_class',
-            name: apexClass,
-          });
-        }
-
-        const customFieldRefs = extractCustomFieldReferences(rule.errorConditionFormula, fields);
-        for (const customFieldRef of customFieldRefs) {
-          dependencies.push({
-            type: 'custom_field',
-            name: customFieldRef,
-            fieldName: customFieldRef,
-          });
-        }
-      }
-    }
-
-    // Add record type dependencies
-    for (const rt of recordTypes) {
-      dependencies.push({
-        type: 'record_type',
-        name: rt.fullName,
-      });
-    }
+    const { fields, validationRules, recordTypes, listViews } = extractBaseSections(metadata);
+    const dependencies = buildDependencies(fields, validationRules, recordTypes);
 
     const result: CustomObjectParseResult = {
       ...metadata,

@@ -18,6 +18,25 @@ import type { Wave } from './wave-builder.js';
 
 const logger = getLogger('TestOptimizer');
 
+type OptimizerPolicy = {
+  alwaysRunAllTests: boolean;
+  minCoverageRequired: number;
+  includeRelatedTests: boolean;
+};
+
+type WaveTestContext = {
+  wave: Wave;
+  codeClasses: NodeId[];
+  triggers: NodeId[];
+  needsTests: boolean;
+};
+
+type WaveTestPlan = {
+  testClasses: NodeId[];
+  estimatedCoverage: number;
+  decision: OptimizationDecision;
+};
+
 /**
  * Test optimization result
  */
@@ -136,64 +155,13 @@ export class TestOptimizer {
    */
   public optimizeTests(waves: Wave[]): TestOptimizationResult {
     const startTime = Date.now();
-    const decisions: OptimizationDecision[] = [];
-    const optimizedWaves: OptimizedWave[] = [];
-
-    // Collect all test classes across all waves
+    const policy = this.getPolicy();
     const allTestClasses = this.collectAllTestClasses(waves);
+    const waveContexts = waves.map((wave) => this.analyzeWave(wave));
+    const wavePlans = waveContexts.map((context) => this.createWaveTestPlan(context, allTestClasses, policy));
 
-    for (const wave of waves) {
-      const codeClasses = this.getCodeClasses(wave);
-      const triggers = this.getTriggers(wave);
-      const needsTests = codeClasses.length > 0 || triggers.length > 0;
-
-      let testClasses: NodeId[] = [];
-      let estimatedCoverage = 100;
-
-      if (this.options.alwaysRunAllTests) {
-        // Include all test classes in every wave
-        testClasses = allTestClasses;
-
-        decisions.push({
-          waveNumber: wave.number,
-          type: 'include-tests',
-          reason: 'alwaysRunAllTests option enabled',
-          testsAffected: allTestClasses.length,
-        });
-      } else if (!needsTests) {
-        // No code changes, skip tests
-        testClasses = [];
-
-        decisions.push({
-          waveNumber: wave.number,
-          type: 'skip-tests',
-          reason: 'No Apex classes or triggers in wave',
-          testsAffected: 0,
-        });
-      } else {
-        // Sync test classes with code classes
-        testClasses = this.syncTestClasses(codeClasses, triggers, allTestClasses);
-        estimatedCoverage = this.estimateCoverage(codeClasses.length, testClasses.length);
-
-        decisions.push({
-          waveNumber: wave.number,
-          type: 'sync-tests',
-          reason: `Matched ${testClasses.length} tests to ${codeClasses.length} classes`,
-          testsAffected: testClasses.length,
-        });
-      }
-
-      optimizedWaves.push({
-        ...wave,
-        testClasses,
-        codeClasses,
-        triggers,
-        needsTests,
-        estimatedCoverage,
-      });
-    }
-
-    // Calculate statistics
+    const optimizedWaves = waveContexts.map((context, index) => this.createOptimizedWave(context, wavePlans[index]));
+    const decisions = wavePlans.map((plan) => plan.decision);
     const stats = this.calculateStats(optimizedWaves, allTestClasses.length);
 
     const duration = Date.now() - startTime;
@@ -210,6 +178,81 @@ export class TestOptimizer {
       optimizedWaves,
       decisions,
       stats,
+    };
+  }
+
+  private getPolicy(): OptimizerPolicy {
+    return {
+      alwaysRunAllTests: this.options.alwaysRunAllTests,
+      minCoverageRequired: this.options.minCoverageRequired,
+      includeRelatedTests: this.options.includeRelatedTests,
+    };
+  }
+
+  private analyzeWave(wave: Wave): WaveTestContext {
+    const codeClasses = this.getCodeClasses(wave);
+    const triggers = this.getTriggers(wave);
+
+    return {
+      wave,
+      codeClasses,
+      triggers,
+      needsTests: codeClasses.length > 0 || triggers.length > 0,
+    };
+  }
+
+  private createWaveTestPlan(
+    context: WaveTestContext,
+    allTestClasses: NodeId[],
+    policy: OptimizerPolicy
+  ): WaveTestPlan {
+    if (policy.alwaysRunAllTests) {
+      return {
+        testClasses: allTestClasses,
+        estimatedCoverage: 100,
+        decision: {
+          waveNumber: context.wave.number,
+          type: 'include-tests',
+          reason: 'alwaysRunAllTests option enabled',
+          testsAffected: allTestClasses.length,
+        },
+      };
+    }
+
+    if (!context.needsTests) {
+      return {
+        testClasses: [],
+        estimatedCoverage: 100,
+        decision: {
+          waveNumber: context.wave.number,
+          type: 'skip-tests',
+          reason: 'No Apex classes or triggers in wave',
+          testsAffected: 0,
+        },
+      };
+    }
+
+    const testClasses = this.matchTestClasses(context, allTestClasses, policy);
+    return {
+      testClasses,
+      estimatedCoverage: this.scoreEstimatedCoverage(context, testClasses),
+      decision: {
+        waveNumber: context.wave.number,
+        type: 'sync-tests',
+        reason: `Matched ${testClasses.length} tests to ${context.codeClasses.length} classes`,
+        testsAffected: testClasses.length,
+      },
+    };
+  }
+
+  private createOptimizedWave(context: WaveTestContext, plan: WaveTestPlan): OptimizedWave {
+    return {
+      ...context.wave,
+      testClasses: plan.testClasses,
+      codeClasses: context.codeClasses,
+      triggers: context.triggers,
+      needsTests: context.needsTests,
+      estimatedCoverage: plan.estimatedCoverage,
     };
   }
 
@@ -306,6 +349,14 @@ export class TestOptimizer {
     return Array.from(matchedTests);
   }
 
+  private matchTestClasses(context: WaveTestContext, allTestClasses: NodeId[], policy: OptimizerPolicy): NodeId[] {
+    if (policy.includeRelatedTests !== this.options.includeRelatedTests) {
+      return this.syncTestClasses(context.codeClasses, context.triggers, allTestClasses);
+    }
+
+    return this.syncTestClasses(context.codeClasses, context.triggers, allTestClasses);
+  }
+
   /**
    * @ac US-040-AC-5: Calculate test coverage per wave
    */
@@ -316,6 +367,10 @@ export class TestOptimizer {
     // Simple heuristic: assume each test class covers ~75% of one class
     const coverage = Math.min(100, (testClassCount / codeClassCount) * 75);
     return Math.round(coverage);
+  }
+
+  private scoreEstimatedCoverage(context: WaveTestContext, testClasses: NodeId[]): number {
+    return this.estimateCoverage(context.codeClasses.length, testClasses.length);
   }
 
   /**

@@ -126,7 +126,7 @@ export class DeploymentStatusService {
       `Completed Waves: ${summary.completedWaves.length > 0 ? summary.completedWaves.join(', ') : 'none'}`,
       `Remaining Waves: ${summary.remainingWaves.length > 0 ? summary.remainingWaves.join(', ') : 'none'}`,
       `Estimated Time Remaining: ${summary.timestamp !== undefined ? this.estimateTimeRemaining(summary) : 'unknown'}`,
-      `Test Status: ${summary.testStatusText}`,
+      `Test Status: ${summary.testStatus}`,
       `Updated: ${summary.timestamp ?? 'unknown'}`,
     ];
 

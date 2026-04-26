@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { describe, it } from 'mocha';
 import { parseCustomObject } from '../../../src/parsers/custom-object-parser.js';
 
 describe('Custom Object Parser', () => {
