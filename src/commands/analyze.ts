@@ -17,6 +17,7 @@ import { Messages } from '@salesforce/core';
 import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
 import { AnalysisReporter } from '../analysis/analysis-reporter.js';
 import { ProjectAnalysisService } from '../analysis/project-analysis-service.js';
+import { AnalyzeCommandPresenter } from '../presentation/analyze-command-presenter.js';
 import type { PriorityOverride } from '../types/deployment-plan.js';
 import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 import { getLogger } from '../utils/logger.js';
@@ -27,6 +28,7 @@ const logger = getLogger('AnalyzeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'analyze');
 const projectAnalysisService = new ProjectAnalysisService();
+const presenter = new AnalyzeCommandPresenter();
 
 type AnalyzeResult = {
   success: boolean;
@@ -86,22 +88,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
 
       const components = scanResult.components.length;
       const dependencies = scanResult.dependencyResult.stats.totalDependencies;
-      const cycles = scanResult.dependencyResult.circularDependencies.length;
-
-      this.log(`✅ Found ${components} components with ${dependencies} dependencies`);
-
-      if (cycles > 0) {
-        this.log(`⚠️  Warning: ${cycles} circular dependency cycle(s) detected`);
-      }
-
-      this.log('');
-      this.log('🌊 Generating deployment waves...');
-
-      this.log(`✅ Generated ${waveResult.waves.length} deployment wave(s)`);
-      this.log(`   Total components: ${waveResult.totalComponents}`);
-      if (waveResult.unplacedComponents.length > 0) {
-        this.log(`   ⚠️  ${waveResult.unplacedComponents.length} component(s) couldn't be placed (circular deps)`);
-      }
+      presenter.reportAnalysisSummary(this, scanResult, waveResult);
 
       let planSaved = false;
 
@@ -144,13 +131,8 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         await DeploymentPlanManager.savePlan(plan, flags['plan-path']);
 
         const planPath = flags['plan-path'] ?? '.smart-deployment/deployment-plan.json';
-        this.log(`✅ Deployment plan saved to: ${planPath}`);
+        presenter.reportPlanSaved(this, planPath);
         planSaved = true;
-        this.log('');
-        this.log('💡 Next steps:');
-        this.log('   1. Review the plan in your PR');
-        this.log('   2. Commit the plan to your repo');
-        this.log(`   3. Use ${planPath} as a reviewed deployment artifact in CI/CD`);
       }
 
       if (flags.output) {
@@ -159,7 +141,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         const report = reporter.createReport(scanResult, waveResult, aiContext);
 
         await reporter.saveReport(report, flags.output, format);
-        this.log(`📄 Report saved to: ${flags.output} (format: ${format})`);
+        presenter.reportReportSaved(this, flags.output, format);
       }
 
       return { success: true, components, dependencies, planSaved, ai: aiContext };

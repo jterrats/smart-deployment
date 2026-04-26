@@ -25,14 +25,10 @@ import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
 import { TestPlanService } from '../deployment/test-plan-service.js';
 import { CycleRemediationRunner } from '../deployment/cycle-remediation-runner.js';
 import { DeploymentRunner } from '../deployment/deployment-runner.js';
-import {
-  DeploymentContextService,
-  type DeploymentContext,
-  type DeploymentContextMessages,
-} from '../deployment/deployment-context-service.js';
+import { DeploymentContextService, type DeploymentContext } from '../deployment/deployment-context-service.js';
+import { StartCommandPresenter } from '../presentation/start-command-presenter.js';
 import { StateManager } from '../deployment/state-manager.js';
 import { DeploymentTracker } from '../deployment/deployment-tracker.js';
-import type { ScanResult } from '../services/metadata-scanner-service.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
@@ -41,6 +37,7 @@ const cycleRemediationRunner = new CycleRemediationRunner();
 const deploymentRunner = new DeploymentRunner();
 const deploymentContextService = new DeploymentContextService();
 const testPlanService = new TestPlanService();
+const presenter = new StartCommandPresenter();
 
 /**
  * @ac US-046-AC-1: Analyzes metadata automatically
@@ -135,19 +132,15 @@ export default class Start extends SfCommand<StartResult> {
         orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
         industry: typeof flags.industry === 'string' ? flags.industry : undefined,
       });
-      this.reportScanDiagnostics(deploymentContext.scanResult);
-      this.reportDeploymentContextMessages(deploymentContext.messages);
+      presenter.reportScanDiagnostics(this, deploymentContext.scanResult);
+      presenter.reportContextMessages(this, deploymentContext.messages);
       const metadataCount = deploymentContext.scanResult.components.length;
-      this.log(`✅ Found ${metadataCount} metadata components`);
-
-      this.log('🌊 Generating deployment waves...');
       const waves = deploymentContext.orderedWaves.length;
-      this.log(`✅ Generated ${waves} waves`);
-
-      // AC US-057-AC-6: Report AI decisions
-      if (flags['use-ai']) {
-        this.log('🤖 AI-enhanced prioritization enabled');
-      }
+      presenter.reportAnalysisSummary(this, {
+        metadataCount,
+        waves,
+        aiEnabled: Boolean(flags['use-ai']),
+      });
 
       // AC-3: Execute deployment
       if (!flags['dry-run']) {
@@ -159,7 +152,7 @@ export default class Start extends SfCommand<StartResult> {
 
       // AC-9: Generate report
       this.log('📄 Generating deployment report...');
-      this.generateReport(waves);
+      presenter.reportDeploymentReport(this, waves);
 
       return { success: true, waves, ai: deploymentContext.aiContext };
     } catch (error) {
@@ -261,28 +254,6 @@ export default class Start extends SfCommand<StartResult> {
       logger.error('Wave deployment failed', { error });
       this.error(error instanceof Error ? error.message : String(error));
     }
-  }
-
-  private generateReport(waves: number): void {
-    this.log('\n📊 Deployment Report:');
-    this.log(`   - Waves: ${waves}`);
-    this.log('   - Status: Success');
-  }
-
-  private reportScanDiagnostics(scanResult: ScanResult): void {
-    if (scanResult.errors.length > 0) {
-      logger.error('Metadata scanning completed with errors', { errors: scanResult.errors });
-      scanResult.errors.forEach((err) => this.warn(err));
-    }
-    if (scanResult.warnings.length > 0) {
-      logger.warn('Metadata scanning completed with warnings', { warnings: scanResult.warnings });
-      scanResult.warnings.forEach((warn) => this.warn(warn));
-    }
-  }
-
-  private reportDeploymentContextMessages(messagesToReport: DeploymentContextMessages): void {
-    messagesToReport.warnings.forEach((warning) => this.warn(warning));
-    messagesToReport.logs.forEach((entry) => this.log(entry));
   }
 
   private getTargetOrgIdentifier(value: unknown): string | undefined {
