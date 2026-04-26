@@ -16,18 +16,15 @@
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
 import { AnalyzeArtifactService } from '../analysis/analyze-artifact-service.js';
-import { ProjectAnalysisService } from '../analysis/project-analysis-service.js';
+import { AnalyzeContextService } from '../analysis/analyze-context-service.js';
 import { AnalyzeCommandPresenter } from '../presentation/analyze-command-presenter.js';
 import { ProjectAnalysisPresenter } from '../presentation/project-analysis-presenter.js';
-import type { PriorityOverride } from '../types/deployment-plan.js';
 import { getLogger } from '../utils/logger.js';
-import type { ScanResult } from '../services/metadata-scanner-service.js';
-import type { WaveResult } from '../waves/wave-builder.js';
 
 const logger = getLogger('AnalyzeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'analyze');
-const projectAnalysisService = new ProjectAnalysisService();
+const analyzeContextService = new AnalyzeContextService();
 const artifactService = new AnalyzeArtifactService();
 const projectAnalysisPresenter = new ProjectAnalysisPresenter();
 const presenter = new AnalyzeCommandPresenter();
@@ -85,7 +82,13 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
 
       this.log('📊 Analyzing metadata...');
 
-      const analysisContext = await this.buildAnalysisContext(flags, sourcePath);
+      const analysisContext = await analyzeContextService.buildContext({
+        sourcePath,
+        useAI: Boolean(flags['use-ai']),
+        orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
+        industry: typeof flags.industry === 'string' ? flags.industry : undefined,
+      });
+      projectAnalysisPresenter.reportDiagnostics(this, analysisContext.scanResult, analysisContext.messages);
       const { scanResult, waveResult, priorityOverrides, aiContext } = analysisContext;
 
       const components = scanResult.components.length;
@@ -121,49 +124,5 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
       logger.error('Analysis failed', { error });
       this.error(`Analysis failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  private async buildAnalysisContext(
-    flags: Record<string, unknown>,
-    sourcePath?: string
-  ): Promise<{
-    scanResult: ScanResult;
-    waveResult: WaveResult;
-    priorityOverrides: Record<string, PriorityOverride>;
-    aiContext?: {
-      enabled: boolean;
-      provider?: string;
-      model?: string;
-      aiAdjustments?: number;
-      unknownTypes?: string[];
-      inferredDependencies?: number;
-      inferenceFallback?: boolean;
-    };
-  }> {
-    const analysis = await projectAnalysisService.buildAnalysis({
-      sourcePath,
-      useAI: Boolean(flags['use-ai']),
-      orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
-      industry: typeof flags.industry === 'string' ? flags.industry : undefined,
-    });
-
-    projectAnalysisPresenter.reportDiagnostics(this, analysis.scanResult, analysis.messages);
-
-    return {
-      scanResult: analysis.scanResult,
-      waveResult: analysis.waveResult,
-      priorityOverrides: analysis.priorityOverrides,
-      aiContext: analysis.aiContext
-        ? {
-            enabled: analysis.aiContext.enabled,
-            provider: analysis.aiContext.provider,
-            model: analysis.aiContext.model,
-            aiAdjustments: analysis.aiContext.aiAdjustments,
-            unknownTypes: analysis.aiContext.unknownTypes,
-            inferredDependencies: analysis.aiContext.inferredDependencies,
-            inferenceFallback: analysis.aiContext.inferenceFallback,
-          }
-        : undefined,
-    };
   }
 }
