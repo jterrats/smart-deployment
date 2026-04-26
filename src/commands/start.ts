@@ -23,8 +23,8 @@ import { getLogger } from '../utils/logger.js';
 import { CycleRemediationPlanner } from '../dependencies/cycle-remediation-planner.js';
 import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
 import { TestPlanService } from '../deployment/test-plan-service.js';
-import { WaveManifestService } from '../deployment/wave-manifest-service.js';
 import { CycleRemediationRunner } from '../deployment/cycle-remediation-runner.js';
+import { DeploymentRunner } from '../deployment/deployment-runner.js';
 import {
   DeploymentContextService,
   type DeploymentContext,
@@ -38,9 +38,9 @@ Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
 const cycleRemediationRunner = new CycleRemediationRunner();
+const deploymentRunner = new DeploymentRunner();
 const deploymentContextService = new DeploymentContextService();
 const testPlanService = new TestPlanService();
-const waveManifestService = new WaveManifestService();
 
 /**
  * @ac US-046-AC-1: Analyzes metadata automatically
@@ -242,122 +242,31 @@ export default class Start extends SfCommand<StartResult> {
       this.error('The --target-org flag is required for real deployments.');
     }
 
-    // Execute waves sequentially
-    await this.forEachSequentially(orderedWaves, async (wave) => {
-      this.log(`\n🌊 Deploying Wave ${wave.number}/${orderedWaves.length} (${wave.components.length} components)...`);
-
-      try {
-        // Generate manifest for this wave
-        const manifestPath = await waveManifestService.generateManifest({
-          baseDir: sourcePath ?? process.cwd(),
-          waveNumber: wave.number,
-          components: wave.components,
-          componentMap: scanResult.dependencyResult.components,
-        });
-        const testPlan = testPlanService.resolveTestPlan(wave, skipTests, testExecutor);
-
-        // Execute deployment
-        tracker.startTracking(deploymentId, wave.number, orderedWaves.length);
-        const result = await sfCli.deploy({
-          manifestPath,
-          targetOrg,
-          testLevel: testPlan.testLevel,
-          tests: testPlan.testLevel === 'RunSpecifiedTests' ? testPlan.tests : undefined,
-        });
-        tracker.updateProgress(deploymentId, result);
-
-        if (!result.success) {
-          const aiMetadata =
-            deploymentContext.aiContext === undefined
-              ? {}
-              : {
-                  aiProvider: deploymentContext.aiContext.provider,
-                  aiModel: deploymentContext.aiContext.model,
-                  aiFallback: deploymentContext.aiContext.fallback,
-                  aiAdjustments: deploymentContext.aiContext.aiAdjustments,
-                  aiUnknownTypes: deploymentContext.aiContext.unknownTypes,
-                  aiInferenceFallback: deploymentContext.aiContext.inferenceFallback,
-                  aiInferredDependencies: deploymentContext.aiContext.inferredDependencies,
-                };
-          await stateManager.saveState({
-            deploymentId,
-            targetOrg,
-            timestamp: new Date().toISOString(),
-            totalWaves: orderedWaves.length,
-            completedWaves: Array.from({ length: Math.max(0, wave.number - 1) }, (_, i) => i + 1),
-            currentWave: wave.number,
-            failedWave: {
-              waveNumber: wave.number,
-              error: result.output,
-              timestamp: new Date().toISOString(),
-            },
-            metadata: {
-              lastKnownStatus: result.status,
-              testsRun: result.testsRun,
-              testFailures: result.testFailures,
-              testLevel: testPlan.testLevel,
-              ...aiMetadata,
-            },
-          });
-          this.error(`Wave ${wave.number} failed: ${result.output}`);
-        }
-
-        // Save state after each wave
-        const aiMetadata =
-          deploymentContext.aiContext === undefined
-            ? {}
-            : {
-                aiProvider: deploymentContext.aiContext.provider,
-                aiModel: deploymentContext.aiContext.model,
-                aiFallback: deploymentContext.aiContext.fallback,
-                aiAdjustments: deploymentContext.aiContext.aiAdjustments,
-                aiUnknownTypes: deploymentContext.aiContext.unknownTypes,
-                aiInferenceFallback: deploymentContext.aiContext.inferenceFallback,
-                aiInferredDependencies: deploymentContext.aiContext.inferredDependencies,
-              };
-        await stateManager.saveState({
-          deploymentId,
-          targetOrg,
-          timestamp: new Date().toISOString(),
-          totalWaves: orderedWaves.length,
-          completedWaves: Array.from({ length: wave.number }, (_, i) => i + 1),
-          currentWave: wave.number,
-          metadata: {
-            lastKnownStatus: result.status,
-            testsRun: result.testsRun,
-            testFailures: result.testFailures,
-            testLevel: testPlan.testLevel,
-            ...aiMetadata,
-          },
-        });
-
-        this.log(`✅ Wave ${wave.number} deployed successfully`);
-      } catch (error) {
-        logger.error('Wave deployment failed', { wave: wave.number, error });
-        this.error(`Wave ${wave.number} failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    });
-
-    // Clear state on success
-    await stateManager.clearState();
-    this.log('\n✅ All waves deployed successfully!');
+    try {
+      await deploymentRunner.execute({
+        deploymentId,
+        targetOrg,
+        sourcePath,
+        orderedWaves,
+        componentMap: scanResult.dependencyResult.components,
+        skipTests,
+        testExecutor,
+        tracker,
+        stateManager,
+        sfCli,
+        aiContext: deploymentContext.aiContext,
+        log: this.log.bind(this),
+      });
+    } catch (error) {
+      logger.error('Wave deployment failed', { error });
+      this.error(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private generateReport(waves: number): void {
     this.log('\n📊 Deployment Report:');
     this.log(`   - Waves: ${waves}`);
     this.log('   - Status: Success');
-  }
-
-  private async forEachSequentially<T>(
-    items: readonly T[],
-    callback: (item: T, index: number) => Promise<void>
-  ): Promise<void> {
-    let chain = Promise.resolve();
-    items.forEach((item, index) => {
-      chain = chain.then(async () => callback(item, index));
-    });
-    await chain;
   }
 
   private reportScanDiagnostics(scanResult: ScanResult): void {
