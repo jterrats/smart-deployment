@@ -87,6 +87,106 @@ function isApexTestClassContent(content: string, className: string): boolean {
   return normalizedName.includes('test') || normalizedName.endsWith('_test');
 }
 
+async function parseProfileComponent(filePath: string): Promise<MetadataComponent | undefined> {
+  const profileName = path.basename(filePath, '.profile-meta.xml');
+  const parsed = await parseProfile(filePath, profileName);
+
+  const deps = new Set<string>();
+  const optionalDependencies = new Set<string>();
+  addAll(deps, parsed.dependencies.objects);
+  addAll(deps, parsed.dependencies.fields);
+  addAll(deps, parsed.dependencies.apexClasses, 'ApexClass');
+  addAll(deps, parsed.dependencies.layouts, 'Layout');
+  addAll(deps, parsed.dependencies.visualforcePages, 'VisualforcePage');
+  addAll(deps, parsed.dependencies.recordTypes, 'RecordType');
+  addAll(deps, parsed.dependencies.applications, 'LightningApp');
+  addAll(deps, parsed.dependencies.tabs);
+  addAll(deps, parsed.dependencies.customPermissions, 'CustomPermission');
+  addAll(deps, parsed.dependencies.customMetadataTypes, 'CustomMetadata');
+  addAll(deps, parsed.dependencies.flows, 'Flow');
+  addAll(deps, parsed.dependencies.externalDataSources);
+  addAll(deps, parsed.dependencies.customSettings);
+  addAll(optionalDependencies, parsed.optionalDependencies.layouts, 'Layout');
+  addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
+  addAll(optionalDependencies, parsed.optionalDependencies.applications, 'LightningApp');
+  addAll(optionalDependencies, parsed.optionalDependencies.tabs);
+
+  return {
+    name: profileName,
+    type: 'Profile' as const,
+    filePath,
+    dependencies: deps,
+    optionalDependencies,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
+async function parsePermissionSetComponent(filePath: string): Promise<MetadataComponent | undefined> {
+  const permSetName = path.basename(filePath, '.permissionset-meta.xml');
+  const parsed = await parsePermissionSet(filePath, permSetName);
+
+  const deps = new Set<string>();
+  const optionalDependencies = new Set<string>();
+  addAll(deps, parsed.dependencies.objects);
+  addAll(deps, parsed.dependencies.fields);
+  addAll(deps, parsed.dependencies.apexClasses, 'ApexClass');
+  addAll(deps, parsed.dependencies.visualforcePages, 'VisualforcePage');
+  addAll(deps, parsed.dependencies.customPermissions, 'CustomPermission');
+  addAll(deps, parsed.dependencies.applications, 'LightningApp');
+  addAll(deps, parsed.dependencies.tabs);
+  addAll(deps, parsed.dependencies.customMetadataTypes, 'CustomMetadata');
+  addAll(deps, parsed.dependencies.flows, 'Flow');
+  addAll(deps, parsed.dependencies.externalDataSources);
+  addAll(deps, parsed.dependencies.customSettings);
+  addAll(deps, parsed.dependencies.recordTypes, 'RecordType');
+  addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
+  addAll(optionalDependencies, parsed.optionalDependencies.applications, 'LightningApp');
+  addAll(optionalDependencies, parsed.optionalDependencies.tabs);
+
+  return {
+    name: permSetName,
+    type: 'PermissionSet' as const,
+    filePath,
+    dependencies: deps,
+    optionalDependencies,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
+async function parseLayoutComponent(filePath: string): Promise<MetadataComponent | undefined> {
+  const layoutName = path.basename(filePath, '.layout-meta.xml');
+  const parsed = await parseLayout(filePath, layoutName);
+
+  const deps = new Set<string>();
+  const optionalDependencies = new Set<string>();
+  deps.add(parsed.object);
+  addAll(deps, parsed.relatedObjects);
+  addAll(deps, parsed.fields);
+  addAll(deps, parsed.relatedLists);
+  addAll(deps, parsed.customButtons);
+  addAll(deps, parsed.visualforcePages, 'VisualforcePage');
+  addAll(deps, parsed.quickActions, 'QuickAction');
+  addAll(deps, parsed.canvasApps);
+  addAll(deps, parsed.customLinks, 'WebLink');
+  addAll(optionalDependencies, parsed.optionalDependencies.customButtons);
+  addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
+  addAll(optionalDependencies, parsed.optionalDependencies.quickActions, 'QuickAction');
+  addAll(optionalDependencies, parsed.optionalDependencies.canvasApps);
+  addAll(optionalDependencies, parsed.optionalDependencies.customLinks, 'WebLink');
+
+  return {
+    name: layoutName,
+    type: 'Layout' as const,
+    filePath,
+    dependencies: deps,
+    optionalDependencies,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
 async function parseApexClassComponent(
   filePath: string,
   context: ScannerContext
@@ -561,38 +661,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const profileName = path.basename(filePath, '.profile-meta.xml');
-          const parsed = await parseProfile(filePath, profileName);
-
-          const deps = new Set<string>();
-          const optionalDependencies = new Set<string>();
-          addAll(deps, parsed.dependencies.objects);
-          addAll(deps, parsed.dependencies.fields);
-          addAll(deps, parsed.dependencies.apexClasses, 'ApexClass');
-          addAll(deps, parsed.dependencies.layouts, 'Layout');
-          addAll(deps, parsed.dependencies.visualforcePages, 'VisualforcePage');
-          addAll(deps, parsed.dependencies.recordTypes, 'RecordType');
-          addAll(deps, parsed.dependencies.applications, 'LightningApp');
-          addAll(deps, parsed.dependencies.tabs);
-          addAll(deps, parsed.dependencies.customPermissions, 'CustomPermission');
-          addAll(deps, parsed.dependencies.customMetadataTypes, 'CustomMetadata');
-          addAll(deps, parsed.dependencies.flows, 'Flow');
-          addAll(deps, parsed.dependencies.externalDataSources);
-          addAll(deps, parsed.dependencies.customSettings);
-          addAll(optionalDependencies, parsed.optionalDependencies.layouts, 'Layout');
-          addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
-          addAll(optionalDependencies, parsed.optionalDependencies.applications, 'LightningApp');
-          addAll(optionalDependencies, parsed.optionalDependencies.tabs);
-
-          return {
-            name: profileName,
-            type: 'Profile' as const,
-            filePath,
-            dependencies: deps,
-            optionalDependencies,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parseProfileComponent(filePath);
         } catch (error) {
           const errorMsg = `Failed to parse Profile ${filePath}: ${
             error instanceof Error ? error.message : String(error)
@@ -614,36 +683,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const permSetName = path.basename(filePath, '.permissionset-meta.xml');
-          const parsed = await parsePermissionSet(filePath, permSetName);
-
-          const deps = new Set<string>();
-          const optionalDependencies = new Set<string>();
-          addAll(deps, parsed.dependencies.objects);
-          addAll(deps, parsed.dependencies.fields);
-          addAll(deps, parsed.dependencies.apexClasses, 'ApexClass');
-          addAll(deps, parsed.dependencies.visualforcePages, 'VisualforcePage');
-          addAll(deps, parsed.dependencies.customPermissions, 'CustomPermission');
-          addAll(deps, parsed.dependencies.applications, 'LightningApp');
-          addAll(deps, parsed.dependencies.tabs);
-          addAll(deps, parsed.dependencies.customMetadataTypes, 'CustomMetadata');
-          addAll(deps, parsed.dependencies.flows, 'Flow');
-          addAll(deps, parsed.dependencies.externalDataSources);
-          addAll(deps, parsed.dependencies.customSettings);
-          addAll(deps, parsed.dependencies.recordTypes, 'RecordType');
-          addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
-          addAll(optionalDependencies, parsed.optionalDependencies.applications, 'LightningApp');
-          addAll(optionalDependencies, parsed.optionalDependencies.tabs);
-
-          return {
-            name: permSetName,
-            type: 'PermissionSet' as const,
-            filePath,
-            dependencies: deps,
-            optionalDependencies,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parsePermissionSetComponent(filePath);
         } catch (error) {
           const errorMsg = `Failed to parse Permission Set ${filePath}: ${
             error instanceof Error ? error.message : String(error)
@@ -704,35 +744,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const layoutName = path.basename(filePath, '.layout-meta.xml');
-          const parsed = await parseLayout(filePath, layoutName);
-
-          const deps = new Set<string>();
-          const optionalDependencies = new Set<string>();
-          deps.add(parsed.object);
-          addAll(deps, parsed.relatedObjects);
-          addAll(deps, parsed.fields);
-          addAll(deps, parsed.relatedLists);
-          addAll(deps, parsed.customButtons);
-          addAll(deps, parsed.visualforcePages, 'VisualforcePage');
-          addAll(deps, parsed.quickActions, 'QuickAction');
-          addAll(deps, parsed.canvasApps);
-          addAll(deps, parsed.customLinks, 'WebLink');
-          addAll(optionalDependencies, parsed.optionalDependencies.customButtons);
-          addAll(optionalDependencies, parsed.optionalDependencies.visualforcePages, 'VisualforcePage');
-          addAll(optionalDependencies, parsed.optionalDependencies.quickActions, 'QuickAction');
-          addAll(optionalDependencies, parsed.optionalDependencies.canvasApps);
-          addAll(optionalDependencies, parsed.optionalDependencies.customLinks, 'WebLink');
-
-          return {
-            name: layoutName,
-            type: 'Layout' as const,
-            filePath,
-            dependencies: deps,
-            optionalDependencies,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parseLayoutComponent(filePath);
         } catch (error) {
           const errorMsg = `Failed to parse Layout ${filePath}: ${
             error instanceof Error ? error.message : String(error)
