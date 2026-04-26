@@ -116,141 +116,19 @@ export class DependencyMerger {
    */
   public merge(components: Map<NodeId, MetadataComponent>, inferences: InferredDependency[]): MergeResult {
     const startTime = Date.now();
-    const mergedComponents = new Map(
-      [...components.entries()].map(([nodeId, component]) => [
-        nodeId,
-        {
-          ...component,
-          dependencies: new Set(component.dependencies),
-          dependencyDetails: [...(component.dependencyDetails ?? [])],
-          dependents: new Set(component.dependents),
-        },
-      ])
-    );
-
-    // Build graph from static dependencies
+    const mergedComponents = this.cloneComponents(components);
     const graph: DependencyGraph = new Map();
     const dependencies: MergedDependency[] = [];
     const staticEdges = new Set<string>();
-
-    // Add static dependencies first
-    for (const [nodeId, component] of mergedComponents.entries()) {
-      if (!graph.has(nodeId)) {
-        graph.set(nodeId, new Set());
-      }
-
-      const staticDependencyDetails =
-        component.dependencyDetails && component.dependencyDetails.length > 0
-          ? component.dependencyDetails.filter((dependency) => dependency.kind !== 'inferred')
-          : [...component.dependencies].map(
-              (dep): MetadataDependencyReference => ({
-                nodeId: dep,
-                kind: component.optionalDependencies?.has(dep) ? 'soft' : 'hard',
-                source: 'parser',
-                reason: 'Explicit reference in metadata',
-              })
-            );
-
-      component.dependencyDetails = [...staticDependencyDetails];
-
-      for (const dep of staticDependencyDetails) {
-        graph.get(nodeId)!.add(dep.nodeId);
-        staticEdges.add(`${nodeId}→${dep.nodeId}`);
-
-        dependencies.push({
-          from: nodeId,
-          to: dep.nodeId,
-          source: 'static',
-          confidence: 1.0,
-          reasons: [dep.reason ?? 'Explicit reference in metadata'],
-        });
-      }
-    }
-
-    let conflicts = 0;
-    let inferredCount = 0;
-    let totalConfidence = 0;
-
-    // Add inferred dependencies
-    for (const inference of inferences) {
-      const edgeKey = `${inference.from}→${inference.to}`;
-
-      // Check confidence threshold
-      if (inference.confidence < this.options.minConfidence && !this.options.includeLowConfidence) {
-        logger.debug('Skipping low confidence inference', {
-          from: inference.from,
-          to: inference.to,
-          confidence: inference.confidence,
-        });
-        continue;
-      }
-
-      // Check if static dependency exists
-      if (staticEdges.has(edgeKey)) {
-        conflicts++;
-        logger.debug('Conflict: static dependency exists', {
-          from: inference.from,
-          to: inference.to,
-        });
-
-        if (!this.options.preferStatic) {
-          // Update source to merged
-          const existing = dependencies.find((d) => d.from === inference.from && d.to === inference.to);
-          if (existing) {
-            existing.source = 'merged';
-            existing.reasons.push(inference.reason);
-          }
-        }
-        continue;
-      }
-
-      // Add inferred dependency
-      if (!graph.has(inference.from)) {
-        graph.set(inference.from, new Set());
-      }
-
-      graph.get(inference.from)!.add(inference.to);
-      const sourceComponent = mergedComponents.get(inference.from);
-      if (sourceComponent) {
-        sourceComponent.dependencies.add(inference.to);
-        sourceComponent.dependencyDetails ??= [];
-        const existing = sourceComponent.dependencyDetails.find((dependency) => dependency.nodeId === inference.to);
-        if (existing) {
-          existing.kind = existing.kind === 'hard' ? 'hard' : 'inferred';
-          existing.source = existing.source === 'parser' ? 'merged' : 'ai';
-          existing.reason = existing.reason ? `${existing.reason}; ${inference.reason}` : inference.reason;
-          existing.confidence = inference.confidence;
-        } else {
-          sourceComponent.dependencyDetails.push({
-            nodeId: inference.to,
-            kind: 'inferred',
-            source: 'ai',
-            reason: inference.reason,
-            confidence: inference.confidence,
-          });
-        }
-      }
-      inferredCount++;
-      totalConfidence += inference.confidence;
-
-      dependencies.push({
-        from: inference.from,
-        to: inference.to,
-        source: 'inferred',
-        confidence: inference.confidence,
-        reasons: [inference.reason],
-      });
-    }
-
-    // Calculate statistics
-    const stats: MergeStats = {
-      totalDependencies: dependencies.length,
-      staticDependencies: staticEdges.size,
-      inferredDependencies: inferredCount,
-      mergedDependencies: dependencies.filter((d) => d.source === 'merged').length,
-      conflicts,
-      avgConfidence: inferredCount > 0 ? totalConfidence / inferredCount : 1.0,
-    };
+    this.applyStaticDependencies(mergedComponents, graph, dependencies, staticEdges);
+    const inferredStats = this.applyInferredDependencies(
+      mergedComponents,
+      inferences,
+      graph,
+      dependencies,
+      staticEdges
+    );
+    const stats = this.buildStats(dependencies, staticEdges.size, inferredStats);
 
     const duration = Date.now() - startTime;
     logger.info('Dependency merge completed', {
@@ -262,6 +140,190 @@ export class DependencyMerger {
     });
 
     return { graph, components: mergedComponents, dependencies, stats };
+  }
+
+  private cloneComponents(components: Map<NodeId, MetadataComponent>): Map<NodeId, MetadataComponent> {
+    return new Map(
+      [...components.entries()].map(([nodeId, component]) => [
+        nodeId,
+        {
+          ...component,
+          dependencies: new Set(component.dependencies),
+          dependencyDetails: [...(component.dependencyDetails ?? [])],
+          dependents: new Set(component.dependents),
+        },
+      ])
+    );
+  }
+
+  private applyStaticDependencies(
+    mergedComponents: Map<NodeId, MetadataComponent>,
+    graph: DependencyGraph,
+    dependencies: MergedDependency[],
+    staticEdges: Set<string>
+  ): void {
+    for (const [nodeId, component] of mergedComponents.entries()) {
+      graph.set(nodeId, new Set());
+      const staticDependencyDetails = this.getStaticDependencyDetails(component);
+      component.dependencyDetails = [...staticDependencyDetails];
+
+      for (const dep of staticDependencyDetails) {
+        graph.get(nodeId)!.add(dep.nodeId);
+        staticEdges.add(`${nodeId}→${dep.nodeId}`);
+        dependencies.push({
+          from: nodeId,
+          to: dep.nodeId,
+          source: 'static',
+          confidence: 1.0,
+          reasons: [dep.reason ?? 'Explicit reference in metadata'],
+        });
+      }
+    }
+  }
+
+  private getStaticDependencyDetails(component: MetadataComponent): MetadataDependencyReference[] {
+    if (component.dependencyDetails && component.dependencyDetails.length > 0) {
+      return component.dependencyDetails.filter((dependency) => dependency.kind !== 'inferred');
+    }
+
+    return [...component.dependencies].map(
+      (dep): MetadataDependencyReference => ({
+        nodeId: dep,
+        kind: component.optionalDependencies?.has(dep) ? 'soft' : 'hard',
+        source: 'parser',
+        reason: 'Explicit reference in metadata',
+      })
+    );
+  }
+
+  private applyInferredDependencies(
+    mergedComponents: Map<NodeId, MetadataComponent>,
+    inferences: InferredDependency[],
+    graph: DependencyGraph,
+    dependencies: MergedDependency[],
+    staticEdges: Set<string>
+  ): { conflicts: number; inferredCount: number; totalConfidence: number } {
+    let conflicts = 0;
+    let inferredCount = 0;
+    let totalConfidence = 0;
+
+    for (const inference of inferences) {
+      if (!this.shouldIncludeInference(inference)) {
+        continue;
+      }
+
+      const edgeKey = `${inference.from}→${inference.to}`;
+      if (staticEdges.has(edgeKey)) {
+        conflicts++;
+        this.mergeConflictReason(dependencies, inference);
+        continue;
+      }
+
+      this.addInferredDependency(mergedComponents, graph, dependencies, inference);
+      inferredCount++;
+      totalConfidence += inference.confidence;
+    }
+
+    return { conflicts, inferredCount, totalConfidence };
+  }
+
+  private shouldIncludeInference(inference: InferredDependency): boolean {
+    if (inference.confidence >= this.options.minConfidence || this.options.includeLowConfidence) {
+      return true;
+    }
+
+    logger.debug('Skipping low confidence inference', {
+      from: inference.from,
+      to: inference.to,
+      confidence: inference.confidence,
+    });
+    return false;
+  }
+
+  private mergeConflictReason(dependencies: MergedDependency[], inference: InferredDependency): void {
+    logger.debug('Conflict: static dependency exists', {
+      from: inference.from,
+      to: inference.to,
+    });
+
+    if (this.options.preferStatic) {
+      return;
+    }
+
+    const existing = dependencies.find(
+      (dependency) => dependency.from === inference.from && dependency.to === inference.to
+    );
+    if (existing) {
+      existing.source = 'merged';
+      existing.reasons.push(inference.reason);
+    }
+  }
+
+  private addInferredDependency(
+    mergedComponents: Map<NodeId, MetadataComponent>,
+    graph: DependencyGraph,
+    dependencies: MergedDependency[],
+    inference: InferredDependency
+  ): void {
+    if (!graph.has(inference.from)) {
+      graph.set(inference.from, new Set());
+    }
+
+    graph.get(inference.from)!.add(inference.to);
+    this.updateComponentInferenceDetails(mergedComponents.get(inference.from), inference);
+
+    dependencies.push({
+      from: inference.from,
+      to: inference.to,
+      source: 'inferred',
+      confidence: inference.confidence,
+      reasons: [inference.reason],
+    });
+  }
+
+  private updateComponentInferenceDetails(
+    sourceComponent: MetadataComponent | undefined,
+    inference: InferredDependency
+  ): void {
+    if (!sourceComponent) {
+      return;
+    }
+
+    const component = sourceComponent;
+    component.dependencies.add(inference.to);
+    component.dependencyDetails ??= [];
+    const existing = component.dependencyDetails.find((dependency) => dependency.nodeId === inference.to);
+    if (existing) {
+      existing.kind = existing.kind === 'hard' ? 'hard' : 'inferred';
+      existing.source = existing.source === 'parser' ? 'merged' : 'ai';
+      existing.reason = existing.reason ? `${existing.reason}; ${inference.reason}` : inference.reason;
+      existing.confidence = inference.confidence;
+      return;
+    }
+
+    component.dependencyDetails.push({
+      nodeId: inference.to,
+      kind: 'inferred',
+      source: 'ai',
+      reason: inference.reason,
+      confidence: inference.confidence,
+    });
+  }
+
+  private buildStats(
+    dependencies: MergedDependency[],
+    staticDependencyCount: number,
+    inferredStats: { conflicts: number; inferredCount: number; totalConfidence: number }
+  ): MergeStats {
+    return {
+      totalDependencies: dependencies.length,
+      staticDependencies: staticDependencyCount,
+      inferredDependencies: inferredStats.inferredCount,
+      mergedDependencies: dependencies.filter((dependency) => dependency.source === 'merged').length,
+      conflicts: inferredStats.conflicts,
+      avgConfidence:
+        inferredStats.inferredCount > 0 ? inferredStats.totalConfidence / inferredStats.inferredCount : 1.0,
+    };
   }
 
   /**
