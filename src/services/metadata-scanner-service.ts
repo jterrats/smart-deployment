@@ -187,6 +187,179 @@ async function parseLayoutComponent(filePath: string): Promise<MetadataComponent
   };
 }
 
+async function parseCustomMetadataComponents(cmtDir: string): Promise<MetadataComponent[]> {
+  const typeName = path.basename(cmtDir);
+  const typeFile = path.join(cmtDir, `${typeName}.md-meta.xml`);
+
+  const content = await fs.readFile(typeFile, 'utf-8');
+  const parsedType = await parseCustomMetadataType(typeName, content);
+  const recordFiles = (
+    await globAsync(path.join(cmtDir, '*.md'), {
+      absolute: true,
+    })
+  ).filter((recordFile) => path.basename(recordFile) !== path.basename(typeFile));
+  const records = await Promise.all(
+    recordFiles.map(async (recordFile) => {
+      const recordContent = await fs.readFile(recordFile, 'utf-8');
+      const recordName = path.basename(recordFile, '.md');
+      return parseCustomMetadataRecord(recordName, recordContent);
+    })
+  );
+  const grouped = groupCustomMetadataWithRecords(parsedType, records);
+
+  const deps = new Set<string>();
+  for (const dependency of grouped.dependencies) {
+    switch (dependency.type) {
+      case 'relationship_field':
+      case 'lookup_reference':
+        if (dependency.referencedObject) {
+          deps.add(dependency.referencedObject);
+        }
+        break;
+      case 'record':
+        deps.add(`CustomMetadataRecord:${dependency.name}`);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return [
+    {
+      name: typeName,
+      type: 'CustomMetadata' as const,
+      filePath: typeFile,
+      dependencies: deps,
+      dependents: new Set<string>(),
+      priorityBoost: 0,
+    },
+    ...grouped.records.map((record) => ({
+      name: record.fullName,
+      type: 'CustomMetadataRecord' as const,
+      filePath: path.join(cmtDir, `${record.fullName}.md`),
+      dependencies: new Set<string>([`CustomMetadata:${typeName}`]),
+      dependents: new Set<string>(),
+      priorityBoost: 0,
+    })),
+  ];
+}
+
+async function parseFlexiPageComponent(filePath: string): Promise<MetadataComponent | undefined> {
+  const flexipageName = path.basename(filePath, '.flexipage-meta.xml');
+  const parsed = await parseFlexiPage(filePath, flexipageName);
+
+  const deps = new Set<string>();
+  addAll(deps, parsed.lwcComponents);
+  addAll(deps, parsed.auraComponents);
+  addAll(deps, parsed.objects);
+  addAll(deps, parsed.recordTypeFilters, 'RecordType');
+  addAll(deps, parsed.quickActions, 'QuickAction');
+
+  return {
+    name: flexipageName,
+    type: 'FlexiPage' as const,
+    filePath,
+    dependencies: deps,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
+async function parseEmailTemplateComponent(
+  filePath: string,
+  fileExists: (filePath: string) => Promise<boolean>
+): Promise<MetadataComponent | undefined> {
+  const templateName = path.basename(filePath, '.email-meta.xml');
+  const metadataContent = await fs.readFile(filePath, 'utf-8');
+  const bodyPath = filePath.replace(/\.email-meta\.xml$/, '');
+  const templateContent = (await fileExists(bodyPath)) ? await fs.readFile(bodyPath, 'utf-8') : metadataContent;
+  const parsed = await parseEmailTemplate(templateName, templateContent, metadataContent);
+
+  const deps = new Set<string>();
+  parsed.dependencies.forEach((dependency) => {
+    switch (dependency.type) {
+      case 'visualforce_page':
+        deps.add(`VisualforcePage:${dependency.name}`);
+        break;
+      case 'related_entity':
+        deps.add(dependency.name);
+        break;
+      case 'merge_field':
+        if (dependency.objectName) {
+          deps.add(dependency.objectName);
+        }
+        break;
+      default:
+        break;
+    }
+  });
+
+  return {
+    name: templateName,
+    type: 'EmailTemplate' as const,
+    filePath,
+    dependencies: deps,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
+async function parseBotComponent(filePath: string): Promise<MetadataComponent | undefined> {
+  const botName = path.basename(filePath, '.bot-meta.xml');
+  const parsed = await parseBot(filePath, botName);
+
+  const deps = new Set<string>();
+  addAll(deps, parsed.flows, 'Flow');
+  addAll(deps, parsed.apexActions, 'ApexClass');
+  addAll(deps, parsed.genAiPrompts, 'GenAiPromptTemplate');
+  addAll(deps, parsed.sobjects);
+
+  return {
+    name: botName,
+    type: 'Bot' as const,
+    filePath,
+    dependencies: deps,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
+async function parseVisualforceComponent(filePath: string): Promise<MetadataComponent | undefined> {
+  const content = await fs.readFile(filePath, 'utf-8');
+  const fileName = path.basename(filePath);
+  const parsed = parseVisualforce(fileName, content);
+
+  const deps = new Set<string>();
+  parsed.dependencies.forEach((dependency) => {
+    switch (dependency.type) {
+      case 'apex_controller':
+      case 'apex_extension':
+        deps.add(`ApexClass:${dependency.name}`);
+        break;
+      case 'standard_controller':
+        deps.add(dependency.name);
+        break;
+      case 'vf_component':
+        deps.add(`VisualforceComponent:${dependency.name}`);
+        break;
+      default:
+        break;
+    }
+  });
+
+  const componentType: 'VisualforcePage' | 'VisualforceComponent' =
+    parsed.type === 'page' ? 'VisualforcePage' : 'VisualforceComponent';
+
+  return {
+    name: parsed.name,
+    type: componentType,
+    filePath,
+    dependencies: deps,
+    dependents: new Set<string>(),
+    priorityBoost: 0,
+  };
+}
+
 async function parseApexClassComponent(
   filePath: string,
   context: ScannerContext
@@ -589,57 +762,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const content = await fs.readFile(typeFile, 'utf-8');
-          const parsedType = await parseCustomMetadataType(typeName, content);
-          const recordFiles = (
-            await globAsync(path.join(cmtDir, '*.md'), {
-              absolute: true,
-            })
-          ).filter((recordFile) => path.basename(recordFile) !== path.basename(typeFile));
-          const records = await Promise.all(
-            recordFiles.map(async (recordFile) => {
-              const recordContent = await fs.readFile(recordFile, 'utf-8');
-              const recordName = path.basename(recordFile, '.md');
-              return parseCustomMetadataRecord(recordName, recordContent);
-            })
-          );
-          const grouped = groupCustomMetadataWithRecords(parsedType, records);
-
-          const deps = new Set<string>();
-          for (const dependency of grouped.dependencies) {
-            switch (dependency.type) {
-              case 'relationship_field':
-              case 'lookup_reference':
-                if (dependency.referencedObject) {
-                  deps.add(dependency.referencedObject);
-                }
-                break;
-              case 'record':
-                deps.add(`CustomMetadataRecord:${dependency.name}`);
-                break;
-              default:
-                break;
-            }
-          }
-
-          return [
-            {
-              name: typeName,
-              type: 'CustomMetadata' as const,
-              filePath: typeFile,
-              dependencies: deps,
-              dependents: new Set<string>(),
-              priorityBoost: 0,
-            },
-            ...grouped.records.map((record) => ({
-              name: record.fullName,
-              type: 'CustomMetadataRecord' as const,
-              filePath: path.join(cmtDir, `${record.fullName}.md`),
-              dependencies: new Set<string>([`CustomMetadata:${typeName}`]),
-              dependents: new Set<string>(),
-              priorityBoost: 0,
-            })),
-          ];
+          return await parseCustomMetadataComponents(cmtDir);
         } catch (error) {
           const errorMsg = `Failed to parse Custom Metadata Type ${typeName}: ${
             error instanceof Error ? error.message : String(error)
@@ -705,24 +828,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const flexipageName = path.basename(filePath, '.flexipage-meta.xml');
-          const parsed = await parseFlexiPage(filePath, flexipageName);
-
-          const deps = new Set<string>();
-          addAll(deps, parsed.lwcComponents);
-          addAll(deps, parsed.auraComponents);
-          addAll(deps, parsed.objects);
-          addAll(deps, parsed.recordTypeFilters, 'RecordType');
-          addAll(deps, parsed.quickActions, 'QuickAction');
-
-          return {
-            name: flexipageName,
-            type: 'FlexiPage' as const,
-            filePath,
-            dependencies: deps,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parseFlexiPageComponent(filePath);
         } catch (error) {
           const errorMsg = `Failed to parse FlexiPage ${filePath}: ${
             error instanceof Error ? error.message : String(error)
@@ -766,41 +872,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const templateName = path.basename(filePath, '.email-meta.xml');
-          const metadataContent = await fs.readFile(filePath, 'utf-8');
-          const bodyPath = filePath.replace(/\.email-meta\.xml$/, '');
-          const templateContent = (await this.fileExists(bodyPath))
-            ? await fs.readFile(bodyPath, 'utf-8')
-            : metadataContent;
-          const parsed = await parseEmailTemplate(templateName, templateContent, metadataContent);
-
-          const deps = new Set<string>();
-          parsed.dependencies.forEach((dependency) => {
-            switch (dependency.type) {
-              case 'visualforce_page':
-                deps.add(`VisualforcePage:${dependency.name}`);
-                break;
-              case 'related_entity':
-                deps.add(dependency.name);
-                break;
-              case 'merge_field':
-                if (dependency.objectName) {
-                  deps.add(dependency.objectName);
-                }
-                break;
-              default:
-                break;
-            }
-          });
-
-          return {
-            name: templateName,
-            type: 'EmailTemplate' as const,
-            filePath,
-            dependencies: deps,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parseEmailTemplateComponent(filePath, this.fileExists.bind(this));
         } catch (error) {
           const errorMsg = `Failed to parse Email Template ${filePath}: ${
             error instanceof Error ? error.message : String(error)
@@ -822,23 +894,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const botName = path.basename(filePath, '.bot-meta.xml');
-          const parsed = await parseBot(filePath, botName);
-
-          const deps = new Set<string>();
-          addAll(deps, parsed.flows, 'Flow');
-          addAll(deps, parsed.apexActions, 'ApexClass');
-          addAll(deps, parsed.genAiPrompts, 'GenAiPromptTemplate');
-          addAll(deps, parsed.sobjects);
-
-          return {
-            name: botName,
-            type: 'Bot' as const,
-            filePath,
-            dependencies: deps,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parseBotComponent(filePath);
         } catch (error) {
           const errorMsg = `Failed to parse Bot ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
           logger.warn(errorMsg);
@@ -895,39 +951,7 @@ export class MetadataScannerService {
         }
 
         try {
-          const content = await fs.readFile(filePath, 'utf-8');
-          const fileName = path.basename(filePath);
-          const parsed = parseVisualforce(fileName, content);
-
-          const deps = new Set<string>();
-          parsed.dependencies.forEach((dependency) => {
-            switch (dependency.type) {
-              case 'apex_controller':
-              case 'apex_extension':
-                deps.add(`ApexClass:${dependency.name}`);
-                break;
-              case 'standard_controller':
-                deps.add(dependency.name);
-                break;
-              case 'vf_component':
-                deps.add(`VisualforceComponent:${dependency.name}`);
-                break;
-              default:
-                break;
-            }
-          });
-
-          const componentType: 'VisualforcePage' | 'VisualforceComponent' =
-            parsed.type === 'page' ? 'VisualforcePage' : 'VisualforceComponent';
-
-          return {
-            name: parsed.name,
-            type: componentType,
-            filePath,
-            dependencies: deps,
-            dependents: new Set<string>(),
-            priorityBoost: 0,
-          };
+          return await parseVisualforceComponent(filePath);
         } catch (error) {
           const errorMsg = `Failed to parse Visualforce ${filePath}: ${
             error instanceof Error ? error.message : String(error)
