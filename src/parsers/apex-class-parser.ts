@@ -42,6 +42,26 @@ export type ApexParseResult = {
   metadata?: ApexClassMetadata;
 };
 
+type ApexLexicalContext = {
+  filePath: string;
+  className: string;
+  originalCode: string;
+  cleanCode: string;
+};
+
+type ApexSymbolExtraction = {
+  namespace?: string;
+  extendsClass?: string;
+  implementsList: string[];
+  innerClasses: string[];
+};
+
+type ApexTestMetadata = {
+  isTestClass: boolean;
+  usesIsTestAnnotation: boolean;
+  usesTestMethodKeyword: boolean;
+};
+
 /**
  * Standard Apex classes that should be ignored
  */
@@ -213,6 +233,18 @@ function extractNamespace(className: string): { namespace?: string; cleanName: s
   return { cleanName: className, isManagedPackage: false };
 }
 
+function buildDependency(type: ApexDependencyType, className: string): ApexDependency {
+  const { namespace, cleanName, isManagedPackage } = extractNamespace(className);
+
+  return {
+    type,
+    className: cleanName,
+    namespace,
+    isStandard: false,
+    isManagedPackage,
+  };
+}
+
 /**
  * Extract extends relationship
  *
@@ -274,16 +306,8 @@ function extractStaticMethodCalls(code: string): ApexDependency[] {
       continue;
     }
 
-    const { namespace, cleanName, isManagedPackage } = extractNamespace(className);
-
     seen.add(className);
-    dependencies.push({
-      type: 'static_method',
-      className: cleanName,
-      namespace,
-      isStandard: false,
-      isManagedPackage,
-    });
+    dependencies.push(buildDependency('static_method', className));
   }
 
   return dependencies;
@@ -308,16 +332,8 @@ function extractInstantiations(code: string): ApexDependency[] {
       continue;
     }
 
-    const { namespace, cleanName, isManagedPackage } = extractNamespace(className);
-
     seen.add(className);
-    dependencies.push({
-      type: 'instantiation',
-      className: cleanName,
-      namespace,
-      isStandard: false,
-      isManagedPackage,
-    });
+    dependencies.push(buildDependency('instantiation', className));
   }
 
   return dependencies;
@@ -343,16 +359,8 @@ function extractVariableDeclarations(code: string): ApexDependency[] {
       continue;
     }
 
-    const { namespace, cleanName, isManagedPackage } = extractNamespace(className);
-
     seen.add(className);
-    dependencies.push({
-      type: 'variable_declaration',
-      className: cleanName,
-      namespace,
-      isStandard: false,
-      isManagedPackage,
-    });
+    dependencies.push(buildDependency('variable_declaration', className));
   }
 
   return dependencies;
@@ -402,19 +410,91 @@ function extractDynamicInstantiations(code: string): ApexDependency[] {
       continue;
     }
 
-    const { namespace, cleanName, isManagedPackage } = extractNamespace(className);
-
     seen.add(className);
-    dependencies.push({
-      type: 'dynamic_instantiation',
-      className: cleanName,
-      namespace,
-      isStandard: false,
-      isManagedPackage,
-    });
+    dependencies.push(buildDependency('dynamic_instantiation', className));
   }
 
   return dependencies;
+}
+
+function extractClassNameFromFilePath(filePath: string): string {
+  const classNameMatch = filePath.match(/([a-zA-Z][a-zA-Z0-9_]*)\.cls$/);
+  if (!classNameMatch) {
+    throw new ParsingError(`Invalid Apex class file name: ${filePath}`, {
+      filePath,
+      suggestion: 'Apex class files must end with .cls',
+    });
+  }
+
+  return classNameMatch[1];
+}
+
+function createLexicalContext(filePath: string, content: string): ApexLexicalContext {
+  return {
+    filePath,
+    className: extractClassNameFromFilePath(filePath),
+    originalCode: content,
+    cleanCode: removeComments(content),
+  };
+}
+
+function extractSymbols(context: ApexLexicalContext): ApexSymbolExtraction {
+  const { namespace } = extractNamespace(context.className);
+
+  return {
+    namespace,
+    extendsClass: extractExtends(context.cleanCode),
+    implementsList: extractImplements(context.cleanCode),
+    innerClasses: extractInnerClasses(context.cleanCode, context.className),
+  };
+}
+
+function detectTestMetadata(context: ApexLexicalContext): ApexTestMetadata {
+  return {
+    isTestClass: /(?:^|\W)@isTest\b/i.test(context.cleanCode) || /\btestMethod\b/i.test(context.cleanCode),
+    usesIsTestAnnotation: /(?:^|\W)@isTest\b/i.test(context.originalCode),
+    usesTestMethodKeyword: /\btestMethod\b/i.test(context.cleanCode),
+  };
+}
+
+function extractSignatureDependencies(symbols: ApexSymbolExtraction): ApexDependency[] {
+  const dependencies: ApexDependency[] = [];
+
+  if (symbols.extendsClass && !isStandardClass(symbols.extendsClass)) {
+    dependencies.push(buildDependency('extends', symbols.extendsClass));
+  }
+
+  for (const iface of symbols.implementsList) {
+    if (!isStandardClass(iface)) {
+      dependencies.push(buildDependency('implements', iface));
+    }
+  }
+
+  return dependencies;
+}
+
+function extractReferenceDependencies(context: ApexLexicalContext): ApexDependency[] {
+  return [
+    ...extractStaticMethodCalls(context.cleanCode),
+    ...extractInstantiations(context.cleanCode),
+    ...extractVariableDeclarations(context.cleanCode),
+    ...extractDynamicInstantiations(context.cleanCode),
+  ];
+}
+
+function buildParseResult(
+  context: ApexLexicalContext,
+  symbols: ApexSymbolExtraction,
+  dependencies: ApexDependency[]
+): ApexParseResult {
+  return {
+    className: context.className,
+    namespace: symbols.namespace,
+    extends: symbols.extendsClass,
+    implements: symbols.implementsList,
+    dependencies,
+    innerClasses: symbols.innerClasses,
+  };
 }
 
 /**
@@ -438,79 +518,16 @@ export function parseApexClass(filePath: string, content: string): ApexParseResu
   try {
     logger.debug(`Parsing Apex class: ${filePath}`);
 
-    // Extract class name from file path
-    const classNameMatch = filePath.match(/([a-zA-Z][a-zA-Z0-9_]*)\.cls$/);
-    if (!classNameMatch) {
-      throw new ParsingError(`Invalid Apex class file name: ${filePath}`, {
-        filePath,
-        suggestion: 'Apex class files must end with .cls',
-      });
-    }
+    const lexicalContext = createLexicalContext(filePath, content);
+    const symbols = extractSymbols(lexicalContext);
+    const testMetadata = detectTestMetadata(lexicalContext);
+    const dependencies = [...extractSignatureDependencies(symbols), ...extractReferenceDependencies(lexicalContext)];
+    const result = buildParseResult(lexicalContext, symbols, dependencies);
 
-    const className = classNameMatch[1];
-
-    // Remove comments
-    const cleanCode = removeComments(content);
-
-    // Extract namespace from class definition
-    const { namespace } = extractNamespace(className);
-
-    // Extract extends relationship
-    const extendsClass = extractExtends(cleanCode);
-
-    // Extract implements relationships
-    const implementsList = extractImplements(cleanCode);
-
-    // Extract all dependencies
-    const dependencies: ApexDependency[] = [];
-
-    // Add extends as a dependency
-    if (extendsClass && !isStandardClass(extendsClass)) {
-      const { namespace: extNamespace, cleanName, isManagedPackage } = extractNamespace(extendsClass);
-      dependencies.push({
-        type: 'extends',
-        className: cleanName,
-        namespace: extNamespace,
-        isStandard: false,
-        isManagedPackage,
-      });
-    }
-
-    // Add implements as dependencies
-    for (const iface of implementsList) {
-      if (!isStandardClass(iface)) {
-        const { namespace: ifaceNamespace, cleanName, isManagedPackage } = extractNamespace(iface);
-        dependencies.push({
-          type: 'implements',
-          className: cleanName,
-          namespace: ifaceNamespace,
-          isStandard: false,
-          isManagedPackage,
-        });
-      }
-    }
-
-    // Extract and add other dependencies
-    dependencies.push(...extractStaticMethodCalls(cleanCode));
-    dependencies.push(...extractInstantiations(cleanCode));
-    dependencies.push(...extractVariableDeclarations(cleanCode));
-    dependencies.push(...extractDynamicInstantiations(cleanCode));
-
-    // Extract inner classes
-    const innerClasses = extractInnerClasses(cleanCode, className);
-
-    const result: ApexParseResult = {
-      className,
-      namespace,
-      extends: extendsClass,
-      implements: implementsList,
-      dependencies,
-      innerClasses,
-    };
-
-    logger.debug(`Parsed Apex class: ${className}`, {
+    logger.debug(`Parsed Apex class: ${lexicalContext.className}`, {
       dependencies: dependencies.length,
-      innerClasses: innerClasses.length,
+      innerClasses: symbols.innerClasses.length,
+      isTestClass: testMetadata.isTestClass,
     });
 
     return result;

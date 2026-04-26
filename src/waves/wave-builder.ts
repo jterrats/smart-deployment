@@ -18,6 +18,23 @@ import type { MetadataType } from '../types/metadata.js';
 
 const logger = getLogger('WaveBuilder');
 
+type WavePlacementPolicy = {
+  maxComponentsPerWave: number;
+  respectTypeOrder: boolean;
+  handleCircularDeps: boolean;
+};
+
+type DependencyRiskProfile = {
+  hard: number;
+  soft: number;
+  inferred: number;
+};
+
+type CircularWaveResolution = {
+  remaining: NodeId[];
+  fallbackWave?: Wave;
+};
+
 /**
  * Wave of independent components
  */
@@ -113,6 +130,73 @@ const TYPE_DEPLOYMENT_ORDER: MetadataType[] = [
   'FlexiPage',
 ];
 
+function calculateInDegree(graph: DependencyGraph): Map<NodeId, number> {
+  const inDegree = new Map<NodeId, number>();
+
+  for (const [nodeId, deps] of graph.entries()) {
+    inDegree.set(nodeId, deps.size);
+  }
+
+  return inDegree;
+}
+
+function collectWaveCandidates(inDegree: ReadonlyMap<NodeId, number>, processed: ReadonlySet<NodeId>): NodeId[] {
+  const candidates: NodeId[] = [];
+
+  for (const [nodeId, degree] of inDegree.entries()) {
+    if (degree === 0 && !processed.has(nodeId)) {
+      candidates.push(nodeId);
+    }
+  }
+
+  return candidates;
+}
+
+function collectRemainingNodes(graph: DependencyGraph, processed: ReadonlySet<NodeId>): NodeId[] {
+  const remaining: NodeId[] = [];
+
+  for (const nodeId of graph.keys()) {
+    if (!processed.has(nodeId)) {
+      remaining.push(nodeId);
+    }
+  }
+
+  return remaining;
+}
+
+function chunkArray<T>(array: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+function getMetadataTypeDeploymentOrder(type: MetadataType): number {
+  const order = TYPE_DEPLOYMENT_ORDER.indexOf(type);
+  return order === -1 ? 9999 : order;
+}
+
+function extractMetadataType(nodeId: NodeId): MetadataType {
+  return nodeId.split(':')[0] as MetadataType;
+}
+
+function compareTypedDependencyRisk(left: DependencyRiskProfile, right: DependencyRiskProfile): number {
+  if (left.inferred !== right.inferred) {
+    return left.inferred - right.inferred;
+  }
+
+  if (left.soft !== right.soft) {
+    return left.soft - right.soft;
+  }
+
+  if (left.hard !== right.hard) {
+    return right.hard - left.hard;
+  }
+
+  return 0;
+}
+
 /**
  * Wave Builder
  *
@@ -167,82 +251,31 @@ export class WaveBuilder {
    */
   public generateWaves(graph: DependencyGraph): WaveResult {
     const startTime = Date.now();
-
-    // Calculate in-degree for all nodes
-    const inDegree = this.calculateInDegree(graph);
+    const policy = this.getPlacementPolicy();
+    const inDegree = calculateInDegree(graph);
     const waves: Wave[] = [];
     const processed = new Set<NodeId>();
     const unplacedComponents: NodeId[] = [];
     let waveNumber = 1;
 
-    // Build waves using topological sort
     while (processed.size < graph.size) {
-      // Find nodes with in-degree 0
-      const currentWave: NodeId[] = [];
-
-      for (const [nodeId, degree] of inDegree.entries()) {
-        if (degree === 0 && !processed.has(nodeId)) {
-          currentWave.push(nodeId);
+      const candidateComponents = this.selectWaveCandidates(inDegree, processed, policy);
+      if (candidateComponents.length === 0) {
+        const circularResolution = this.resolveCircularWave(graph, processed, waveNumber, policy);
+        unplacedComponents.push(...circularResolution.remaining);
+        if (circularResolution.fallbackWave) {
+          waves.push(circularResolution.fallbackWave);
         }
-      }
-
-      // No progress - circular dependency
-      if (currentWave.length === 0) {
-        this.handleCircularWave(graph, processed, unplacedComponents, waves, waveNumber);
-
         break;
       }
 
-      // Sort by type order if configured
-      if (this.options.respectTypeOrder) {
-        currentWave.sort((a, b) => this.compareWavePriority(a, b));
+      for (const chunk of this.createWaveChunks(candidateComponents, policy.maxComponentsPerWave)) {
+        waves.push(this.createWave(chunk, waveNumber, false));
+        waveNumber += 1;
+        this.markProcessed(processed, chunk);
       }
 
-      // Split into multiple waves if exceeds max size
-      if (this.options.maxComponentsPerWave > 0 && currentWave.length > this.options.maxComponentsPerWave) {
-        const chunks = this.chunkArray(currentWave, this.options.maxComponentsPerWave);
-        for (const chunk of chunks) {
-          waves.push({
-            number: waveNumber++,
-            components: chunk,
-            metadata: this.generateWaveMetadata(chunk, false),
-          });
-
-          // Mark as processed
-          for (const nodeId of chunk) {
-            processed.add(nodeId);
-          }
-        }
-      } else {
-        // Add wave
-        waves.push({
-          number: waveNumber++,
-          components: currentWave,
-          metadata: this.generateWaveMetadata(currentWave, false),
-        });
-
-        // Mark as processed
-        for (const nodeId of currentWave) {
-          processed.add(nodeId);
-        }
-      }
-
-      // Update in-degrees: reduce count for nodes that depended on current wave nodes
-      for (const [nodeId, deps] of graph.entries()) {
-        if (processed.has(nodeId)) continue;
-
-        // Count how many of its dependencies were in the current wave
-        let removedDeps = 0;
-        for (const dep of deps) {
-          if (currentWave.includes(dep)) {
-            removedDeps++;
-          }
-        }
-
-        if (removedDeps > 0) {
-          inDegree.set(nodeId, (inDegree.get(nodeId) ?? 0) - removedDeps);
-        }
-      }
+      this.updateInDegreeForPlacedCandidates(graph, inDegree, processed, candidateComponents);
     }
 
     // Calculate statistics
@@ -268,122 +301,118 @@ export class WaveBuilder {
     };
   }
 
-  /**
-   * Calculate in-degree for all nodes
-   * In-degree = number of dependencies this node has (how many nodes it depends on)
-   * Nodes with in-degree 0 have no dependencies and can be deployed first
-   */
-  private calculateInDegree(graph: DependencyGraph): Map<NodeId, number> {
-    const inDegree = new Map<NodeId, number>();
-
-    // Initialize all nodes with their dependency count
-    for (const [nodeId, deps] of graph.entries()) {
-      inDegree.set(nodeId, deps.size);
-    }
-
-    return inDegree;
+  private getPlacementPolicy(): WavePlacementPolicy {
+    return {
+      maxComponentsPerWave: this.options.maxComponentsPerWave,
+      respectTypeOrder: this.options.respectTypeOrder,
+      handleCircularDeps: this.options.handleCircularDeps,
+    };
   }
 
-  private handleCircularWave(
+  private selectWaveCandidates(
+    inDegree: ReadonlyMap<NodeId, number>,
+    processed: ReadonlySet<NodeId>,
+    policy: WavePlacementPolicy
+  ): NodeId[] {
+    const candidates = collectWaveCandidates(inDegree, processed);
+
+    if (policy.respectTypeOrder) {
+      candidates.sort((left, right) => this.compareWavePriority(left, right));
+    }
+
+    return candidates;
+  }
+
+  private createWaveChunks(candidates: NodeId[], maxComponentsPerWave: number): NodeId[][] {
+    if (maxComponentsPerWave > 0 && candidates.length > maxComponentsPerWave) {
+      return chunkArray(candidates, maxComponentsPerWave);
+    }
+
+    return [candidates];
+  }
+
+  private createWave(components: NodeId[], waveNumber: number, hasCircularDeps: boolean): Wave {
+    return {
+      number: waveNumber,
+      components,
+      metadata: this.generateWaveMetadata(components, hasCircularDeps),
+    };
+  }
+
+  private markProcessed(processed: Set<NodeId>, components: Iterable<NodeId>): void {
+    for (const nodeId of components) {
+      processed.add(nodeId);
+    }
+  }
+
+  private updateInDegreeForPlacedCandidates(
     graph: DependencyGraph,
-    processed: Set<NodeId>,
-    unplacedComponents: NodeId[],
-    waves: Wave[],
-    waveNumber: number
+    inDegree: Map<NodeId, number>,
+    processed: ReadonlySet<NodeId>,
+    placedCandidates: readonly NodeId[]
   ): void {
-    const remaining = this.collectRemainingNodes(graph, processed);
-    unplacedComponents.push(...remaining);
+    for (const [nodeId, deps] of graph.entries()) {
+      if (processed.has(nodeId)) {
+        continue;
+      }
+
+      let removedDeps = 0;
+      for (const dep of deps) {
+        if (placedCandidates.includes(dep)) {
+          removedDeps += 1;
+        }
+      }
+
+      if (removedDeps > 0) {
+        inDegree.set(nodeId, (inDegree.get(nodeId) ?? 0) - removedDeps);
+      }
+    }
+  }
+
+  private resolveCircularWave(
+    graph: DependencyGraph,
+    processed: ReadonlySet<NodeId>,
+    waveNumber: number,
+    policy: WavePlacementPolicy
+  ): CircularWaveResolution {
+    const remaining = collectRemainingNodes(graph, processed);
 
     logger.warn('Circular dependencies detected', {
       remaining: remaining.length,
     });
 
-    if (this.options.handleCircularDeps) {
-      if (this.options.respectTypeOrder) {
-        remaining.sort((a, b) => this.compareWavePriority(a, b));
+    if (policy.handleCircularDeps) {
+      if (policy.respectTypeOrder) {
+        remaining.sort((left, right) => this.compareWavePriority(left, right));
       }
-      waves.push({
-        number: waveNumber,
-        components: remaining,
-        metadata: this.generateWaveMetadata(remaining, true),
-      });
-    }
-  }
 
-  private collectRemainingNodes(graph: DependencyGraph, processed: Set<NodeId>): NodeId[] {
-    const remaining: NodeId[] = [];
-
-    for (const nodeId of graph.keys()) {
-      if (!processed.has(nodeId)) {
-        remaining.push(nodeId);
-      }
+      return {
+        remaining,
+        fallbackWave: this.createWave(remaining, waveNumber, true),
+      };
     }
 
-    return remaining;
+    return { remaining };
   }
 
-  /**
-   * @ac US-038-AC-6: Generate wave metadata
-   */
-  private generateWaveMetadata(components: NodeId[], hasCircularDeps: boolean): WaveMetadata {
-    const types = new Set<MetadataType>();
-    const maxDepth = 0;
-
-    for (const component of components) {
-      const [type] = component.split(':');
-      types.add(type as MetadataType);
-    }
-
-    // Estimate deployment time (rough estimate: 0.1s per component)
-    const estimatedTime = Math.ceil(components.length * 0.1);
-
-    return {
-      componentCount: components.length,
-      types: Array.from(types),
-      maxDepth,
-      hasCircularDeps,
-      estimatedTime,
-    };
-  }
-
-  /**
-   * Compare nodes by type deployment order
-   */
   private compareWavePriority(a: NodeId, b: NodeId): number {
-    const typeA = a.split(':')[0] as MetadataType;
-    const typeB = b.split(':')[0] as MetadataType;
-
-    const orderA = TYPE_DEPLOYMENT_ORDER.indexOf(typeA);
-    const orderB = TYPE_DEPLOYMENT_ORDER.indexOf(typeB);
-
-    // If not in order list, put at end
-    const finalOrderA = orderA === -1 ? 9999 : orderA;
-    const finalOrderB = orderB === -1 ? 9999 : orderB;
-
-    const typeOrderComparison = finalOrderA - finalOrderB;
+    const typeOrderComparison =
+      getMetadataTypeDeploymentOrder(extractMetadataType(a)) - getMetadataTypeDeploymentOrder(extractMetadataType(b));
     if (typeOrderComparison !== 0) {
       return typeOrderComparison;
     }
 
     const riskA = this.getDependencyRiskProfile(a);
     const riskB = this.getDependencyRiskProfile(b);
-
-    if (riskA.inferred !== riskB.inferred) {
-      return riskA.inferred - riskB.inferred;
-    }
-
-    if (riskA.soft !== riskB.soft) {
-      return riskA.soft - riskB.soft;
-    }
-
-    if (riskA.hard !== riskB.hard) {
-      return riskB.hard - riskA.hard;
+    const riskComparison = compareTypedDependencyRisk(riskA, riskB);
+    if (riskComparison !== 0) {
+      return riskComparison;
     }
 
     return a.localeCompare(b);
   }
 
-  private getDependencyRiskProfile(nodeId: NodeId): { hard: number; soft: number; inferred: number } {
+  private getDependencyRiskProfile(nodeId: NodeId): DependencyRiskProfile {
     const edgeTypes = this.edgeTypesByFrom.get(nodeId) ?? [];
 
     return edgeTypes.reduce(
@@ -400,14 +429,25 @@ export class WaveBuilder {
   }
 
   /**
-   * Split array into chunks
+   * @ac US-038-AC-6: Generate wave metadata
    */
-  private chunkArray<T>(array: T[], chunkSize: number): T[][] {
-    const chunks: T[][] = [];
-    for (let i = 0; i < array.length; i += chunkSize) {
-      chunks.push(array.slice(i, i + chunkSize));
+  private generateWaveMetadata(components: NodeId[], hasCircularDeps: boolean): WaveMetadata {
+    const types = new Set<MetadataType>();
+    const maxDepth = 0;
+
+    for (const component of components) {
+      types.add(extractMetadataType(component));
     }
-    return chunks;
+
+    const estimatedTime = Math.ceil(components.length * 0.1);
+
+    return {
+      componentCount: components.length,
+      types: Array.from(types),
+      maxDepth,
+      hasCircularDeps,
+      estimatedTime,
+    };
   }
 
   /**
