@@ -12,6 +12,8 @@ That file is the local architecture contract for this repo and defines:
 - SOLID guardrails
 - separation of concerns by layer
 - complexity/refactor triggers for hotspot files
+- delegation and handoff rules for parallel agent work
+- definition of ready / done for non-trivial delivery
 
 ## Before Opening A PR
 

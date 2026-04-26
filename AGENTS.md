@@ -8,6 +8,12 @@ These rules apply to all new code, refactors, and reviews.
 This file is the local engineering contract for agents in this repository.
 Generic rule sets from other repositories can inform it, but local rules take precedence.
 
+## Operating Mode
+
+- Use this file as the baseline contract for all refactors, bug fixes, and delegated work in this repo.
+- Load only the smallest relevant local context before changing code.
+- Prefer small reviewable slices over broad cross-cutting rewrites.
+
 ## Core Principles
 
 1. Prefer small, composable units over large multi-purpose files.
@@ -75,6 +81,7 @@ Generic rule sets from other repositories can inform it, but local rules take pr
 - Avoid `any`, `object`, and `Record<string, unknown>` in stable public APIs unless there is a deliberate boundary reason.
 - Prefer narrow types, discriminated unions, and focused option objects over ambiguous “bag of fields” shapes.
 - Prefer static imports and explicit types over runtime-shaped module access.
+- Treat CLI JSON output, persisted deployment state, report payloads, and provider adapters as product contracts.
 
 ## Separation of Concerns
 
@@ -95,7 +102,8 @@ Generic rule sets from other repositories can inform it, but local rules take pr
 - Prefer extraction before adding more branches to already large files.
 - Treat these thresholds as strong refactor signals, not vanity metrics:
 
-  - file is growing past roughly 300 to 400 lines
+  - file is growing past roughly 300 lines
+  - file crossing 400 lines needs an explicit reason
   - function is growing past roughly 30 to 40 lines
   - function needs more than 5 parameters
   - branching logic is better represented as a registry, strategy, or handler map
@@ -114,6 +122,23 @@ Generic rule sets from other repositories can inform it, but local rules take pr
   - then reduce the root orchestrator to composition
 
 - Prefer registries, maps, and strategy objects over long switch or if/else ladders once a decision point exceeds about 5 cases.
+
+## Delegation And Handoffs
+
+- Before delegating work, define:
+  - goal
+  - owning files or module boundary
+  - non-goals
+  - required tests
+  - expected artifact or commit slice
+- Parallel work must be split by stable boundaries. Avoid concurrent edits to the same files unless one agent is clearly the integration owner.
+- Every handoff should include:
+  - what changed
+  - files touched
+  - risks
+  - tests run
+  - remaining gaps
+- Do not delegate generic exploration when the immediate blocker is local and on the critical path.
 
 ## State and Side Effects
 
@@ -162,6 +187,19 @@ Generic rule sets from other repositories can inform it, but local rules take pr
 
 - Prefer deterministic tests.
   - Avoid clock, network, and randomness dependencies unless they are explicitly controlled.
+
+## Delivery Gates
+
+- Definition of Ready for non-trivial work:
+  - scope is clear
+  - target layer is identified
+  - acceptance signal is known
+  - likely hotspot files are named up front
+- Definition of Done:
+  - behavior lives in the correct layer
+  - touched tests pass
+  - docs/contracts are updated if the product surface changed
+  - handoff includes evidence and residual risks
 
 ## Review Checklist
 
