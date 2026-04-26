@@ -1,22 +1,9 @@
-import type { DeploymentContextMessages } from '../deployment/deployment-context-service.js';
-import type { ScanResult } from '../services/metadata-scanner-service.js';
-
 export type StartPresenterIO = {
   log: (message: string) => void;
   warn: (message: string) => void;
 };
 
 export class StartCommandPresenter {
-  public reportScanDiagnostics(io: StartPresenterIO, scanResult: ScanResult): void {
-    scanResult.errors.forEach((message) => io.warn(message));
-    scanResult.warnings.forEach((message) => io.warn(message));
-  }
-
-  public reportContextMessages(io: StartPresenterIO, messages: DeploymentContextMessages): void {
-    messages.warnings.forEach((warning) => io.warn(warning));
-    messages.logs.forEach((entry) => io.log(entry));
-  }
-
   public reportAnalysisSummary(
     io: Pick<StartPresenterIO, 'log'>,
     options: {

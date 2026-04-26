@@ -18,6 +18,7 @@ import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
 import { AnalyzeArtifactService } from '../analysis/analyze-artifact-service.js';
 import { ProjectAnalysisService } from '../analysis/project-analysis-service.js';
 import { AnalyzeCommandPresenter } from '../presentation/analyze-command-presenter.js';
+import { ProjectAnalysisPresenter } from '../presentation/project-analysis-presenter.js';
 import type { PriorityOverride } from '../types/deployment-plan.js';
 import { getLogger } from '../utils/logger.js';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
@@ -28,6 +29,7 @@ Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'analyze');
 const projectAnalysisService = new ProjectAnalysisService();
 const artifactService = new AnalyzeArtifactService();
+const projectAnalysisPresenter = new ProjectAnalysisPresenter();
 const presenter = new AnalyzeCommandPresenter();
 
 type AnalyzeResult = {
@@ -145,8 +147,7 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
       industry: typeof flags.industry === 'string' ? flags.industry : undefined,
     });
 
-    analysis.messages.warnings.forEach((warning) => this.warn(warning));
-    analysis.messages.logs.forEach((entry) => this.log(entry));
+    projectAnalysisPresenter.reportDiagnostics(this, analysis.scanResult, analysis.messages);
 
     return {
       scanResult: analysis.scanResult,

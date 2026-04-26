@@ -26,6 +26,7 @@ import { TestPlanService } from '../deployment/test-plan-service.js';
 import { CycleRemediationRunner } from '../deployment/cycle-remediation-runner.js';
 import { DeploymentRunner } from '../deployment/deployment-runner.js';
 import { DeploymentContextService, type DeploymentContext } from '../deployment/deployment-context-service.js';
+import { ProjectAnalysisPresenter } from '../presentation/project-analysis-presenter.js';
 import { StartCommandPresenter } from '../presentation/start-command-presenter.js';
 import { StateManager } from '../deployment/state-manager.js';
 import { DeploymentTracker } from '../deployment/deployment-tracker.js';
@@ -37,6 +38,7 @@ const cycleRemediationRunner = new CycleRemediationRunner();
 const deploymentRunner = new DeploymentRunner();
 const deploymentContextService = new DeploymentContextService();
 const testPlanService = new TestPlanService();
+const projectAnalysisPresenter = new ProjectAnalysisPresenter();
 const presenter = new StartCommandPresenter();
 
 /**
@@ -132,8 +134,7 @@ export default class Start extends SfCommand<StartResult> {
         orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
         industry: typeof flags.industry === 'string' ? flags.industry : undefined,
       });
-      presenter.reportScanDiagnostics(this, deploymentContext.scanResult);
-      presenter.reportContextMessages(this, deploymentContext.messages);
+      projectAnalysisPresenter.reportDiagnostics(this, deploymentContext.scanResult, deploymentContext.messages);
       const metadataCount = deploymentContext.scanResult.components.length;
       const waves = deploymentContext.orderedWaves.length;
       presenter.reportAnalysisSummary(this, {
