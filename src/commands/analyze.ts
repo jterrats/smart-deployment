@@ -15,24 +15,18 @@
 
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
-import { getLogger } from '../utils/logger.js';
 import { AnalysisReporter } from '../analysis/analysis-reporter.js';
-import { DependencyInferenceService } from '../ai/dependency-inference-service.js';
-import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
-import { MetadataScannerService } from '../services/metadata-scanner-service.js';
-import { WaveBuilder } from '../waves/wave-builder.js';
-import { AIEnhancedPriorityWaveGenerator } from '../waves/priority-wave-generator-ai.js';
-import { AgentforcePriorityService } from '../ai/agentforce-priority-service.js';
-import { DependencyGraphBuilder } from '../dependencies/dependency-graph-builder.js';
+import { ProjectAnalysisService } from '../analysis/project-analysis-service.js';
 import type { PriorityOverride } from '../types/deployment-plan.js';
+import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
+import { getLogger } from '../utils/logger.js';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
 import type { WaveResult } from '../waves/wave-builder.js';
-import type { MetadataComponent } from '../types/metadata.js';
-import type { NodeId } from '../types/dependency.js';
 
 const logger = getLogger('AnalyzeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'analyze');
+const projectAnalysisService = new ProjectAnalysisService();
 
 type AnalyzeResult = {
   success: boolean;
@@ -100,7 +94,6 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         this.log(`⚠️  Warning: ${cycles} circular dependency cycle(s) detected`);
       }
 
-      // Generate waves
       this.log('');
       this.log('🌊 Generating deployment waves...');
 
@@ -112,12 +105,10 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
 
       let planSaved = false;
 
-      // Generate and save plan if requested
       if (flags['save-plan']) {
         this.log('');
         this.log('📋 Generating deployment plan...');
 
-        // Convert waves to plan format
         const planWaves = waveResult.waves.map((wave) => ({
           number: wave.number,
           components: wave.components,
@@ -130,7 +121,6 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
           },
         }));
 
-        // Extract priorities from components (if any)
         const priorities: Record<string, PriorityOverride> = { ...priorityOverrides };
         for (const component of scanResult.components) {
           if (component.priorityBoost > 0) {
@@ -163,7 +153,6 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
         this.log(`   3. Use ${planPath} as a reviewed deployment artifact in CI/CD`);
       }
 
-      // Output report if requested
       if (flags.output) {
         const format = flags.format === 'html' ? 'html' : 'json';
         const reporter = new AnalysisReporter();
@@ -197,145 +186,31 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
       inferenceFallback?: boolean;
     };
   }> {
-    const scanner = new MetadataScannerService();
-    const scanResult = await scanner.scan({ sourcePath });
-    const waveBuilder = new WaveBuilder({
-      maxComponentsPerWave: 10_000,
-      respectTypeOrder: true,
-      handleCircularDeps: true,
-      dependencyEdges: scanResult.dependencyResult.edges,
+    const analysis = await projectAnalysisService.buildAnalysis({
+      sourcePath,
+      useAI: Boolean(flags['use-ai']),
+      orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
+      industry: typeof flags.industry === 'string' ? flags.industry : undefined,
     });
-    let waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
-    let priorityOverrides: Record<string, PriorityOverride> = {};
-    let aiContext:
-      | {
-          enabled: boolean;
-          provider?: string;
-          model?: string;
-          aiAdjustments?: number;
-          unknownTypes?: string[];
-          inferredDependencies?: number;
-          inferenceFallback?: boolean;
-        }
-      | undefined;
 
-    if (flags['use-ai']) {
-      const inferenceService = new DependencyInferenceService({
-        baseDir: sourcePath ?? process.cwd(),
-      });
-      const inferenceResult = await inferenceService.inferDependencies(
-        scanResult.components,
-        scanResult.dependencyResult.graph
-      );
-
-      if (inferenceResult.dependencies.length > 0) {
-        const enrichedComponents = this.applyInferredDependencies(scanResult.components, inferenceResult.dependencies);
-        const graphBuilder = new DependencyGraphBuilder();
-        graphBuilder.addComponents(enrichedComponents);
-
-        scanResult.components = enrichedComponents;
-        scanResult.dependencyResult = graphBuilder.build();
-      }
-
-      this.log('  🤖 Using AI priority weighting for analysis output...');
-      const priorityService = new AgentforcePriorityService({
-        baseDir: sourcePath ?? process.cwd(),
-      });
-      const aiWaveGenerator = new AIEnhancedPriorityWaveGenerator({
-        agentforceService: priorityService,
-        orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
-        industry: typeof flags.industry === 'string' ? flags.industry : undefined,
-      });
-      const prioritizedWaves = await aiWaveGenerator.applyPriorityWavesAsync(
-        waveResult.waves,
-        scanResult.dependencyResult.components
-      );
-
-      waveResult = {
-        ...waveResult,
-        waves: prioritizedWaves,
-      };
-
-      priorityOverrides = aiWaveGenerator.getAIPriorityOverrides(scanResult.dependencyResult.components);
-
-      const unknownTypesWarning = aiWaveGenerator.getUnknownTypesWarning();
-      if (unknownTypesWarning) {
-        this.warn(unknownTypesWarning);
-      }
-
-      const aiReport = aiWaveGenerator.getAIReport();
-      if (aiReport) {
-        this.log(aiReport);
-      }
-
-      const aiStats = aiWaveGenerator.getAIStats();
-      const providerConfig = priorityService.getProviderConfig();
-      aiContext = {
-        enabled: true,
-        provider: providerConfig.provider,
-        model: providerConfig.model,
-        aiAdjustments: aiStats?.aiAdjustments ?? 0,
-        unknownTypes: aiStats?.unknownTypes ?? [],
-        inferredDependencies: inferenceResult.highConfidenceCount,
-        inferenceFallback: inferenceResult.fallbackToStatic,
-      };
-    }
+    analysis.messages.warnings.forEach((warning) => this.warn(warning));
+    analysis.messages.logs.forEach((entry) => this.log(entry));
 
     return {
-      scanResult,
-      waveResult,
-      priorityOverrides,
-      aiContext,
+      scanResult: analysis.scanResult,
+      waveResult: analysis.waveResult,
+      priorityOverrides: analysis.priorityOverrides,
+      aiContext: analysis.aiContext
+        ? {
+            enabled: analysis.aiContext.enabled,
+            provider: analysis.aiContext.provider,
+            model: analysis.aiContext.model,
+            aiAdjustments: analysis.aiContext.aiAdjustments,
+            unknownTypes: analysis.aiContext.unknownTypes,
+            inferredDependencies: analysis.aiContext.inferredDependencies,
+            inferenceFallback: analysis.aiContext.inferenceFallback,
+          }
+        : undefined,
     };
-  }
-
-  private applyInferredDependencies(
-    components: MetadataComponent[],
-    inferredDependencies: Array<{
-      from: string;
-      to: string;
-    }>
-  ): MetadataComponent[] {
-    const clonedComponents = components.map((component) => ({
-      ...component,
-      dependencies: new Set(component.dependencies),
-      dependencyDetails: [...(component.dependencyDetails ?? [])],
-      dependents: new Set(component.dependents),
-    }));
-    const nodeIdsByName = new Map<string, NodeId>();
-
-    for (const component of clonedComponents) {
-      nodeIdsByName.set(component.name, `${component.type}:${component.name}`);
-    }
-
-    const componentsByNodeId = new Map<NodeId, MetadataComponent>();
-    for (const component of clonedComponents) {
-      const nodeId = `${component.type}:${component.name}`;
-      componentsByNodeId.set(nodeId, component);
-    }
-
-    for (const inferred of inferredDependencies) {
-      const fromNodeId = nodeIdsByName.get(inferred.from);
-      const toNodeId = nodeIdsByName.get(inferred.to);
-
-      if (!fromNodeId || !toNodeId) {
-        continue;
-      }
-
-      const sourceComponent = componentsByNodeId.get(fromNodeId);
-      sourceComponent?.dependencies.add(toNodeId);
-      if (sourceComponent && !sourceComponent.dependencyDetails?.some((dependency) => dependency.nodeId === toNodeId)) {
-        sourceComponent.dependencyDetails ??= [];
-        sourceComponent.dependencyDetails.push({
-          nodeId: toNodeId,
-          kind: 'inferred',
-          source: 'ai',
-          reason: 'AI-inferred dependency',
-        });
-      }
-      componentsByNodeId.get(toNodeId)?.dependents.add(fromNodeId);
-    }
-
-    return clonedComponents;
   }
 }

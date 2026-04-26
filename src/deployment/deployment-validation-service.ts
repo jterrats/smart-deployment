@@ -1,10 +1,9 @@
 import * as path from 'node:path';
 import { glob as globAsync } from 'glob';
-import { MetadataScannerService } from '../services/metadata-scanner-service.js';
+import { ProjectAnalysisService } from '../analysis/project-analysis-service.js';
 import { getLogger } from '../utils/logger.js';
 import { XmlMetadataValidator } from '../validators/xml-metadata-validator.js';
 import { WaveValidationService } from '../ai/wave-validation-service.js';
-import { WaveBuilder } from '../waves/wave-builder.js';
 import { validateWaveOrder } from '../waves/wave-executor.js';
 import type { MetadataDependencyKind } from '../types/metadata.js';
 
@@ -34,21 +33,15 @@ export type DeploymentValidationSummary = {
 };
 
 export class DeploymentValidationService {
-  private readonly scanner = new MetadataScannerService();
+  private readonly projectAnalysisService = new ProjectAnalysisService();
   private readonly xmlValidator = new XmlMetadataValidator();
 
   public async validateProject(
     sourcePath?: string,
     options: { useAI?: boolean } = {}
   ): Promise<DeploymentValidationSummary> {
-    const scanResult = await this.scanner.scan({ sourcePath });
-    const waveBuilder = new WaveBuilder({
-      maxComponentsPerWave: 10_000,
-      respectTypeOrder: true,
-      handleCircularDeps: true,
-      dependencyEdges: scanResult.dependencyResult.edges,
-    });
-    const waveResult = waveBuilder.generateWaves(scanResult.dependencyResult.graph);
+    const analysis = await this.projectAnalysisService.buildAnalysis({ sourcePath });
+    const { scanResult, waveResult } = analysis;
     const issues: DeploymentValidationIssue[] = [];
     const dependencyBreakdown = scanResult.dependencyResult.edges.reduce<Record<MetadataDependencyKind, number>>(
       (accumulator, edge) => ({
