@@ -12,13 +12,17 @@
 
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
-import { getLogger } from '../utils/logger.js';
-import { loadRepoConfig, saveRepoConfig, type DeploymentConfig } from '../config/repo-config.js';
 import type { LLMProviderName } from '../ai/llm-provider.js';
+import { loadRepoConfig, saveRepoConfig, type DeploymentConfig } from '../config/repo-config.js';
+import { ConfigMutationService } from '../config/config-mutation-service.js';
+import { ConfigCommandPresenter } from '../presentation/config-command-presenter.js';
+import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger('ConfigCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'config');
+const configMutationService = new ConfigMutationService();
+const presenter = new ConfigCommandPresenter();
 
 export default class Config extends SfCommand<{ success: boolean }> {
   public static readonly summary = messages.getMessage('summary');
@@ -82,16 +86,19 @@ export default class Config extends SfCommand<{ success: boolean }> {
 
       // Handle --list flag
       if (flags.list) {
-        this.displayConfig(config);
+        presenter.reportCurrentConfig(this, config);
         return { success: true };
       }
 
       if (flags['get-llm']) {
-        return this.showLlmConfig(config);
+        presenter.reportLlmConfig(this, config);
+        return { success: true };
       }
 
       if (flags['get-priority']) {
-        return this.showPriority(config, flags['get-priority']);
+        const priority = config.priorities?.[flags['get-priority']] ?? 0;
+        presenter.reportPriority(this, flags['get-priority'], priority);
+        return { success: true };
       }
 
       const hasLlmUpdate =
@@ -109,7 +116,8 @@ export default class Config extends SfCommand<{ success: boolean }> {
       }
 
       if (flags.get) {
-        return this.showConfigValue(config, flags.get);
+        presenter.reportConfigValue(this, flags.get, (config as Record<string, unknown>)[flags.get]);
+        return { success: true };
       }
 
       if (flags.set) {
@@ -117,7 +125,7 @@ export default class Config extends SfCommand<{ success: boolean }> {
       }
 
       // No flags - show help
-      this.log('Use --help to see available options');
+      presenter.reportUsageHint(this);
       return { success: true };
     } catch (error) {
       logger.error('Config management failed', { error });
@@ -125,89 +133,25 @@ export default class Config extends SfCommand<{ success: boolean }> {
     }
   }
 
-  private displayConfig(config: DeploymentConfig): void {
-    this.log('📋 Current Configuration:');
-    this.log('');
-
-    if (Object.keys(config).length === 0) {
-      this.log('  (no configuration set)');
-      return;
-    }
-
-    // Display priorities
-    if (config.priorities && Object.keys(config.priorities).length > 0) {
-      this.log('  Metadata Priorities:');
-      for (const [metadata, priority] of Object.entries(config.priorities)) {
-        this.log(`    ${metadata}: ${priority}`);
-      }
-      this.log('');
-    }
-
-    // Display other config
-    const { priorities, ...otherConfig } = config;
-    void priorities;
-    if (Object.keys(otherConfig).length > 0) {
-      this.log('  Other Settings:');
-      for (const [key, value] of Object.entries(otherConfig)) {
-        const displayValue =
-          typeof value === 'string' || typeof value === 'number' ? String(value) : JSON.stringify(value);
-        this.log(`    ${key}: ${displayValue}`);
-      }
-    }
-  }
-
-  private showLlmConfig(config: DeploymentConfig): { success: boolean } {
-    const llmConfig = config.llm ?? {};
-    this.log(`llm: ${JSON.stringify(llmConfig)}`);
-    return { success: true };
-  }
-
-  private showPriority(config: DeploymentConfig, metadataId: string): { success: boolean } {
-    const priority = config.priorities?.[metadataId] ?? 0;
-    this.log(`Priority for ${metadataId}: ${priority}`);
-    return { success: true };
-  }
-
   private async updateLlmConfig(
     config: DeploymentConfig,
     flags: Awaited<ReturnType<Config['parse']>>['flags'],
     baseDir: string
   ): Promise<{ success: boolean }> {
-    const nextLlmConfig = {
-      ...(config.llm ?? {}),
-    };
-    const nextConfig: DeploymentConfig = {
-      ...config,
-      llm: nextLlmConfig,
-    };
     const llmProvider =
       typeof flags['set-llm-provider'] === 'string' ? (flags['set-llm-provider'] as LLMProviderName) : undefined;
     const llmModel = typeof flags['set-llm-model'] === 'string' ? flags['set-llm-model'] : undefined;
     const llmEndpoint = typeof flags['set-llm-endpoint'] === 'string' ? flags['set-llm-endpoint'] : undefined;
     const llmTimeout = typeof flags['set-llm-timeout'] === 'number' ? flags['set-llm-timeout'] : undefined;
-
-    if (llmProvider) {
-      nextLlmConfig.provider = llmProvider;
-    }
-
-    if (llmModel) {
-      nextLlmConfig.model = llmModel;
-    }
-
-    if (llmEndpoint) {
-      nextLlmConfig.endpoint = llmEndpoint;
-    }
-
-    if (llmTimeout !== undefined) {
-      if (llmTimeout < 1) {
-        this.error(messages.getMessage('errors.invalidLlmTimeout'));
-      }
-
-      nextLlmConfig.timeout = llmTimeout;
-    }
+    const nextConfig = configMutationService.updateLlmConfig(config, {
+      provider: llmProvider,
+      model: llmModel,
+      endpoint: llmEndpoint,
+      timeout: llmTimeout,
+    });
 
     await saveRepoConfig(nextConfig, baseDir);
-    this.log(`✅ Updated LLM configuration: ${JSON.stringify(nextConfig.llm)}`);
+    presenter.reportLlmUpdated(this, nextConfig);
     logger.info('LLM config updated', { llm: nextConfig.llm });
     return { success: true };
   }
@@ -217,32 +161,11 @@ export default class Config extends SfCommand<{ success: boolean }> {
     rawValue: string,
     baseDir: string
   ): Promise<{ success: boolean }> {
-    const match = rawValue.match(/^(.+)=(\d+)$/);
-    if (!match) {
-      this.error('Invalid format. Use: MetadataType:Name=priority (e.g., ApexClass:MyClass=100)');
-    }
-
-    const [, metadataId, priorityStr] = match;
-    const priority = parseInt(priorityStr, 10);
-
-    const nextConfig: DeploymentConfig = {
-      ...config,
-      priorities: {
-        ...(config.priorities ?? {}),
-        [metadataId]: priority,
-      },
-    };
+    const { nextConfig, metadataId, priority } = configMutationService.setPriority(config, rawValue);
 
     await saveRepoConfig(nextConfig, baseDir);
-    this.log(`✅ Set priority for ${metadataId} = ${priority}`);
+    presenter.reportPriorityUpdated(this, metadataId, priority);
     logger.info('Priority updated', { metadataId, priority });
-    return { success: true };
-  }
-
-  private showConfigValue(config: DeploymentConfig, key: string): { success: boolean } {
-    const value = (config as Record<string, unknown>)[key];
-    const displayValue = value === undefined ? 'not set' : typeof value === 'string' ? value : JSON.stringify(value);
-    this.log(`${key}: ${displayValue}`);
     return { success: true };
   }
 
@@ -251,19 +174,10 @@ export default class Config extends SfCommand<{ success: boolean }> {
     rawValue: string,
     baseDir: string
   ): Promise<{ success: boolean }> {
-    const match = rawValue.match(/^([^=]+)=(.+)$/);
-    if (!match) {
-      this.error('Invalid format. Use: key=value');
-    }
-
-    const [, key, value] = match;
-    const nextConfig = {
-      ...(config as Record<string, unknown>),
-      [key]: value,
-    } as DeploymentConfig;
+    const { nextConfig, key, value } = configMutationService.setConfigValue(config, rawValue);
 
     await saveRepoConfig(nextConfig, baseDir);
-    this.log(`✅ Set ${key} = ${value}`);
+    presenter.reportConfigValueUpdated(this, key, value);
     logger.info('Config updated', { key, value });
     return { success: true };
   }
