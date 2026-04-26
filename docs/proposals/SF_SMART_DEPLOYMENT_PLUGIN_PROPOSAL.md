@@ -7,6 +7,7 @@ Salesforce CLI plugin that transforms complex metadata deployments into a single
 ## Problem Statement
 
 Traditional Salesforce deployments face challenges:
+
 - **UNKNOWN_EXCEPTION errors** when deploying too many files
 - **Circular dependencies** between GenAI, Flows, and Bots
 - **Manual wave management** in CI/CD pipelines
@@ -17,6 +18,7 @@ Traditional Salesforce deployments face challenges:
 ## Solution
 
 A single command that:
+
 1. Analyzes all metadata dependencies in your project
 2. Generates optimal deployment batches (waves) respecting SF limits
 3. Deploys sequentially with automatic retry and error handling
@@ -26,30 +28,35 @@ A single command that:
 ## Key Features
 
 ### 🧠 Intelligent Dependency Analysis
+
 - Automatic topological sort of metadata components
 - Detects circular dependencies
 - Respects Salesforce deployment order best practices
 - Handles 50+ metadata types out-of-the-box
 
 ### 📦 Automatic Wave Splitting
+
 - **General metadata**: Max 300 components per wave (~400 files)
 - **CustomMetadataRecords**: Max 200 records per wave (proven safe limit)
 - Prevents UNKNOWN_EXCEPTION errors automatically
 - No manual configuration required
 
 ### ⚡ Test Optimization
+
 - Runs tests only for waves with Apex/Flow changes
 - Syncs test classes with their production counterparts
 - Handles trigger coverage intelligently
 - Reduces deployment time by 40-60%
 
 ### 🔄 Resilient Deployment
+
 - Automatic retry without tests for sandbox failures
 - Fail-fast on production deployments
 - Resume capability from failed waves
 - Detailed error reporting
 
 ### 🌍 CI/CD Agnostic
+
 - Works in GitHub Actions, GitLab CI, Azure DevOps, Jenkins, Bitbucket
 - No provider-specific syntax
 - Can run locally for testing
@@ -58,47 +65,54 @@ A single command that:
 ## Usage
 
 ### Basic Deployment
+
 ```bash
 sf smart-deployment start --target-org production
 ```
 
 ### Analyze Without Deploying
+
 ```bash
 sf smart-deployment analyze --target-org integration
 ```
 
 ### Validation (Dry-Run)
+
 ```bash
 sf smart-deployment validate --target-org production
 ```
 
 ### Resume Failed Deployment
+
 ```bash
 sf smart-deployment resume --from-wave 5 --target-org integration
 ```
 
 ### View Deployment Progress
+
 ```bash
 sf smart-deployment status
 ```
 
 ## Command Options
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--target-org, -o` | Target org alias | Required |
-| `--test-level` | Test level (NoTestRun, RunLocalTests, RunAllTests) | `RunLocalTests` |
-| `--fail-fast` | Stop on first wave failure | `true` in prod, `false` in sandbox |
-| `--ignore-warnings` | Ignore deployment warnings | `false` |
-| `--purge-on-delete` | Purge deleted components | `false` |
-| `--dry-run` | Analyze without deploying | `false` |
-| `--json` | Output in JSON format | `false` |
-| `--verbose` | Detailed logging | `false` |
+| Flag                | Description                                        | Default                            |
+| ------------------- | -------------------------------------------------- | ---------------------------------- |
+| `--target-org, -o`  | Target org alias                                   | Required                           |
+| `--test-level`      | Test level (NoTestRun, RunLocalTests, RunAllTests) | `RunLocalTests`                    |
+| `--fail-fast`       | Stop on first wave failure                         | `true` in prod, `false` in sandbox |
+| `--ignore-warnings` | Ignore deployment warnings                         | `false`                            |
+| `--purge-on-delete` | Purge deleted components                           | `false`                            |
+| `--dry-run`         | Analyze without deploying                          | `false`                            |
+| `--json`            | Output in JSON format                              | `false`                            |
+| `--verbose`         | Detailed logging                                   | `false`                            |
 
 ## Architecture
 
 ### Internal Limits (Hardcoded)
+
 Based on extensive testing and Salesforce documented limits:
+
 - Max components per wave: 300
 - Max CMT records per wave: 200
 - Max deployment size: 39 MB
@@ -107,6 +121,7 @@ Based on extensive testing and Salesforce documented limits:
 **These are NOT configurable** to prevent users from exceeding Salesforce limits and causing deployment failures.
 
 ### Metadata Type Support
+
 - ✅ 50+ metadata types
 - ✅ GenAI metadata (PromptTemplate, Plugin, Function, PlannerBundle)
 - ✅ Custom Metadata Types and Records
@@ -116,7 +131,9 @@ Based on extensive testing and Salesforce documented limits:
 - ✅ All standard Salesforce metadata types
 
 ### Deployment Order
+
 Follows Salesforce best practices:
+
 1. Global configuration (ValueSets, Labels, Translations)
 2. Foundation (Objects, Fields, Settings)
 3. Security (Roles, Groups, Permissions)
@@ -129,7 +146,7 @@ Follows Salesforce best practices:
 ## Plugin Structure
 
 ```
-@salesforce/plugin-smart-deployment/
+@jterrats/smart-deployment/
 ├── src/
 │   ├── commands/
 │   │   └── smart-deployment/
@@ -166,6 +183,7 @@ Follows Salesforce best practices:
 ## CI/CD Integration Examples
 
 ### GitHub Actions
+
 ```yaml
 deploy:
   runs-on: ubuntu-latest
@@ -174,7 +192,7 @@ deploy:
     - name: Install Salesforce CLI
       run: npm install -g @salesforce/cli
     - name: Install Smart Deployment Plugin
-      run: sf plugins install @salesforce/plugin-smart-deployment
+      run: sf plugins install @jterrats/smart-deployment
     - name: Authenticate
       run: sf org login jwt --username ${{ secrets.USERNAME }} --jwt-key-file server.key
     - name: Deploy
@@ -182,34 +200,37 @@ deploy:
 ```
 
 ### GitLab CI
+
 ```yaml
 deploy:
   image: salesforce/cli:latest
   script:
-    - sf plugins install @salesforce/plugin-smart-deployment
+    - sf plugins install @jterrats/smart-deployment
     - sf org login jwt --username ${SF_USERNAME} --jwt-key-file server.key
     - sf smart-deployment start --target-org ${CI_ENVIRONMENT}
 ```
 
 ### Azure DevOps
+
 ```yaml
 - task: Bash@3
   inputs:
     targetType: 'inline'
     script: |
-      sf plugins install @salesforce/plugin-smart-deployment
+      sf plugins install @jterrats/smart-deployment
       sf org login jwt --username $(SF_USERNAME) --jwt-key-file server.key
       sf smart-deployment start --target-org $(ORG_ALIAS)
 ```
 
 ### Jenkins
+
 ```groovy
 pipeline {
   agent any
   stages {
     stage('Deploy') {
       steps {
-        sh 'sf plugins install @salesforce/plugin-smart-deployment'
+        sh 'sf plugins install @jterrats/smart-deployment'
         sh 'sf org login jwt --username ${SF_USERNAME} --jwt-key-file server.key'
         sh 'sf smart-deployment start --target-org ${ORG_ALIAS}'
       }
@@ -219,13 +240,14 @@ pipeline {
 ```
 
 ### Bitbucket Pipelines
+
 ```yaml
 pipelines:
   default:
     - step:
         name: Deploy to Salesforce
         script:
-          - sf plugins install @salesforce/plugin-smart-deployment
+          - sf plugins install @jterrats/smart-deployment
           - sf org login jwt --username ${SF_USERNAME} --jwt-key-file server.key
           - sf smart-deployment start --target-org ${BITBUCKET_DEPLOYMENT_ENVIRONMENT}
 ```
@@ -233,6 +255,7 @@ pipelines:
 ## Output Examples
 
 ### Successful Deployment
+
 ```
 🚀 Smart Deployment Starting...
 ================================================
@@ -277,6 +300,7 @@ Deploy IDs:
 ```
 
 ### Failed Deployment
+
 ```
 🚀 Smart Deployment Starting...
 ================================================
@@ -309,6 +333,7 @@ Component Failures [2]:
 ## Comparison: Before vs After
 
 ### Before (Manual Wave Management)
+
 ```yaml
 # .github/workflows/deploy.yaml (500+ lines)
 - name: Analyze Dependencies
@@ -334,11 +359,11 @@ Component Failures [2]:
 
 - name: Handle CustomMetadata Separately
   run: python scripts/python/deploy_custom_metadata_smart_batches.py
-
 # Total: 500+ lines, 15+ steps, provider-specific
 ```
 
 ### After (Smart Deployment)
+
 ```yaml
 # .github/workflows/deploy.yaml (20 lines)
 deploy:
@@ -348,12 +373,11 @@ deploy:
     - name: Install Salesforce CLI
       run: npm install -g @salesforce/cli
     - name: Install Plugin
-      run: sf plugins install @salesforce/plugin-smart-deployment
+      run: sf plugins install @jterrats/smart-deployment
     - name: Authenticate
       run: sf org login jwt --username ${{ secrets.USERNAME }} --jwt-key-file server.key
     - name: Deploy Everything
       run: sf smart-deployment start --target-org production
-
 # Total: 20 lines, 1 command, works everywhere
 ```
 
@@ -371,18 +395,18 @@ deploy:
 
 Based on real production usage:
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| Deployment failures | 60% | 5% | **92% reduction** |
-| UNKNOWN_EXCEPTION | Common | Rare | **95% reduction** |
-| Avg deployment time | 45 min | 28 min | **38% faster** |
-| Manual intervention | High | Low | **80% reduction** |
-| CI/CD complexity | 500+ lines | 20 lines | **96% simpler** |
+| Metric              | Before     | After    | Improvement       |
+| ------------------- | ---------- | -------- | ----------------- |
+| Deployment failures | 60%        | 5%       | **92% reduction** |
+| UNKNOWN_EXCEPTION   | Common     | Rare     | **95% reduction** |
+| Avg deployment time | 45 min     | 28 min   | **38% faster**    |
+| Manual intervention | High       | Low      | **80% reduction** |
+| CI/CD complexity    | 500+ lines | 20 lines | **96% simpler**   |
 
 ## Installation
 
 ```bash
-sf plugins install @salesforce/plugin-smart-deployment
+sf plugins install @jterrats/smart-deployment
 ```
 
 ## Requirements
@@ -394,6 +418,7 @@ sf plugins install @salesforce/plugin-smart-deployment
 ## Roadmap
 
 ### Phase 1: Core Functionality (MVP) - 2-3 weeks
+
 - ✅ Basic dependency analysis
 - ✅ Wave generation with limits
 - ✅ Sequential deployment
@@ -401,6 +426,7 @@ sf plugins install @salesforce/plugin-smart-deployment
 - ✅ Error handling and retry
 
 ### Phase 2: Advanced Features - 2-3 weeks
+
 - 🔄 Resume from failure
 - 📊 Deployment analytics
 - 🎯 Selective wave deployment
@@ -408,6 +434,7 @@ sf plugins install @salesforce/plugin-smart-deployment
 - 🔍 Better error diagnostics
 
 ### Phase 3: AI Integration - 3-4 weeks
+
 - 🤖 Agentforce-powered dependency analysis
 - 🧠 ML-based deployment optimization
 - 🔍 Predictive conflict detection
@@ -415,6 +442,7 @@ sf plugins install @salesforce/plugin-smart-deployment
 - 💡 Intelligent retry strategies
 
 ### Phase 4: Enterprise Features - 4-6 weeks
+
 - 🔐 Enhanced security scanning
 - 📝 Deployment approval workflows
 - 🌍 Multi-org orchestration
@@ -432,9 +460,9 @@ function analyzeDependencies(projectPath: string): DependencyGraph {
   const components = scanMetadata(projectPath);
 
   // 2. Parse XML to extract references
-  const dependencies = components.map(c => ({
+  const dependencies = components.map((c) => ({
     component: c,
-    dependencies: parseReferences(c.xml)
+    dependencies: parseReferences(c.xml),
   }));
 
   // 3. Build directed graph
@@ -446,7 +474,7 @@ function analyzeDependencies(projectPath: string): DependencyGraph {
   // 5. Apply Salesforce limits
   const optimizedWaves = splitByLimits(sortedWaves, {
     maxComponents: 300,
-    maxCMTRecords: 200
+    maxCMTRecords: 200,
   });
 
   return optimizedWaves;
@@ -461,9 +489,10 @@ function generateWaves(components: Component[]): Wave[] {
   let currentWave: Component[] = [];
 
   for (const component of components) {
-    const limit = component.type === 'CustomMetadataRecord'
-      ? LIMITS.MAX_CMT_RECORDS  // 200
-      : LIMITS.MAX_COMPONENTS;   // 300
+    const limit =
+      component.type === 'CustomMetadataRecord'
+        ? LIMITS.MAX_CMT_RECORDS // 200
+        : LIMITS.MAX_COMPONENTS; // 300
 
     if (currentWave.length >= limit) {
       waves.push(createWave(currentWave));
@@ -514,16 +543,19 @@ async function deployWaves(waves: Wave[], options: DeployOptions): DeployResult 
 ## Success Metrics
 
 ### Deployment Success Rate
+
 - **Before**: 40% first-time success
 - **After**: 95% first-time success
 - **Improvement**: 137% increase
 
 ### Developer Productivity
+
 - **Before**: 2-4 hours manual deployment + fixes
 - **After**: 30 minutes automated deployment
 - **Improvement**: 75-85% time saved
 
 ### CI/CD Pipeline Complexity
+
 - **Before**: 500+ lines YAML, provider-specific
 - **After**: 20 lines, works everywhere
 - **Improvement**: 96% reduction
@@ -533,15 +565,17 @@ async function deployWaves(waves: Wave[], options: DeployOptions): DeployResult 
 We welcome contributions from the community!
 
 ### Development Setup
+
 ```bash
-git clone https://github.com/salesforce/plugin-smart-deployment
-cd plugin-smart-deployment
+git clone https://github.com/jterrats/smart-deployment
+cd smart-deployment
 npm install
 npm run build
 sf plugins link .
 ```
 
 ### Running Tests
+
 ```bash
 npm test                 # Unit tests
 npm run test:integration # Integration tests
@@ -549,6 +583,7 @@ npm run test:e2e         # End-to-end tests
 ```
 
 ### Code Standards
+
 - TypeScript strict mode
 - 100% test coverage for core logic
 - ESLint + Prettier
@@ -556,18 +591,19 @@ npm run test:e2e         # End-to-end tests
 
 ## Support
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/salesforce/plugin-smart-deployment/issues)
-- **Discussions**: [Ask questions and share ideas](https://github.com/salesforce/plugin-smart-deployment/discussions)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/jterrats/smart-deployment/issues)
+- **Discussions**: [Ask questions and share ideas](https://github.com/jterrats/smart-deployment/discussions)
 - **Slack**: #smart-deployment channel in Salesforce Trailblazer Community
 - **Documentation**: [Full API reference](https://developer.salesforce.com/docs/smart-deployment)
 
 ## License
 
-MIT License - see LICENSE file for details
+BSD-3-Clause License - see LICENSE file for details
 
 ## Acknowledgments
 
 Built on insights from:
+
 - Salesforce Metadata API documentation
 - Production deployment experience at enterprise scale
 - Community feedback and contributions
@@ -578,4 +614,4 @@ Built on insights from:
 
 **Transform your Salesforce deployments from complex to intelligent with a single command.**
 
-*Built with ❤️ by the Salesforce DevOps community*
+_Maintained as an independent personal project by Jaime Terrats._
