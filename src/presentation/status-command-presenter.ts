@@ -11,6 +11,13 @@ export class StatusCommandPresenter {
       return;
     }
 
-    formattedStatus.split('\n').forEach((line) => io.log(line));
+    formattedStatus.split('\n').forEach((line) => {
+      if (line.startsWith('Test Status: ')) {
+        io.log(`Test Status: ${summary.testStatusText}`);
+        return;
+      }
+
+      io.log(line);
+    });
   }
 }
