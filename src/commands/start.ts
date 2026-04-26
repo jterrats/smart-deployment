@@ -16,20 +16,15 @@
  * @issue #46
  */
 
-import { readFile } from 'node:fs/promises';
 import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
-import { CycleRemediationPlanner, type CycleRemediationSourceEdit } from '../dependencies/cycle-remediation-planner.js';
-import {
-  CycleSourceEditor,
-  type CycleSourceEditRequest,
-  type CycleSourceEditRecord,
-} from '../deployment/cycle-source-editor.js';
+import { CycleRemediationPlanner } from '../dependencies/cycle-remediation-planner.js';
 import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
 import { TestPlanService } from '../deployment/test-plan-service.js';
 import { WaveManifestService } from '../deployment/wave-manifest-service.js';
+import { CycleRemediationRunner } from '../deployment/cycle-remediation-runner.js';
 import {
   DeploymentContextService,
   type DeploymentContext,
@@ -38,13 +33,11 @@ import {
 import { StateManager } from '../deployment/state-manager.js';
 import { DeploymentTracker } from '../deployment/deployment-tracker.js';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
-import type { NodeId } from '../types/dependency.js';
-import type { MetadataComponent, MetadataType } from '../types/metadata.js';
-import type { Wave } from '../waves/wave-builder.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
+const cycleRemediationRunner = new CycleRemediationRunner();
 const deploymentContextService = new DeploymentContextService();
 const testPlanService = new TestPlanService();
 const waveManifestService = new WaveManifestService();
@@ -230,7 +223,7 @@ export default class Start extends SfCommand<StartResult> {
         this.error('The --target-org flag is required for cycle remediation deployments.');
       }
 
-      await this.executeCycleRemediationDeployment({
+      await cycleRemediationRunner.execute({
         deploymentId,
         targetOrg,
         sourcePath,
@@ -240,6 +233,7 @@ export default class Start extends SfCommand<StartResult> {
         sfCli,
         skipTests,
         componentMap: scanResult.dependencyResult.components,
+        log: this.log.bind(this),
       });
       return;
     }
@@ -366,256 +360,6 @@ export default class Start extends SfCommand<StartResult> {
     await chain;
   }
 
-  private async executeCycleRemediationDeployment(params: {
-    deploymentId: string;
-    targetOrg: string;
-    sourcePath?: string;
-    stateManager: StateManager;
-    tracker: DeploymentTracker;
-    plan: ReturnType<CycleRemediationPlanner['createPlan']>;
-    sfCli: SfCliIntegration;
-    skipTests: boolean;
-    componentMap: ReadonlyMap<NodeId, MetadataComponent>;
-  }): Promise<void> {
-    const { deploymentId, targetOrg, sourcePath, stateManager, tracker, plan, sfCli, skipTests, componentMap } = params;
-    const editor = new CycleSourceEditor();
-    const startedAt = new Date().toISOString();
-    const editRecords: CycleSourceEditRecord[] = [];
-    const testExecutor = testPlanService.createExecutor([...componentMap.values()]);
-    const cycleId = plan.cycles.map((cycle) => cycle.id).join('||');
-    const phaseOneComponents = [
-      ...new Set(
-        plan.cycles.flatMap((cycle) => cycle.deployPhases.find((phase) => phase.phase === 1)?.components ?? [])
-      ),
-    ];
-    const phaseTwoComponents = [
-      ...new Set(
-        plan.cycles.flatMap((cycle) => cycle.deployPhases.find((phase) => phase.phase === 2)?.components ?? [])
-      ),
-    ];
-    let editsRestored = false;
-    let failureStateSaved = false;
-
-    try {
-      this.log('🩹 Applying conservative cycle remediation edits...');
-      await this.forEachSequentially(plan.cycles, async (cycle) => {
-        await this.forEachSequentially(cycle.edits, async (edit) => {
-          const request = await this.createCycleEditRequest(edit);
-          editRecords.push(await editor.applyEdit(request));
-        });
-      });
-
-      await stateManager.saveState({
-        deploymentId,
-        targetOrg,
-        timestamp: startedAt,
-        totalWaves: 2,
-        completedWaves: [],
-        currentWave: 1,
-        cycleRemediation: {
-          cycleId,
-          strategy: 'comment-reference',
-          activePhase: 1,
-          startedAt,
-          completedPhases: [],
-          editRecords,
-        },
-      });
-
-      tracker.startTracking(deploymentId, 1, 2);
-      this.log('♻️ Phase 1/2: deploying temporarily cycle-broken metadata...');
-      const phaseOneManifestPath = await waveManifestService.generateManifest({
-        baseDir: sourcePath ?? process.cwd(),
-        waveNumber: 1,
-        components: phaseOneComponents,
-        componentMap,
-      });
-      const phaseOneTestPlan = testPlanService.resolveTestPlan(
-        this.buildSyntheticWave(1, phaseOneComponents, componentMap),
-        skipTests,
-        testExecutor
-      );
-      const phaseOneResult = await sfCli.deploy({
-        manifestPath: phaseOneManifestPath,
-        targetOrg,
-        testLevel: phaseOneTestPlan.testLevel,
-        tests: phaseOneTestPlan.testLevel === 'RunSpecifiedTests' ? phaseOneTestPlan.tests : undefined,
-      });
-
-      if (!phaseOneResult.success) {
-        await stateManager.saveState({
-          deploymentId,
-          targetOrg,
-          timestamp: new Date().toISOString(),
-          totalWaves: 2,
-          completedWaves: [],
-          currentWave: 1,
-          failedWave: {
-            waveNumber: 1,
-            error: phaseOneResult.output,
-            timestamp: new Date().toISOString(),
-          },
-          cycleRemediation: {
-            cycleId,
-            strategy: 'comment-reference',
-            activePhase: 1,
-            startedAt,
-            completedPhases: [],
-            editRecords,
-          },
-          metadata: {
-            lastKnownStatus: phaseOneResult.status,
-            testsRun: phaseOneResult.testsRun,
-            testFailures: phaseOneResult.testFailures,
-            testLevel: phaseOneTestPlan.testLevel,
-          },
-        });
-        failureStateSaved = true;
-        throw new Error(`Cycle remediation phase 1 failed: ${phaseOneResult.output}`);
-      }
-
-      await stateManager.saveState({
-        deploymentId,
-        targetOrg,
-        timestamp: new Date().toISOString(),
-        totalWaves: 2,
-        completedWaves: [1],
-        currentWave: 2,
-        cycleRemediation: {
-          cycleId,
-          strategy: 'comment-reference',
-          activePhase: 2,
-          startedAt,
-          completedPhases: [1],
-          editRecords,
-        },
-        metadata: {
-          lastKnownStatus: phaseOneResult.status,
-          testsRun: phaseOneResult.testsRun,
-          testFailures: phaseOneResult.testFailures,
-          testLevel: phaseOneTestPlan.testLevel,
-        },
-      });
-
-      this.log('♻️ Restoring original references before phase 2...');
-      await this.restoreCycleEdits(editor, editRecords);
-      editsRestored = true;
-
-      tracker.startTracking(deploymentId, 2, 2);
-      this.log('♻️ Phase 2/2: redeploying restored metadata...');
-      const phaseTwoManifestPath = await waveManifestService.generateManifest({
-        baseDir: sourcePath ?? process.cwd(),
-        waveNumber: 2,
-        components: phaseTwoComponents,
-        componentMap,
-      });
-      const phaseTwoTestPlan = testPlanService.resolveTestPlan(
-        this.buildSyntheticWave(2, phaseTwoComponents, componentMap),
-        skipTests,
-        testExecutor
-      );
-      const phaseTwoResult = await sfCli.deploy({
-        manifestPath: phaseTwoManifestPath,
-        targetOrg,
-        testLevel: phaseTwoTestPlan.testLevel,
-        tests: phaseTwoTestPlan.testLevel === 'RunSpecifiedTests' ? phaseTwoTestPlan.tests : undefined,
-      });
-
-      if (!phaseTwoResult.success) {
-        await stateManager.saveState({
-          deploymentId,
-          targetOrg,
-          timestamp: new Date().toISOString(),
-          totalWaves: 2,
-          completedWaves: [1],
-          currentWave: 2,
-          failedWave: {
-            waveNumber: 2,
-            error: phaseTwoResult.output,
-            timestamp: new Date().toISOString(),
-          },
-          cycleRemediation: {
-            cycleId,
-            strategy: 'comment-reference',
-            activePhase: 2,
-            startedAt,
-            completedPhases: [1],
-            editRecords,
-          },
-          metadata: {
-            lastKnownStatus: phaseTwoResult.status,
-            testsRun: phaseTwoResult.testsRun,
-            testFailures: phaseTwoResult.testFailures,
-            testLevel: phaseTwoTestPlan.testLevel,
-          },
-        });
-        failureStateSaved = true;
-        throw new Error(`Cycle remediation phase 2 failed: ${phaseTwoResult.output}`);
-      }
-
-      await stateManager.clearState();
-      this.log('\n✅ Cycle remediation deployment completed successfully!');
-    } catch (error) {
-      if (!editsRestored) {
-        await this.restoreCycleEdits(editor, editRecords, true);
-      }
-
-      if (!failureStateSaved) {
-        await stateManager.saveState({
-          deploymentId,
-          targetOrg,
-          timestamp: new Date().toISOString(),
-          totalWaves: 2,
-          completedWaves: [],
-          currentWave: 1,
-          failedWave: {
-            waveNumber: 1,
-            error: error instanceof Error ? error.message : String(error),
-            timestamp: new Date().toISOString(),
-          },
-          cycleRemediation: {
-            cycleId,
-            strategy: 'comment-reference',
-            activePhase: 1,
-            startedAt,
-            completedPhases: [],
-            editRecords,
-          },
-        });
-      }
-
-      throw error;
-    }
-  }
-
-  private async createCycleEditRequest(edit: CycleRemediationSourceEdit): Promise<CycleSourceEditRequest> {
-    if (edit.filePath === undefined) {
-      throw new Error(`Cycle remediation edit for ${edit.nodeId} is missing a file path.`);
-    }
-
-    const content = await readFile(edit.filePath, 'utf8');
-    const dependencyName = edit.targetDependency.includes(':')
-      ? edit.targetDependency.split(':').pop() ?? edit.targetDependency
-      : edit.targetDependency;
-    const candidateLines = content.split('\n').filter((line) => {
-      const trimmed = line.trim();
-      return trimmed.length > 0 && !trimmed.startsWith('//') && line.includes(dependencyName);
-    });
-
-    if (candidateLines.length !== 1) {
-      throw new Error(
-        `Cycle remediation for ${edit.nodeId} requires exactly one candidate source line containing ${dependencyName}; found ${candidateLines.length}.`
-      );
-    }
-
-    return {
-      filePath: edit.filePath,
-      targetDescription: edit.targetDescription,
-      targetDependency: edit.targetDependency,
-      sourceSnippet: candidateLines[0],
-    };
-  }
-
   private reportScanDiagnostics(scanResult: ScanResult): void {
     if (scanResult.errors.length > 0) {
       logger.error('Metadata scanning completed with errors', { errors: scanResult.errors });
@@ -630,52 +374,6 @@ export default class Start extends SfCommand<StartResult> {
   private reportDeploymentContextMessages(messagesToReport: DeploymentContextMessages): void {
     messagesToReport.warnings.forEach((warning) => this.warn(warning));
     messagesToReport.logs.forEach((entry) => this.log(entry));
-  }
-
-  private async restoreCycleEdits(
-    editor: CycleSourceEditor,
-    editRecords: CycleSourceEditRecord[],
-    bestEffort = false
-  ): Promise<void> {
-    await this.forEachSequentially([...editRecords].reverse(), async (record) => {
-      const result = await editor.restoreEdit(record);
-      if (!result.restored && result.reason !== 'backup-missing' && !bestEffort) {
-        throw new Error(
-          `Failed to restore cycle remediation edit for ${record.filePath}: ${result.reason ?? 'unknown'}.`
-        );
-      }
-    });
-  }
-
-  private buildSyntheticWave(
-    waveNumber: number,
-    components: NodeId[],
-    componentMap: ReadonlyMap<NodeId, MetadataComponent>
-  ): Wave {
-    return {
-      number: waveNumber,
-      components,
-      metadata: {
-        componentCount: components.length,
-        types: this.collectWaveTypes(components, componentMap),
-        maxDepth: 0,
-        hasCircularDeps: false,
-        estimatedTime: 0,
-      },
-    };
-  }
-
-  private collectWaveTypes(components: NodeId[], componentMap: ReadonlyMap<NodeId, MetadataComponent>): MetadataType[] {
-    const types = new Set<MetadataType>();
-
-    for (const componentId of components) {
-      const component = componentMap.get(componentId);
-      if (component) {
-        types.add(component.type);
-      }
-    }
-
-    return Array.from(types);
   }
 
   private getTargetOrgIdentifier(value: unknown): string | undefined {
