@@ -3,6 +3,11 @@
 This repository follows pragmatic Clean Architecture, SOLID, and separation-of-concerns rules.
 These rules apply to all new code, refactors, and reviews.
 
+## Source Of Truth
+
+This file is the local engineering contract for agents in this repository.
+Generic rule sets from other repositories can inform it, but local rules take precedence.
+
 ## Core Principles
 
 1. Prefer small, composable units over large multi-purpose files.
@@ -65,6 +70,12 @@ These rules apply to all new code, refactors, and reviews.
 - High-level workflows should depend on abstractions or stable collaborators.
 - Keep tool integrations such as CLI, filesystem, network, and AI provider access behind dedicated modules.
 
+## Public API Discipline
+
+- Avoid `any`, `object`, and `Record<string, unknown>` in stable public APIs unless there is a deliberate boundary reason.
+- Prefer narrow types, discriminated unions, and focused option objects over ambiguous “bag of fields” shapes.
+- Prefer static imports and explicit types over runtime-shaped module access.
+
 ## Separation of Concerns
 
 - Do not mix these concerns in one module unless the module is explicitly an orchestrator:
@@ -82,6 +93,13 @@ These rules apply to all new code, refactors, and reviews.
 ## Complexity Guardrails
 
 - Prefer extraction before adding more branches to already large files.
+- Treat these thresholds as strong refactor signals, not vanity metrics:
+
+  - file is growing past roughly 300 to 400 lines
+  - function is growing past roughly 30 to 40 lines
+  - function needs more than 5 parameters
+  - branching logic is better represented as a registry, strategy, or handler map
+
 - Treat these as refactor triggers:
 
   - file is approaching ~400 lines and still growing
@@ -90,9 +108,12 @@ These rules apply to all new code, refactors, and reviews.
   - tests need heavy setup because responsibilities are tangled
 
 - When a file becomes a hotspot:
+
   - extract pure helpers first
   - then extract focused services
   - then reduce the root orchestrator to composition
+
+- Prefer registries, maps, and strategy objects over long switch or if/else ladders once a decision point exceeds about 5 cases.
 
 ## State and Side Effects
 
@@ -106,6 +127,24 @@ These rules apply to all new code, refactors, and reviews.
 
 - Prefer returning structured results over logging-driven control flow.
 
+## Clean Code Rules
+
+- Use a single source of truth for config, constants, deployment rules, and type mappings.
+- If two blocks share more than a few identical lines, extract them instead of duplicating them across commands or services.
+- Names should reveal intent.
+  - Prefer `buildDeploymentContext()` over `prepareStuff()`
+  - Boolean names should start with `is`, `has`, `can`, or `should`
+- Avoid hardcoded shared timeouts, repeated CLI commands, and repeated user-facing error strings when they represent stable concepts.
+- Comments should explain why, constraints, or tradeoffs, not narrate obvious code.
+- Do not leave dead code, debug logging debris, or lint suppressions without a deliberate reason.
+
+## Security And Boundary Rules
+
+- Do not build shell commands by interpolating untrusted strings.
+- Validate filesystem paths before destructive or cross-project operations.
+- Keep secrets, tokens, and provider credentials out of code and fixtures.
+- Do not expose raw stack traces, local paths, or internal tool failures directly as user-facing output unless the command contract explicitly requires it.
+
 ## Testing Rules
 
 - Test behavior at the correct level:
@@ -115,10 +154,14 @@ These rules apply to all new code, refactors, and reviews.
   - domain logic: deterministic unit tests
 
 - Add regression tests for:
+
   - refactor seams
   - bug fixes
   - non-obvious dependency semantics
   - cross-platform behavior
+
+- Prefer deterministic tests.
+  - Avoid clock, network, and randomness dependencies unless they are explicitly controlled.
 
 ## Review Checklist
 
@@ -129,6 +172,13 @@ Before merging, ask:
 3. Are side effects isolated?
 4. Is the new behavior expressed through existing abstractions or by adding branching to a god file?
 5. Would another engineer know where to extend this next?
+
+## Git And Change Discipline
+
+- Each commit should keep the repo compiling and the touched tests passing.
+- Prefer one logical change per commit.
+- Keep refactor slices small enough to review without reconstructing intent from unrelated edits.
+- Review your own diff before pushing large structural changes.
 
 ## Current Refactor Bias
 
