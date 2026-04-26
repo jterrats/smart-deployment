@@ -149,6 +149,94 @@ function extractVisualforceEmailAttributes(content: string): Partial<Record<'rec
   };
 }
 
+function collectAttachments(metadata: EmailTemplateMetadata): string[] | undefined {
+  const attachmentNames = metadata.attachments?.map((attachment) => attachment.name) ?? [];
+  const allAttachments = [...attachmentNames, ...(metadata.attachedContentDocuments ?? [])];
+  return allAttachments.length > 0 ? allAttachments : undefined;
+}
+
+function buildDependencies(params: {
+  mergeFields: MergeField[];
+  customLabels: string[];
+  relatedEntityType?: string;
+  visualforcePage?: string;
+  metadata: EmailTemplateMetadata;
+}): EmailTemplateDependency[] {
+  const { mergeFields, customLabels, relatedEntityType, visualforcePage, metadata } = params;
+  const dependencies: EmailTemplateDependency[] = [];
+
+  if (relatedEntityType) {
+    dependencies.push({
+      type: 'related_entity',
+      name: relatedEntityType,
+    });
+  }
+
+  if (metadata.type === 'visualforce' && visualforcePage) {
+    dependencies.push({
+      type: 'visualforce_page',
+      name: visualforcePage,
+    });
+  }
+
+  for (const mergeField of mergeFields) {
+    dependencies.push({
+      type: 'merge_field',
+      name: mergeField.fullReference,
+      objectName: mergeField.objectName,
+      fieldName: mergeField.fieldName,
+    });
+  }
+
+  for (const label of customLabels) {
+    dependencies.push({
+      type: 'custom_label',
+      name: label,
+    });
+  }
+
+  if (metadata.attachments) {
+    for (const attachment of metadata.attachments) {
+      dependencies.push({
+        type: 'attachment',
+        name: attachment.name,
+      });
+    }
+  }
+
+  if (metadata.attachedContentDocuments) {
+    for (const documentName of metadata.attachedContentDocuments) {
+      dependencies.push({
+        type: 'attachment',
+        name: documentName,
+      });
+    }
+  }
+
+  return dependencies;
+}
+
+function buildParseResult(params: {
+  metadata: EmailTemplateMetadata;
+  relatedEntityType?: string;
+  mergeFields: MergeField[];
+  customLabels: string[];
+  dependencies: EmailTemplateDependency[];
+  visualforcePage?: string;
+}): EmailTemplateParseResult {
+  const { metadata, relatedEntityType, mergeFields, customLabels, dependencies, visualforcePage } = params;
+
+  return {
+    ...metadata,
+    relatedEntityType,
+    attachments: collectAttachments(metadata),
+    mergeFields,
+    customLabels,
+    dependencies,
+    visualforcePage,
+  };
+}
+
 /**
  * Parse email template metadata XML
  *
@@ -263,79 +351,26 @@ export async function parseEmailTemplate(
         ...(metadata.subject ? extractCustomLabels(metadata.subject) : []),
       ]),
     ];
-
-    // Build dependencies array
-    const dependencies: EmailTemplateDependency[] = [];
-
-    // Add related entity type as dependency
     const relatedEntityType = metadata.relatedEntityType ?? visualforceAttributes.relatedTo;
-    if (relatedEntityType) {
-      dependencies.push({
-        type: 'related_entity',
-        name: relatedEntityType,
-      });
-    }
-
-    // Add Visualforce page as dependency (for visualforce template type)
     let visualforcePage: string | undefined;
     if (metadata.type === 'visualforce' && metadata.visualforcePage) {
       visualforcePage = metadata.visualforcePage;
-      dependencies.push({
-        type: 'visualforce_page',
-        name: visualforcePage,
-      });
     }
-
-    // Add merge fields as dependencies
-    for (const mergeField of mergeFields) {
-      dependencies.push({
-        type: 'merge_field',
-        name: mergeField.fullReference,
-        objectName: mergeField.objectName,
-        fieldName: mergeField.fieldName,
-      });
-    }
-
-    // Add custom labels as dependencies
-    for (const label of customLabels) {
-      dependencies.push({
-        type: 'custom_label',
-        name: label,
-      });
-    }
-
-    // Add attachments as dependencies
-    if (metadata.attachments) {
-      for (const attachment of metadata.attachments) {
-        dependencies.push({
-          type: 'attachment',
-          name: attachment.name,
-        });
-      }
-    }
-
-    if (metadata.attachedContentDocuments) {
-      for (const doc of metadata.attachedContentDocuments) {
-        dependencies.push({
-          type: 'attachment',
-          name: doc,
-        });
-      }
-    }
-
-    // Map attachments to string array (just names) and include attachedContentDocuments
-    const attachmentNames = metadata.attachments?.map((att) => att.name) ?? [];
-    const allAttachments = [...attachmentNames, ...(metadata.attachedContentDocuments ?? [])];
-
-    const result: EmailTemplateParseResult = {
-      ...metadata,
+    const dependencies = buildDependencies({
+      mergeFields,
+      customLabels,
       relatedEntityType,
-      attachments: allAttachments.length > 0 ? allAttachments : undefined,
+      visualforcePage,
+      metadata,
+    });
+    const result = buildParseResult({
+      metadata,
+      relatedEntityType,
       mergeFields,
       customLabels,
       dependencies,
       visualforcePage,
-    };
+    });
 
     logger.debug(`Parsed email template: ${templateName}`, {
       templateType: metadata.type,
