@@ -357,10 +357,6 @@ export class CacheManager {
    * Reset singleton (for testing only)
    */
   public static resetInstance(): void {
-    if (CacheManager.instance?.lockLifecycle.hasActiveLock()) {
-      void CacheManager.instance.releaseLock();
-    }
-
     CacheManager.instance = null;
   }
 
