@@ -20,24 +20,16 @@ import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { getLogger } from '../utils/logger.js';
-import { CycleRemediationPlanner } from '../dependencies/cycle-remediation-planner.js';
-import { SfCliIntegration } from '../deployment/sf-cli-integration.js';
-import { TestPlanService } from '../deployment/test-plan-service.js';
-import { CycleRemediationRunner } from '../deployment/cycle-remediation-runner.js';
-import { DeploymentRunner } from '../deployment/deployment-runner.js';
-import { DeploymentContextService, type DeploymentContext } from '../deployment/deployment-context-service.js';
+import { StartExecutionService } from '../deployment/start-execution-service.js';
+import { DeploymentContextService } from '../deployment/deployment-context-service.js';
 import { ProjectAnalysisPresenter } from '../presentation/project-analysis-presenter.js';
 import { StartCommandPresenter } from '../presentation/start-command-presenter.js';
-import { StateManager } from '../deployment/state-manager.js';
-import { DeploymentTracker } from '../deployment/deployment-tracker.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'start');
 const logger = getLogger('StartCommand');
-const cycleRemediationRunner = new CycleRemediationRunner();
-const deploymentRunner = new DeploymentRunner();
 const deploymentContextService = new DeploymentContextService();
-const testPlanService = new TestPlanService();
+const startExecutionService = new StartExecutionService();
 const projectAnalysisPresenter = new ProjectAnalysisPresenter();
 const presenter = new StartCommandPresenter();
 
@@ -143,16 +135,26 @@ export default class Start extends SfCommand<StartResult> {
         aiEnabled: Boolean(flags['use-ai']),
       });
 
-      // AC-3: Execute deployment
-      if (!flags['dry-run']) {
-        this.log('🚀 Executing deployment...');
-        await this.executeDeployment(flags, deploymentContext, sourcePath);
-      } else {
-        this.log('🔍 Dry-run mode: skipping actual deployment');
+      const executionOptions = {
+        dryRun: flags['dry-run'] === true,
+        validateOnly: flags['validate-only'] === true,
+        allowCycleRemediation: flags['allow-cycle-remediation'] === true,
+        skipTests: flags['skip-tests'] === true,
+        targetOrg: this.getTargetOrgIdentifier(flags['target-org']),
+        sourcePath,
+        deploymentContext,
+        log: this.log.bind(this),
+      } as const;
+
+      if (!executionOptions.dryRun && !executionOptions.validateOnly) {
+        presenter.reportExecutionStart(this);
+      }
+      const executionResult = await startExecutionService.execute(executionOptions);
+      if (executionResult.kind === 'skipped') {
+        presenter.reportExecutionSkipped(this, executionResult.reason);
       }
 
-      // AC-9: Generate report
-      this.log('📄 Generating deployment report...');
+      presenter.reportReportGenerationStart(this);
       presenter.reportDeploymentReport(this, waves);
 
       return { success: true, waves, ai: deploymentContext.aiContext };
@@ -160,100 +162,6 @@ export default class Start extends SfCommand<StartResult> {
       // AC-10: Handle failures gracefully
       logger.error('Deployment failed', { error });
       this.error(`Deployment failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  private async executeDeployment(
-    flags: Record<string, unknown>,
-    deploymentContext: DeploymentContext,
-    sourcePath?: string
-  ): Promise<void> {
-    const dryRun = flags['dry-run'] as boolean;
-    const validateOnly = flags['validate-only'] as boolean;
-    const allowCycleRemediation = flags['allow-cycle-remediation'] as boolean;
-    const skipTests = flags['skip-tests'] as boolean;
-    const targetOrg = this.getTargetOrgIdentifier(flags['target-org']);
-
-    if (dryRun || validateOnly) {
-      this.log('🔍 Dry-run/Validate mode: skipping actual deployment');
-      return;
-    }
-
-    const { scanResult, orderedWaves } = deploymentContext;
-    const testExecutor = testPlanService.createExecutor(scanResult.components);
-
-    const planner = new CycleRemediationPlanner(scanResult.dependencyResult.graph, {
-      components: scanResult.dependencyResult.components,
-    });
-    const remediationPlan = planner.createPlan();
-
-    if (remediationPlan.cycles.length > 0) {
-      this.log(`♻️ Detected ${remediationPlan.cycles.length} circular dependency cycle(s).`);
-
-      if (!allowCycleRemediation) {
-        this.error(
-          'Circular dependencies detected. Re-run with --allow-cycle-remediation for supported ApexClass cycles or resolve them manually.'
-        );
-      }
-
-      if (!remediationPlan.supported) {
-        this.error(
-          [
-            'Cycle remediation was requested, but one or more cycles are not safely supported.',
-            ...remediationPlan.warnings,
-          ].join('\n')
-        );
-      }
-    }
-
-    // Initialize deployment services
-    const sfCli = new SfCliIntegration();
-    const stateManager = new StateManager({ baseDir: sourcePath ?? process.cwd() });
-    const tracker = new DeploymentTracker();
-    const deploymentId = `deployment-${Date.now()}`;
-
-    if (remediationPlan.cycles.length > 0) {
-      if (!targetOrg) {
-        this.error('The --target-org flag is required for cycle remediation deployments.');
-      }
-
-      await cycleRemediationRunner.execute({
-        deploymentId,
-        targetOrg,
-        sourcePath,
-        stateManager,
-        tracker,
-        plan: remediationPlan,
-        sfCli,
-        skipTests,
-        componentMap: scanResult.dependencyResult.components,
-        log: this.log.bind(this),
-      });
-      return;
-    }
-
-    if (!targetOrg) {
-      this.error('The --target-org flag is required for real deployments.');
-    }
-
-    try {
-      await deploymentRunner.execute({
-        deploymentId,
-        targetOrg,
-        sourcePath,
-        orderedWaves,
-        componentMap: scanResult.dependencyResult.components,
-        skipTests,
-        testExecutor,
-        tracker,
-        stateManager,
-        sfCli,
-        aiContext: deploymentContext.aiContext,
-        log: this.log.bind(this),
-      });
-    } catch (error) {
-      logger.error('Wave deployment failed', { error });
-      this.error(error instanceof Error ? error.message : String(error));
     }
   }
 
