@@ -15,11 +15,10 @@
 
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand } from '@salesforce/sf-plugins-core';
-import { AnalysisReporter } from '../analysis/analysis-reporter.js';
+import { AnalyzeArtifactService } from '../analysis/analyze-artifact-service.js';
 import { ProjectAnalysisService } from '../analysis/project-analysis-service.js';
 import { AnalyzeCommandPresenter } from '../presentation/analyze-command-presenter.js';
 import type { PriorityOverride } from '../types/deployment-plan.js';
-import { DeploymentPlanManager } from '../utils/deployment-plan-manager.js';
 import { getLogger } from '../utils/logger.js';
 import type { ScanResult } from '../services/metadata-scanner-service.js';
 import type { WaveResult } from '../waves/wave-builder.js';
@@ -28,6 +27,7 @@ const logger = getLogger('AnalyzeCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'analyze');
 const projectAnalysisService = new ProjectAnalysisService();
+const artifactService = new AnalyzeArtifactService();
 const presenter = new AnalyzeCommandPresenter();
 
 type AnalyzeResult = {
@@ -90,61 +90,31 @@ export default class Analyze extends SfCommand<AnalyzeResult> {
       const dependencies = scanResult.dependencyResult.stats.totalDependencies;
       presenter.reportAnalysisSummary(this, scanResult, waveResult);
 
-      let planSaved = false;
-
       if (flags['save-plan']) {
         this.log('');
         this.log('📋 Generating deployment plan...');
-
-        const planWaves = waveResult.waves.map((wave) => ({
-          number: wave.number,
-          components: wave.components,
-          metadata: {
-            componentCount: wave.metadata.componentCount,
-            types: wave.metadata.types,
-            maxDepth: wave.metadata.maxDepth,
-            hasCircularDeps: wave.metadata.hasCircularDeps,
-            estimatedTime: wave.metadata.estimatedTime,
-          },
-        }));
-
-        const priorities: Record<string, PriorityOverride> = { ...priorityOverrides };
-        for (const component of scanResult.components) {
-          if (component.priorityBoost > 0) {
-            const nodeId = `${component.type}:${component.name}`;
-            priorities[nodeId] = {
-              priority: component.priorityBoost,
-              source: 'static',
-              appliedAt: new Date().toISOString(),
-            };
-          }
-        }
-
-        const plan = DeploymentPlanManager.createPlan(planWaves, priorities, {
-          aiEnabled: flags['use-ai'],
-          aiModel: aiContext?.model,
-          orgType: flags['org-type'],
-          industry: flags.industry,
-          generatedBy: 'smart-deployment CLI',
-        });
-
-        await DeploymentPlanManager.savePlan(plan, flags['plan-path']);
-
-        const planPath = flags['plan-path'] ?? '.smart-deployment/deployment-plan.json';
-        presenter.reportPlanSaved(this, planPath);
-        planSaved = true;
       }
 
-      if (flags.output) {
-        const format = flags.format === 'html' ? 'html' : 'json';
-        const reporter = new AnalysisReporter();
-        const report = reporter.createReport(scanResult, waveResult, aiContext);
+      const artifacts = await artifactService.generateArtifacts(scanResult, waveResult, priorityOverrides, {
+        savePlan: flags['save-plan'],
+        planPath: typeof flags['plan-path'] === 'string' ? flags['plan-path'] : undefined,
+        outputPath: typeof flags.output === 'string' ? flags.output : undefined,
+        outputFormat: flags.format === 'html' ? 'html' : 'json',
+        aiEnabled: Boolean(flags['use-ai']),
+        aiContext,
+        orgType: typeof flags['org-type'] === 'string' ? flags['org-type'] : undefined,
+        industry: typeof flags.industry === 'string' ? flags.industry : undefined,
+      });
 
-        await reporter.saveReport(report, flags.output, format);
-        presenter.reportReportSaved(this, flags.output, format);
+      if (artifacts.planSaved && artifacts.planPath) {
+        presenter.reportPlanSaved(this, artifacts.planPath);
       }
 
-      return { success: true, components, dependencies, planSaved, ai: aiContext };
+      if (artifacts.reportSaved && artifacts.reportPath && artifacts.reportFormat) {
+        presenter.reportReportSaved(this, artifacts.reportPath, artifacts.reportFormat);
+      }
+
+      return { success: true, components, dependencies, planSaved: artifacts.planSaved, ai: aiContext };
     } catch (error) {
       logger.error('Analysis failed', { error });
       this.error(`Analysis failed: ${error instanceof Error ? error.message : String(error)}`);

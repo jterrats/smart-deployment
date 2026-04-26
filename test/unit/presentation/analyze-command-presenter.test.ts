@@ -58,9 +58,11 @@ function createWaveResult(): WaveResult {
     unplacedComponents: ['ApexClass:Legacy'],
     totalComponents: 1,
     stats: {
+      totalWaves: 1,
       totalEstimatedTime: 1,
       avgComponentsPerWave: 1,
-      maxParallelism: 1,
+      largestWaveSize: 1,
+      smallestWaveSize: 1,
     },
   };
 }
