@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import { describe, it, afterEach } from 'mocha';
 import { ProjectFixtures } from '../../fixtures/project-fixtures.js';
 import { DeploymentValidationService } from '../../../src/deployment/deployment-validation-service.js';
+import { ValidateCommandPresenter } from '../../../src/presentation/validate-command-presenter.js';
 
 describe('DeploymentValidationService', () => {
   const fixtures = new ProjectFixtures();
@@ -49,13 +50,14 @@ describe('DeploymentValidationService', () => {
     expect(summary.issues.some((issue) => issue.severity === 'error')).to.equal(true);
   });
 
-  it('formats a readable validation summary', async () => {
+  it('returns a summary that presenters can render', async () => {
     const fixture = await fixtures.createStandardProject('validation-service-format');
     createdRoots.add(fixture.structure.root);
 
     const service = new DeploymentValidationService();
     const summary = await service.validateProject(fixture.structure.root);
-    const formatted = service.formatSummary(summary);
+    const presenter = new ValidateCommandPresenter();
+    const formatted = presenter.formatSummary(summary);
 
     expect(formatted).to.include('Validation: PASSED');
     expect(formatted).to.include('Components: 1');

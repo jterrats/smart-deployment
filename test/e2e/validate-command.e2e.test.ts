@@ -10,6 +10,7 @@ import { expect } from 'chai';
 import { afterEach, describe, it } from 'mocha';
 import { ProjectFixtures } from '../fixtures/project-fixtures.js';
 import { DeploymentValidationService } from '../../src/deployment/deployment-validation-service.js';
+import { ValidateCommandPresenter } from '../../src/presentation/validate-command-presenter.js';
 
 describe('E2E: Validate Command - US-067', () => {
   const fixtures = new ProjectFixtures();
@@ -52,7 +53,8 @@ describe('E2E: Validate Command - US-067', () => {
 
     const service = new DeploymentValidationService();
     const summary = await service.validateProject(fixture.structure.root);
-    const formatted = service.formatSummary(summary);
+    const presenter = new ValidateCommandPresenter();
+    const formatted = presenter.formatSummary(summary);
 
     expect(formatted).to.include('Components: 1');
     expect(formatted).to.include('XML Files Validated:');

@@ -14,12 +14,14 @@ import { type Interfaces } from '@oclif/core';
 import { Messages } from '@salesforce/core';
 import { Flags, SfCommand, optionalOrgFlagWithDeprecations } from '@salesforce/sf-plugins-core';
 import { DeploymentValidationService } from '../deployment/deployment-validation-service.js';
+import { ValidateCommandPresenter } from '../presentation/validate-command-presenter.js';
 import { getLogger } from '../utils/logger.js';
 import type { MetadataDependencyKind } from '../types/metadata.js';
 
 const logger = getLogger('ValidateCommand');
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@jterrats/smart-deployment', 'validate');
+const presenter = new ValidateCommandPresenter();
 
 type ValidateResult = {
   success: boolean;
@@ -63,13 +65,7 @@ export default class Validate extends SfCommand<ValidateResult> {
     const summary = await validationService.validateProject(sourcePath, {
       useAI,
     });
-    this.log(validationService.formatSummary(summary));
-
-    if (!summary.valid) {
-      this.warn(`Validation found ${summary.issues.length} issue(s). No deployment was executed.`);
-    } else {
-      this.log('Validation completed successfully. No deployment was executed.');
-    }
+    presenter.reportValidationResult(this, summary);
 
     return {
       success: summary.valid,
