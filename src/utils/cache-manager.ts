@@ -83,6 +83,16 @@ type LockInfo = {
   hostname: string;
 };
 
+type PersistedCacheEntry = {
+  key: string;
+  entry: CacheEntry<unknown>;
+};
+
+type CacheMutationResult = {
+  changed: boolean;
+  deletedKeys: string[];
+};
+
 class CacheExpiryPolicy {
   public createEntry<T>(value: T, ttlMs: number, now = Date.now()): CacheEntry<T> {
     return {
@@ -171,9 +181,7 @@ class CacheStorage {
     }
   }
 
-  public async loadEntriesFromDisk(
-    expiryPolicy: CacheExpiryPolicy
-  ): Promise<Array<{ key: string; entry: CacheEntry<unknown> }>> {
+  public async loadEntriesFromDisk(expiryPolicy: CacheExpiryPolicy): Promise<PersistedCacheEntry[]> {
     const config = this.getConfig();
     if (!config.cacheDirectory) {
       return [];
@@ -183,13 +191,10 @@ class CacheStorage {
     const cacheFiles = files.filter((file) => file.startsWith('cache_'));
     const results = await Promise.all(cacheFiles.map(async (file) => this.loadPersistedEntry(file, expiryPolicy)));
 
-    return results.filter((result): result is { key: string; entry: CacheEntry<unknown> } => result !== null);
+    return results.filter((result): result is PersistedCacheEntry => result !== null);
   }
 
-  private async loadPersistedEntry(
-    file: string,
-    expiryPolicy: CacheExpiryPolicy
-  ): Promise<{ key: string; entry: CacheEntry<unknown> } | null> {
+  private async loadPersistedEntry(file: string, expiryPolicy: CacheExpiryPolicy): Promise<PersistedCacheEntry | null> {
     const config = this.getConfig();
     try {
       const filePath = path.join(config.cacheDirectory!, file);
@@ -437,7 +442,7 @@ export class CacheManager {
    * Delete specific key
    */
   public async delete(key: string): Promise<boolean> {
-    const deleted = this.cache.delete(key);
+    const deleted = this.deleteFromMemory(key).changed;
     this.stats.size = this.cache.size;
 
     if (deleted && this.config.enablePersistence) {
@@ -497,9 +502,7 @@ export class CacheManager {
    */
   public async cleanExpired(): Promise<number> {
     const expiredKeys = this.expiryPolicy.collectExpiredKeys(this.cache);
-    for (const key of expiredKeys) {
-      this.cache.delete(key);
-    }
+    this.deleteManyFromMemory(expiredKeys);
 
     if (this.config.enablePersistence && expiredKeys.length > 0) {
       await Promise.all(expiredKeys.map(async (key) => this.storage.deletePersistedEntry(key)));
@@ -536,9 +539,34 @@ export class CacheManager {
   private evictOldest(): void {
     const oldestKey = this.expiryPolicy.selectOldestKey(this.cache);
     if (oldestKey) {
-      this.cache.delete(oldestKey);
+      this.deleteFromMemory(oldestKey);
       this.stats.evictions++;
     }
+  }
+
+  private deleteFromMemory(key: string): CacheMutationResult {
+    const changed = this.cache.delete(key);
+    return {
+      changed,
+      deletedKeys: changed ? [key] : [],
+    };
+  }
+
+  private deleteManyFromMemory(keys: readonly string[]): CacheMutationResult {
+    let changed = false;
+    const deletedKeys: string[] = [];
+
+    for (const key of keys) {
+      if (this.cache.delete(key)) {
+        changed = true;
+        deletedKeys.push(key);
+      }
+    }
+
+    return {
+      changed,
+      deletedKeys,
+    };
   }
 
   private recordHit(): void {

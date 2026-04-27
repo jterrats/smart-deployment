@@ -13,6 +13,7 @@
 
 import { getLogger } from '../utils/logger.js';
 import type { NodeId, DependencyGraph } from '../types/dependency.js';
+import { DEFAULT_GRAPH_DEPENDENCY_KIND, shouldTraverseDependencyKind } from './dependency-semantics.js';
 
 const logger = getLogger('DependencyImpactAnalyzer');
 
@@ -374,6 +375,10 @@ export class DependencyImpactAnalyzer {
     const traversable: NodeId[] = [];
 
     for (const dependent of dependents) {
+      if (!shouldTraverseDependencyKind(DEFAULT_GRAPH_DEPENDENCY_KIND)) {
+        continue;
+      }
+
       if (!this.options.includeTests && this.isTestClass(dependent)) {
         continue;
       }

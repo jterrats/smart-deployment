@@ -24,12 +24,21 @@ type WaveValidationPayload = {
   riskAssessments: WaveRiskAssessment[];
 };
 
+type ValidationTransportResponse = {
+  content: string;
+};
+
 type PromptWaveSummary = {
   number: number;
   componentCount: number;
   types: Wave['metadata']['types'];
   components: string[];
 };
+
+type EvaluatedValidationOutcome = Pick<
+  WaveValidationResult,
+  'isValid' | 'issues' | 'optimizations' | 'riskAssessments' | 'overallRisk'
+>;
 
 export type WaveValidationIssue = {
   waveNumber: number;
@@ -155,7 +164,7 @@ export class WaveValidationService {
     return this.parseValidationResponse(response.content, waves);
   }
 
-  private async sendValidationRequest(waves: Wave[]): Promise<{ content: string }> {
+  private async sendValidationRequest(waves: Wave[]): Promise<ValidationTransportResponse> {
     const prompt = this.buildValidationPrompt(waves);
 
     return this.llmProvider.sendRequest({
@@ -166,15 +175,13 @@ export class WaveValidationService {
     });
   }
 
-  private evaluateValidationPayload(validation: WaveValidationPayload): WaveValidationResult {
+  private evaluateValidationPayload(validation: WaveValidationPayload): EvaluatedValidationOutcome {
     return {
       isValid: !validation.issues.some((issue) => issue.severity === 'critical'),
       issues: validation.issues,
       optimizations: validation.optimizations,
       riskAssessments: validation.riskAssessments,
       overallRisk: this.calculateOverallRisk(validation.riskAssessments),
-      executionTime: 0,
-      aiAnalyzed: false,
     };
   }
 

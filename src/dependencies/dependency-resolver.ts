@@ -15,6 +15,11 @@
 import { getLogger } from '../utils/logger.js';
 import type { NodeId, DependencyGraph, CircularDependency } from '../types/dependency.js';
 import type { MetadataComponent } from '../types/metadata.js';
+import {
+  getComponentDependencyKind,
+  isSoftDependencyKind,
+  shouldIncludeDependencyInResolution,
+} from './dependency-semantics.js';
 
 const logger = getLogger('DependencyResolver');
 
@@ -354,13 +359,7 @@ export class DependencyResolver {
    */
   private isOptionalDependency(nodeId: NodeId, dependencyId: NodeId): boolean {
     const component = this.components.get(nodeId);
-    const explicitDetail = component?.dependencyDetails?.find((dependency) => dependency.nodeId === dependencyId);
-
-    if (explicitDetail) {
-      return explicitDetail.kind === 'soft';
-    }
-
-    return component?.optionalDependencies?.has(dependencyId) ?? false;
+    return isSoftDependencyKind(getComponentDependencyKind(component, dependencyId));
   }
 
   /**
@@ -411,7 +410,12 @@ export class DependencyResolver {
       return 'exclude-managed';
     }
 
-    if (this.isOptionalDependency(nodeId, dependencyId) && !this.options.includeOptional) {
+    if (
+      !shouldIncludeDependencyInResolution(
+        getComponentDependencyKind(this.components.get(nodeId), dependencyId),
+        this.options.includeOptional
+      )
+    ) {
       return 'exclude-optional';
     }
 

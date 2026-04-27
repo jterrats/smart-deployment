@@ -23,6 +23,11 @@ import type {
   CircularDependency,
   DependencyEdge,
 } from '../types/dependency.js';
+import {
+  DEFAULT_GRAPH_DEPENDENCY_KIND,
+  expandComponentDependencyReferences,
+  getDependencySourceForKind,
+} from './dependency-semantics.js';
 
 const logger = getLogger('DependencyGraphBuilder');
 
@@ -185,7 +190,7 @@ export class DependencyGraphBuilder {
         type,
         reason,
         confidence,
-        source: type === 'inferred' ? 'ai' : 'parser',
+        source: getDependencySourceForKind(type),
       });
     }
 
@@ -316,19 +321,11 @@ export class DependencyGraphBuilder {
    * Stage 2: expand legacy dependency sets into typed dependency details.
    */
   private expandTypedDependencies(component: MetadataComponent): ExpandedDependencyDetail[] {
-    if (component.dependencyDetails && component.dependencyDetails.length > 0) {
-      return component.dependencyDetails.map((dependency) => ({
-        nodeId: dependency.nodeId,
-        kind: dependency.kind,
-        reason: dependency.reason,
-        confidence: dependency.confidence,
-      }));
-    }
-
-    return [...component.dependencies].map((depId) => ({
-      nodeId: depId,
-      kind: component.optionalDependencies?.has(depId) ? ('soft' as const) : ('hard' as const),
-      reason: component.optionalDependencies?.has(depId) ? 'Declared optional dependency' : 'Declared dependency',
+    return expandComponentDependencyReferences(component, DEFAULT_GRAPH_DEPENDENCY_KIND).map((dependency) => ({
+      nodeId: dependency.nodeId,
+      kind: dependency.kind,
+      reason: dependency.reason,
+      confidence: dependency.confidence,
     }));
   }
 

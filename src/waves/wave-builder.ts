@@ -24,10 +24,23 @@ type WavePlacementPolicy = {
   handleCircularDeps: boolean;
 };
 
+type WavePlacementState = {
+  inDegree: Map<NodeId, number>;
+  waves: Wave[];
+  processed: Set<NodeId>;
+  unplacedComponents: NodeId[];
+  nextWaveNumber: number;
+};
+
 type DependencyRiskProfile = {
   hard: number;
   soft: number;
   inferred: number;
+};
+
+type WaveCandidateBatch = {
+  orderedCandidates: NodeId[];
+  chunks: NodeId[][];
 };
 
 type CircularWaveResolution = {
@@ -252,52 +265,56 @@ export class WaveBuilder {
   public generateWaves(graph: DependencyGraph): WaveResult {
     const startTime = Date.now();
     const policy = this.getPlacementPolicy();
-    const inDegree = calculateInDegree(graph);
-    const waves: Wave[] = [];
-    const processed = new Set<NodeId>();
-    const unplacedComponents: NodeId[] = [];
-    let waveNumber = 1;
+    const state = this.createPlacementState(graph);
 
-    while (processed.size < graph.size) {
-      const candidateComponents = this.selectWaveCandidates(inDegree, processed, policy);
-      if (candidateComponents.length === 0) {
-        const circularResolution = this.resolveCircularWave(graph, processed, waveNumber, policy);
-        unplacedComponents.push(...circularResolution.remaining);
+    while (state.processed.size < graph.size) {
+      const candidateBatch = this.planCandidateBatch(state, policy);
+      if (candidateBatch.orderedCandidates.length === 0) {
+        const circularResolution = this.resolveCircularWave(graph, state.processed, state.nextWaveNumber, policy);
+        state.unplacedComponents.push(...circularResolution.remaining);
         if (circularResolution.fallbackWave) {
-          waves.push(circularResolution.fallbackWave);
+          state.waves.push(circularResolution.fallbackWave);
         }
         break;
       }
 
-      for (const chunk of this.createWaveChunks(candidateComponents, policy.maxComponentsPerWave)) {
-        waves.push(this.createWave(chunk, waveNumber, false));
-        waveNumber += 1;
-        this.markProcessed(processed, chunk);
+      for (const chunk of candidateBatch.chunks) {
+        state.waves.push(this.createWave(chunk, state.nextWaveNumber, false));
+        state.nextWaveNumber += 1;
+        this.markProcessed(state.processed, chunk);
       }
 
-      this.updateInDegreeForPlacedCandidates(graph, inDegree, processed, candidateComponents);
+      this.updateInDegreeForPlacedCandidates(graph, state.inDegree, state.processed, candidateBatch.orderedCandidates);
     }
 
-    // Calculate statistics
-    const stats = this.calculateStats(waves);
+    const stats = this.calculateStats(state.waves);
 
     const duration = Date.now() - startTime;
     logger.info('Wave generation completed', {
-      waves: waves.length,
-      components: processed.size,
-      unplaced: unplacedComponents.length,
+      waves: state.waves.length,
+      components: state.processed.size,
+      unplaced: state.unplacedComponents.length,
       durationMs: duration,
     });
 
-    // Ensure waves are sorted by number before returning
-    waves.sort((a, b) => a.number - b.number);
+    state.waves.sort((a, b) => a.number - b.number);
 
     return {
-      waves,
+      waves: state.waves,
       totalComponents: graph.size,
-      unplacedComponents,
+      unplacedComponents: state.unplacedComponents,
       circularDependencies: [],
       stats,
+    };
+  }
+
+  private createPlacementState(graph: DependencyGraph): WavePlacementState {
+    return {
+      inDegree: calculateInDegree(graph),
+      waves: [],
+      processed: new Set<NodeId>(),
+      unplacedComponents: [],
+      nextWaveNumber: 1,
     };
   }
 
@@ -321,6 +338,17 @@ export class WaveBuilder {
     }
 
     return candidates;
+  }
+
+  private planCandidateBatch(
+    state: Pick<WavePlacementState, 'inDegree' | 'processed'>,
+    policy: WavePlacementPolicy
+  ): WaveCandidateBatch {
+    const orderedCandidates = this.selectWaveCandidates(state.inDegree, state.processed, policy);
+    return {
+      orderedCandidates,
+      chunks: this.createWaveChunks(orderedCandidates, policy.maxComponentsPerWave),
+    };
   }
 
   private createWaveChunks(candidates: NodeId[], maxComponentsPerWave: number): NodeId[][] {

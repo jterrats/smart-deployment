@@ -25,7 +25,9 @@ type OptimizerPolicy = {
 };
 
 type WaveTestContext = {
-  wave: Wave;
+  waveNumber: number;
+  waveComponents: NodeId[];
+  waveMetadata: Wave['metadata'];
   codeClasses: NodeId[];
   triggers: NodeId[];
   needsTests: boolean;
@@ -194,7 +196,9 @@ export class TestOptimizer {
     const triggers = this.getTriggers(wave);
 
     return {
-      wave,
+      waveNumber: wave.number,
+      waveComponents: wave.components,
+      waveMetadata: wave.metadata,
       codeClasses,
       triggers,
       needsTests: codeClasses.length > 0 || triggers.length > 0,
@@ -211,7 +215,7 @@ export class TestOptimizer {
         testClasses: allTestClasses,
         estimatedCoverage: 100,
         decision: {
-          waveNumber: context.wave.number,
+          waveNumber: context.waveNumber,
           type: 'include-tests',
           reason: 'alwaysRunAllTests option enabled',
           testsAffected: allTestClasses.length,
@@ -224,7 +228,7 @@ export class TestOptimizer {
         testClasses: [],
         estimatedCoverage: 100,
         decision: {
-          waveNumber: context.wave.number,
+          waveNumber: context.waveNumber,
           type: 'skip-tests',
           reason: 'No Apex classes or triggers in wave',
           testsAffected: 0,
@@ -237,7 +241,7 @@ export class TestOptimizer {
       testClasses,
       estimatedCoverage: this.scoreEstimatedCoverage(context, testClasses),
       decision: {
-        waveNumber: context.wave.number,
+        waveNumber: context.waveNumber,
         type: 'sync-tests',
         reason: `Matched ${testClasses.length} tests to ${context.codeClasses.length} classes`,
         testsAffected: testClasses.length,
@@ -247,7 +251,9 @@ export class TestOptimizer {
 
   private createOptimizedWave(context: WaveTestContext, plan: WaveTestPlan): OptimizedWave {
     return {
-      ...context.wave,
+      number: context.waveNumber,
+      components: context.waveComponents,
+      metadata: context.waveMetadata,
       testClasses: plan.testClasses,
       codeClasses: context.codeClasses,
       triggers: context.triggers,

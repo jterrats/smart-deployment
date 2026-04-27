@@ -13,6 +13,7 @@ import type {
   SharingRecalculation,
   WebLink,
 } from '../types/salesforce/object.js';
+import { normalizeOptionalArray } from './parser-utils.js';
 
 const logger = getLogger('CustomObjectParser');
 
@@ -410,14 +411,8 @@ async function parseMetadataXml(metadataContent: string): Promise<CustomObjectMe
       });
     }
 
-    // Normalize arrays (XML parser returns single items as objects, not arrays)
-    const normalizeArray = <T>(value: T | T[] | undefined): T[] | undefined => {
-      if (value === undefined) return undefined;
-      return Array.isArray(value) ? value : [value];
-    };
-
     // Map to CustomObjectMetadata using the robust types from src/types/salesforce/object.ts
-    let fields = normalizeArray(customObject.fields as CustomField | CustomField[] | undefined);
+    let fields = normalizeOptionalArray(customObject.fields as CustomField | CustomField[] | undefined);
 
     // Normalize referenceTo within each field (XML parser returns single string, but type expects array)
     if (fields) {
@@ -434,7 +429,9 @@ async function parseMetadataXml(metadataContent: string): Promise<CustomObjectMe
     const metadata: CustomObjectMetadata = {
       label: (customObject.label as string) ?? '',
       pluralLabel: (customObject.pluralLabel as string) ?? '',
-      actionOverrides: normalizeArray(customObject.actionOverrides as ActionOverride | ActionOverride[] | undefined),
+      actionOverrides: normalizeOptionalArray(
+        customObject.actionOverrides as ActionOverride | ActionOverride[] | undefined
+      ),
       allowInChatterGroups: customObject.allowInChatterGroups as boolean | undefined,
       compactLayoutAssignment: customObject.compactLayoutAssignment as string | undefined,
       customHelpPage: customObject.customHelpPage as string | undefined,
@@ -453,22 +450,26 @@ async function parseMetadataXml(metadataContent: string): Promise<CustomObjectMe
       enableStreamingApi: customObject.enableStreamingApi as boolean | undefined,
       externalSharingModel: customObject.externalSharingModel as CustomObjectMetadata['externalSharingModel'],
       fields,
-      fieldSets: normalizeArray(customObject.fieldSets as FieldSet | FieldSet[] | undefined),
+      fieldSets: normalizeOptionalArray(customObject.fieldSets as FieldSet | FieldSet[] | undefined),
       gender: customObject.gender as CustomObjectMetadata['gender'],
       household: customObject.household as boolean | undefined,
-      listViews: normalizeArray(customObject.listViews as ListView | ListView[] | undefined),
+      listViews: normalizeOptionalArray(customObject.listViews as ListView | ListView[] | undefined),
       nameField: customObject.nameField as CustomField | undefined,
-      recordTypes: normalizeArray(customObject.recordTypes as RecordType | RecordType[] | undefined),
+      recordTypes: normalizeOptionalArray(customObject.recordTypes as RecordType | RecordType[] | undefined),
       searchLayouts: customObject.searchLayouts as CustomObjectMetadata['searchLayouts'],
       sharingModel: customObject.sharingModel as CustomObjectMetadata['sharingModel'],
-      sharingReasons: normalizeArray(customObject.sharingReasons as SharingReason | SharingReason[] | undefined),
-      sharingRecalculations: normalizeArray(
+      sharingReasons: normalizeOptionalArray(
+        customObject.sharingReasons as SharingReason | SharingReason[] | undefined
+      ),
+      sharingRecalculations: normalizeOptionalArray(
         customObject.sharingRecalculations as SharingRecalculation | SharingRecalculation[] | undefined
       ),
       startsWith: customObject.startsWith as CustomObjectMetadata['startsWith'],
-      validationRules: normalizeArray(customObject.validationRules as ValidationRule | ValidationRule[] | undefined),
+      validationRules: normalizeOptionalArray(
+        customObject.validationRules as ValidationRule | ValidationRule[] | undefined
+      ),
       visibility: customObject.visibility as CustomObjectMetadata['visibility'],
-      webLinks: normalizeArray(customObject.webLinks as WebLink | WebLink[] | undefined),
+      webLinks: normalizeOptionalArray(customObject.webLinks as WebLink | WebLink[] | undefined),
     };
 
     return metadata;

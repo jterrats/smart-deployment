@@ -14,6 +14,7 @@
 
 import { getLogger } from '../utils/logger.js';
 import type { NodeId, DependencyGraph, CircularDependency } from '../types/dependency.js';
+import { DEFAULT_GRAPH_DEPENDENCY_KIND, shouldTraverseDependencyKind } from './dependency-semantics.js';
 
 const logger = getLogger('CircularDependencyDetector');
 
@@ -343,7 +344,7 @@ export class CircularDependencyDetector {
     const traversable: NodeId[] = [];
 
     for (const depId of dependencies) {
-      if (!this.isEdgeIgnored(nodeId, depId)) {
+      if (!this.isEdgeIgnored(nodeId, depId) && shouldTraverseDependencyKind(DEFAULT_GRAPH_DEPENDENCY_KIND)) {
         traversable.push(depId);
       }
     }

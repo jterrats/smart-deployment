@@ -15,6 +15,7 @@
 import { readFile } from 'node:fs/promises';
 import { XMLParser } from 'fast-xml-parser';
 import type { FeedLayout, LayoutMetadata, LayoutSection } from '../types/salesforce/layout.js';
+import { normalizeArray, uniqueDefinedStrings } from './parser-utils.js';
 
 /**
  * Result of parsing a Layout file
@@ -81,18 +82,6 @@ type LayoutActionAnalysis = {
 };
 
 /**
- * Normalize value to array (handles XML parser returning single object vs array)
- */
-function normalizeArray<T>(value: T | T[] | undefined): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function uniqueDefined(values: Array<string | undefined>): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
-}
-
-/**
  * Extract object name from layout filename
  * Examples:
  * 'Account-Account Layout' -> 'Account'
@@ -131,7 +120,7 @@ function analyzeLayoutSections(metadata: LayoutMetadata): LayoutSectionAnalysis 
   return {
     layoutSections: normalizeArray(metadata.layoutSections),
     relatedLists: normalizeArray(metadata.relatedLists),
-    relatedObjects: uniqueDefined(normalizeArray(metadata.relatedObjects)),
+    relatedObjects: uniqueDefinedStrings(normalizeArray(metadata.relatedObjects)),
   };
 }
 
@@ -158,7 +147,7 @@ function extractCustomButtons(metadata: LayoutMetadata): string[] {
     }
   }
 
-  return uniqueDefined([...layoutCustomButtons, ...relatedListCustomButtons, ...platformActionCustomButtons]);
+  return uniqueDefinedStrings([...layoutCustomButtons, ...relatedListCustomButtons, ...platformActionCustomButtons]);
 }
 
 function analyzeLayoutActions(metadata: LayoutMetadata): LayoutActionAnalysis {
@@ -205,7 +194,7 @@ function extractVFPagesFromFeedLayout(feedLayout?: FeedLayout): string[] {
     }
   }
 
-  return uniqueDefined(pages);
+  return uniqueDefinedStrings(pages);
 }
 
 /**
@@ -271,7 +260,7 @@ function extractFields(metadata: LayoutMetadata, layoutSections: LayoutSection[]
     }
   }
 
-  return uniqueDefined(fields);
+  return uniqueDefinedStrings(fields);
 }
 
 /**
@@ -294,7 +283,7 @@ function extractQuickActions(metadata: LayoutMetadata): string[] {
     }
   }
 
-  return uniqueDefined(quickActions);
+  return uniqueDefinedStrings(quickActions);
 }
 
 /**
@@ -315,7 +304,7 @@ function extractCanvasApps(sections: LayoutSection[]): string[] {
     }
   }
 
-  return uniqueDefined(apps);
+  return uniqueDefinedStrings(apps);
 }
 
 /**
@@ -363,7 +352,7 @@ function extractCustomLinks(metadata: LayoutMetadata, layoutSections: LayoutSect
     }
   }
 
-  return uniqueDefined(links);
+  return uniqueDefinedStrings(links);
 }
 
 function extractVFPages(metadata: LayoutMetadata, layoutSections: LayoutSection[]): string[] {
@@ -376,7 +365,7 @@ function extractVFPages(metadata: LayoutMetadata, layoutSections: LayoutSection[
     }
   }
 
-  return uniqueDefined(pages);
+  return uniqueDefinedStrings(pages);
 }
 
 function extractCanvasAppsFromFeedLayout(feedLayout?: FeedLayout): string[] {
@@ -386,7 +375,7 @@ function extractCanvasAppsFromFeedLayout(feedLayout?: FeedLayout): string[] {
 
   const components = [...normalizeArray(feedLayout.leftComponents), ...normalizeArray(feedLayout.rightComponents)];
 
-  return uniqueDefined(
+  return uniqueDefinedStrings(
     components.filter((component) => component.componentType === 'Canvas').map((component) => component.page)
   );
 }
@@ -401,7 +390,7 @@ function extractCanvasAppsWithRelatedContent(metadata: LayoutMetadata, layoutSec
     }
   }
 
-  return uniqueDefined(apps);
+  return uniqueDefinedStrings(apps);
 }
 
 function analyzeLayoutReferences(
@@ -423,7 +412,7 @@ function assembleLayoutResult(
   actionAnalysis: LayoutActionAnalysis,
   referenceAnalysis: LayoutReferenceAnalysis
 ): LayoutParseResult {
-  const relatedListNames = uniqueDefined(sectionAnalysis.relatedLists.map((list) => list.relatedList));
+  const relatedListNames = uniqueDefinedStrings(sectionAnalysis.relatedLists.map((list) => list.relatedList));
 
   return {
     name: layoutName,

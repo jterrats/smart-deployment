@@ -9,6 +9,7 @@ import type {
   LWCPropertyType,
   LWCTarget,
 } from '../types/salesforce/lwc.js';
+import { normalizeArray } from './parser-utils.js';
 
 const logger = getLogger('LWCParser');
 
@@ -307,14 +308,6 @@ type ParsedLwcSupportedFormFactor = {
   '@_type'?: string;
 };
 
-function toArray<T>(value: T | T[] | undefined): T[] {
-  if (value === undefined) {
-    return [];
-  }
-
-  return Array.isArray(value) ? value : [value];
-}
-
 function parseBoolean(value: boolean | string | undefined): boolean | undefined {
   if (typeof value === 'boolean') {
     return value;
@@ -368,15 +361,15 @@ function parseMetadataXml(metadataContent: string): LWCMetadata | undefined {
     return undefined;
   }
 
-  const targets = toArray(metadata.targets?.target);
-  const targetConfigs = toArray(metadata.targetConfigs?.targetConfig).map((targetConfig) => ({
+  const targets = normalizeArray(metadata.targets?.target);
+  const targetConfigs = normalizeArray(metadata.targetConfigs?.targetConfig).map((targetConfig) => ({
     targets: targetConfig['@_targets'] ?? '',
     configurationEditor: targetConfig.configurationEditor,
     objects:
       targetConfig.objects === undefined
         ? undefined
-        : toArray(targetConfig.objects.object).map((object) => ({ object })),
-    property: toArray(targetConfig.property)
+        : normalizeArray(targetConfig.objects.object).map((object) => ({ object })),
+    property: normalizeArray(targetConfig.property)
       .filter((property) => property['@_name'] !== undefined && property['@_type'] !== undefined)
       .map((property) => ({
         name: property['@_name']!,
@@ -394,14 +387,14 @@ function parseMetadataXml(metadataContent: string): LWCMetadata | undefined {
     supportedFormFactors:
       targetConfig.supportedFormFactors === undefined
         ? undefined
-        : toArray(targetConfig.supportedFormFactors.supportedFormFactor)
+        : normalizeArray(targetConfig.supportedFormFactors.supportedFormFactor)
             .filter((formFactor) => formFactor['@_type'] !== undefined)
             .map((formFactor) => ({
               type: formFactor['@_type']! as LWCFormFactor,
             })),
   }));
 
-  const capabilities = toArray(metadata.capabilities?.capability) as LWCCapability[];
+  const capabilities = normalizeArray(metadata.capabilities?.capability) as LWCCapability[];
 
   return {
     apiVersion: metadata.apiVersion !== undefined ? String(metadata.apiVersion) : '',
