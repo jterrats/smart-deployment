@@ -18,6 +18,30 @@ import type { Wave, WaveResult } from './wave-builder.js';
 
 const logger = getLogger('WaveSplitter');
 
+type SplitPolicy = {
+  maxComponentsPerWave: number;
+  maxCustomMetadataPerWave: number;
+  maintainDependencyOrder: boolean;
+};
+
+type WaveSplitAssessment = {
+  needsSplit: boolean;
+  reason?: string;
+  cmtCount: number;
+};
+
+type ComponentSplitPlan = {
+  orderedComponents: NodeId[];
+  cmtComponents: NodeId[];
+  nonCmtComponents: NodeId[];
+  useCmtSplit: boolean;
+};
+
+type SubWaveAssembly = {
+  subWaves: SubWave[];
+  decision?: SplitDecision;
+};
+
 /**
  * Sub-wave (split wave)
  */
@@ -134,33 +158,26 @@ export class WaveSplitter {
    */
   public splitWaves(waveResult: WaveResult, graph: DependencyGraph): SplitResult {
     const startTime = Date.now();
+    const policy = this.getSplitPolicy();
     const decisions: SplitDecision[] = [];
     const splitWaves: SubWave[] = [];
 
     for (const wave of waveResult.waves) {
-      const needsSplit = this.needsSplit(wave);
+      const assessment = this.assessWaveSplit(wave, policy);
 
-      if (!needsSplit) {
-        // No split needed, convert to sub-wave format
+      if (!assessment.needsSplit) {
         splitWaves.push(this.toSubWave(wave, 'a'));
       } else {
-        // Split the wave
-        const subWaves = this.splitWave(wave, graph);
-        splitWaves.push(...subWaves);
-
-        // Record decision
-        decisions.push({
-          waveNumber: wave.number,
-          reason: this.getSplitReason(wave),
-          originalCount: wave.components.length,
-          subWaveCount: subWaves.length,
-          componentsPerSubWave: subWaves.map((sw) => sw.components.length),
-        });
+        const assembly = this.splitWave(wave, graph, policy, assessment);
+        splitWaves.push(...assembly.subWaves);
+        if (assembly.decision) {
+          decisions.push(assembly.decision);
+        }
 
         logger.info('Split wave', {
           wave: wave.number,
           originalCount: wave.components.length,
-          subWaves: subWaves.length,
+          subWaves: assembly.subWaves.length,
         });
       }
     }
@@ -189,90 +206,123 @@ export class WaveSplitter {
     };
   }
 
-  /**
-   * Check if wave needs to be split
-   */
-  private needsSplit(wave: Wave): boolean {
-    // Check general component limit
-    if (wave.components.length > this.options.maxComponentsPerWave) {
-      return true;
-    }
-
-    // Check Custom Metadata limit
-    const cmtCount = wave.components.filter((c) => c.startsWith('CustomMetadata:')).length;
-
-    if (cmtCount > this.options.maxCustomMetadataPerWave) {
-      return true;
-    }
-
-    return false;
+  private getSplitPolicy(): SplitPolicy {
+    return {
+      maxComponentsPerWave: this.options.maxComponentsPerWave,
+      maxCustomMetadataPerWave: this.options.maxCustomMetadataPerWave,
+      maintainDependencyOrder: this.options.maintainDependencyOrder,
+    };
   }
 
-  /**
-   * Get reason for split
-   */
-  private getSplitReason(wave: Wave): string {
-    const cmtCount = wave.components.filter((c) => c.startsWith('CustomMetadata:')).length;
+  private assessWaveSplit(wave: Wave, policy: SplitPolicy): WaveSplitAssessment {
+    const cmtCount = this.countCustomMetadataComponents(wave.components);
 
-    if (cmtCount > this.options.maxCustomMetadataPerWave) {
-      return `Exceeded Custom Metadata limit (${cmtCount} > ${this.options.maxCustomMetadataPerWave})`;
+    if (cmtCount > policy.maxCustomMetadataPerWave) {
+      return {
+        needsSplit: true,
+        reason: `Exceeded Custom Metadata limit (${cmtCount} > ${policy.maxCustomMetadataPerWave})`,
+        cmtCount,
+      };
     }
 
-    return `Exceeded component limit (${wave.components.length} > ${this.options.maxComponentsPerWave})`;
+    if (wave.components.length > policy.maxComponentsPerWave) {
+      return {
+        needsSplit: true,
+        reason: `Exceeded component limit (${wave.components.length} > ${policy.maxComponentsPerWave})`,
+        cmtCount,
+      };
+    }
+
+    return {
+      needsSplit: false,
+      cmtCount,
+    };
   }
 
   /**
    * @ac US-039-AC-4: Split CMT waves at 200 records
    * @ac US-039-AC-6: Ensure no dependency violations
    */
-  private splitWave(wave: Wave, graph: DependencyGraph): SubWave[] {
-    const subWaves: SubWave[] = [];
-    const components = [...wave.components];
+  private splitWave(
+    wave: Wave,
+    graph: DependencyGraph,
+    policy: SplitPolicy,
+    assessment: WaveSplitAssessment
+  ): SubWaveAssembly {
+    const splitPlan = this.planComponentSplit(wave.components, graph, policy, assessment);
+    const subWaves = this.assembleSubWaves(wave, splitPlan, policy);
 
-    // Sort to maintain dependency order if configured
-    if (this.options.maintainDependencyOrder) {
-      this.sortByDependencyOrder(components, graph);
-    }
-
-    // Check if we need special CMT handling
-    const cmtComponents = components.filter((c) => c.startsWith('CustomMetadata:'));
-    const needsCmtSplit = cmtComponents.length > this.options.maxCustomMetadataPerWave;
-
-    if (needsCmtSplit) {
-      // Split CMT and non-CMT separately but maintain order
-      const cmtChunks = this.chunkComponents(cmtComponents, this.options.maxCustomMetadataPerWave);
-      const nonCmtComponents = components.filter((c) => !c.startsWith('CustomMetadata:'));
-
-      // Add CMT sub-waves first
-      for (const chunk of cmtChunks) {
-        const letter = this.getSubWaveLetter(subWaves.length);
-        subWaves.push(this.createSubWave(wave, chunk, letter));
-      }
-
-      // Add non-CMT components
-      if (nonCmtComponents.length > 0) {
-        const nonCmtChunks = this.chunkComponents(nonCmtComponents, this.options.maxComponentsPerWave);
-        for (const chunk of nonCmtChunks) {
-          const letter = this.getSubWaveLetter(subWaves.length);
-          subWaves.push(this.createSubWave(wave, chunk, letter));
-        }
-      }
-    } else {
-      // Simple component-based splitting
-      const chunks = this.chunkComponents(components, this.options.maxComponentsPerWave);
-
-      for (const chunk of chunks) {
-        const letter = this.getSubWaveLetter(subWaves.length);
-        subWaves.push(this.createSubWave(wave, chunk, letter));
-      }
-    }
-
-    // If no components were added, create at least one sub-wave
     if (subWaves.length === 0) {
-      subWaves.push(this.toSubWave(wave, 'a'));
+      return {
+        subWaves: [this.toSubWave(wave, 'a')],
+      };
+    }
+
+    return {
+      subWaves,
+      decision: {
+        waveNumber: wave.number,
+        reason:
+          assessment.reason ?? `Exceeded component limit (${wave.components.length} > ${policy.maxComponentsPerWave})`,
+        originalCount: wave.components.length,
+        subWaveCount: subWaves.length,
+        componentsPerSubWave: subWaves.map((subWave) => subWave.components.length),
+      },
+    };
+  }
+
+  private planComponentSplit(
+    components: NodeId[],
+    graph: DependencyGraph,
+    policy: SplitPolicy,
+    assessment: WaveSplitAssessment
+  ): ComponentSplitPlan {
+    const orderedComponents = [...components];
+    if (policy.maintainDependencyOrder) {
+      this.sortByDependencyOrder(orderedComponents, graph);
+    }
+
+    const cmtComponents = orderedComponents.filter((component) => component.startsWith('CustomMetadata:'));
+    const nonCmtComponents = orderedComponents.filter((component) => !component.startsWith('CustomMetadata:'));
+
+    return {
+      orderedComponents,
+      cmtComponents,
+      nonCmtComponents,
+      useCmtSplit: assessment.cmtCount > policy.maxCustomMetadataPerWave,
+    };
+  }
+
+  private assembleSubWaves(wave: Wave, plan: ComponentSplitPlan, policy: SplitPolicy): SubWave[] {
+    if (plan.useCmtSplit) {
+      const cmtChunks = this.chunkComponents(plan.cmtComponents, policy.maxCustomMetadataPerWave);
+      const nonCmtChunks =
+        plan.nonCmtComponents.length > 0
+          ? this.chunkComponents(plan.nonCmtComponents, policy.maxComponentsPerWave)
+          : [];
+
+      return this.createSequentialSubWaves(wave, [...cmtChunks, ...nonCmtChunks]);
+    }
+
+    return this.createSequentialSubWaves(
+      wave,
+      this.chunkComponents(plan.orderedComponents, policy.maxComponentsPerWave)
+    );
+  }
+
+  private createSequentialSubWaves(wave: Wave, chunks: NodeId[][]): SubWave[] {
+    const subWaves: SubWave[] = [];
+
+    for (const chunk of chunks) {
+      const letter = this.getSubWaveLetter(subWaves.length);
+      subWaves.push(this.createSubWave(wave, chunk, letter));
     }
 
     return subWaves;
+  }
+
+  private countCustomMetadataComponents(components: readonly NodeId[]): number {
+    return components.filter((component) => component.startsWith('CustomMetadata:')).length;
   }
 
   /**
@@ -359,29 +409,44 @@ export class WaveSplitter {
    * Validate split result (no dependency violations)
    */
   public validateSplit(result: SplitResult, graph: DependencyGraph): boolean {
-    // Check that components in sub-wave N don't depend on sub-wave N+1
     for (let i = 0; i < result.splitWaves.length - 1; i++) {
       const currentWave = result.splitWaves[i];
       const laterWaves = result.splitWaves.slice(i + 1);
       const laterComponents = new Set(laterWaves.flatMap((w) => w.components));
 
-      for (const component of currentWave.components) {
-        const deps = graph.get(component) ?? new Set();
-
-        for (const dep of deps) {
-          if (laterComponents.has(dep)) {
-            logger.error('Dependency violation detected', {
-              component,
-              dependsOn: dep,
-              currentWave: currentWave.fullWaveId,
-            });
-            return false;
-          }
-        }
+      const violation = this.findDependencyViolation(currentWave.components, laterComponents, graph);
+      if (violation) {
+        logger.error('Dependency violation detected', {
+          component: violation.component,
+          dependsOn: violation.dependsOn,
+          currentWave: currentWave.fullWaveId,
+        });
+        return false;
       }
     }
 
     return true;
+  }
+
+  private findDependencyViolation(
+    components: readonly NodeId[],
+    laterComponents: ReadonlySet<NodeId>,
+    graph: DependencyGraph
+  ): { component: NodeId; dependsOn: NodeId } | null {
+    for (const component of components) {
+      const deps = graph.get(component) ?? new Set();
+
+      for (const dep of deps) {
+        if (laterComponents.has(dep)) {
+          return {
+            component,
+            dependsOn: dep,
+          };
+        }
+      }
+    }
+
+    return null;
   }
 
   /**

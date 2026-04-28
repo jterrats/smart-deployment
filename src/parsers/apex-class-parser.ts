@@ -62,6 +62,13 @@ type ApexTestMetadata = {
   usesTestMethodKeyword: boolean;
 };
 
+type ApexReferenceDependencyExtraction = {
+  staticMethodCalls: ApexDependency[];
+  instantiations: ApexDependency[];
+  variableDeclarations: ApexDependency[];
+  dynamicInstantiations: ApexDependency[];
+};
+
 /**
  * Standard Apex classes that should be ignored
  */
@@ -109,6 +116,9 @@ const STANDARD_APEX_CLASSES = new Set([
   'CalloutException',
   'LimitException',
 ]);
+
+const TEST_ANNOTATION_PATTERN = /(?:^|\W)@isTest\b/i;
+const TEST_METHOD_PATTERN = /\btestMethod\b/i;
 
 /**
  * Remove comments from Apex code
@@ -430,11 +440,14 @@ function extractClassNameFromFilePath(filePath: string): string {
 }
 
 function createLexicalContext(filePath: string, content: string): ApexLexicalContext {
+  const className = extractClassNameFromFilePath(filePath);
+  const cleanCode = removeComments(content);
+
   return {
     filePath,
-    className: extractClassNameFromFilePath(filePath),
+    className,
     originalCode: content,
-    cleanCode: removeComments(content),
+    cleanCode,
   };
 }
 
@@ -450,10 +463,13 @@ function extractSymbols(context: ApexLexicalContext): ApexSymbolExtraction {
 }
 
 function detectTestMetadata(context: ApexLexicalContext): ApexTestMetadata {
+  const usesIsTestAnnotation = TEST_ANNOTATION_PATTERN.test(context.originalCode);
+  const usesTestMethodKeyword = TEST_METHOD_PATTERN.test(context.cleanCode);
+
   return {
-    isTestClass: /(?:^|\W)@isTest\b/i.test(context.cleanCode) || /\btestMethod\b/i.test(context.cleanCode),
-    usesIsTestAnnotation: /(?:^|\W)@isTest\b/i.test(context.originalCode),
-    usesTestMethodKeyword: /\btestMethod\b/i.test(context.cleanCode),
+    isTestClass: usesIsTestAnnotation || usesTestMethodKeyword,
+    usesIsTestAnnotation,
+    usesTestMethodKeyword,
   };
 }
 
@@ -473,13 +489,29 @@ function extractSignatureDependencies(symbols: ApexSymbolExtraction): ApexDepend
   return dependencies;
 }
 
-function extractReferenceDependencies(context: ApexLexicalContext): ApexDependency[] {
+function extractReferenceDependencies(context: ApexLexicalContext): ApexReferenceDependencyExtraction {
+  return {
+    staticMethodCalls: extractStaticMethodCalls(context.cleanCode),
+    instantiations: extractInstantiations(context.cleanCode),
+    variableDeclarations: extractVariableDeclarations(context.cleanCode),
+    dynamicInstantiations: extractDynamicInstantiations(context.cleanCode),
+  };
+}
+
+function flattenReferenceDependencies(referenceDependencies: ApexReferenceDependencyExtraction): ApexDependency[] {
   return [
-    ...extractStaticMethodCalls(context.cleanCode),
-    ...extractInstantiations(context.cleanCode),
-    ...extractVariableDeclarations(context.cleanCode),
-    ...extractDynamicInstantiations(context.cleanCode),
+    ...referenceDependencies.staticMethodCalls,
+    ...referenceDependencies.instantiations,
+    ...referenceDependencies.variableDeclarations,
+    ...referenceDependencies.dynamicInstantiations,
   ];
+}
+
+function collectDependencies(
+  symbols: ApexSymbolExtraction,
+  referenceDependencies: ApexReferenceDependencyExtraction
+): ApexDependency[] {
+  return [...extractSignatureDependencies(symbols), ...flattenReferenceDependencies(referenceDependencies)];
 }
 
 function buildParseResult(
@@ -521,13 +553,15 @@ export function parseApexClass(filePath: string, content: string): ApexParseResu
     const lexicalContext = createLexicalContext(filePath, content);
     const symbols = extractSymbols(lexicalContext);
     const testMetadata = detectTestMetadata(lexicalContext);
-    const dependencies = [...extractSignatureDependencies(symbols), ...extractReferenceDependencies(lexicalContext)];
+    const referenceDependencies = extractReferenceDependencies(lexicalContext);
+    const dependencies = collectDependencies(symbols, referenceDependencies);
     const result = buildParseResult(lexicalContext, symbols, dependencies);
 
     logger.debug(`Parsed Apex class: ${lexicalContext.className}`, {
       dependencies: dependencies.length,
       innerClasses: symbols.innerClasses.length,
       isTestClass: testMetadata.isTestClass,
+      referenceDependencies: flattenReferenceDependencies(referenceDependencies).length,
     });
 
     return result;

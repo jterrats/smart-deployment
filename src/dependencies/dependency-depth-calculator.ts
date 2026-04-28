@@ -16,6 +16,22 @@ import type { NodeId, DependencyGraph, CircularDependency } from '../types/depen
 
 const logger = getLogger('DependencyDepthCalculator');
 
+type DepthQueueEntry = {
+  nodeId: NodeId;
+  depth: number;
+  path: NodeId[];
+};
+
+type DepthMetrics = {
+  maxDepth: number;
+  averageDepth: number;
+};
+
+type TraversalState = {
+  depths: Map<NodeId, ComponentDepth>;
+  queue: DepthQueueEntry[];
+};
+
 /**
  * Depth information for a component
  */
@@ -114,7 +130,7 @@ export class DependencyDepthCalculator {
   // Private static helper methods (must come before public methods)
   /**
    * @ac US-031-AC-4: Highlight critical path components
-   * 
+   *
    * Find the critical path (longest dependency chain)
    */
   private static findCriticalPath(depths: Map<NodeId, ComponentDepth>): NodeId[] {
@@ -231,28 +247,17 @@ export class DependencyDepthCalculator {
    */
   public calculate(): DepthAnalysisResult {
     const startTime = Date.now();
-
-    // Calculate depth for each node
     const depths = this.calculateDepths();
-
-    // Find high-risk components
     const highRiskComponents = this.findHighRiskComponents(depths);
-
-    // Find critical path
     const criticalPath = DependencyDepthCalculator.findCriticalPath(depths);
-
-    // Generate distribution
     const distribution = DependencyDepthCalculator.generateDistribution(depths);
-
-    // Calculate statistics
-    const maxDepth = DependencyDepthCalculator.calculateMaxDepth(depths);
-    const averageDepth = DependencyDepthCalculator.calculateAverageDepth(depths);
+    const metrics = this.calculateDepthMetrics(depths);
 
     const duration = Date.now() - startTime;
     logger.info('Depth calculation completed', {
       totalNodes: depths.size,
-      maxDepth,
-      averageDepth: averageDepth.toFixed(2),
+      maxDepth: metrics.maxDepth,
+      averageDepth: metrics.averageDepth.toFixed(2),
       highRisk: highRiskComponents.length,
       cyclicNodes: this.cyclicNodes.size,
       durationMs: duration,
@@ -262,8 +267,8 @@ export class DependencyDepthCalculator {
       depths,
       highRiskComponents,
       criticalPath,
-      maxDepth,
-      averageDepth,
+      maxDepth: metrics.maxDepth,
+      averageDepth: metrics.averageDepth,
       distribution,
       cyclicComponents: Array.from(this.cyclicNodes),
     };
@@ -273,14 +278,13 @@ export class DependencyDepthCalculator {
    * Calculate depth for all nodes using BFS from leaf nodes
    */
   private calculateDepths(): Map<NodeId, ComponentDepth> {
-    const depths = new Map<NodeId, ComponentDepth>();
     const inDegree = this.calculateInDegree();
-    const queue = this.initializeLeafNodes(depths, inDegree);
-    
-    this.processNodesInBFS(depths, queue);
-    this.processRemainingNodes(depths);
+    const traversalState = this.initializeTraversalState(inDegree);
 
-    return depths;
+    this.processNodesInBFS(traversalState.depths, traversalState.queue);
+    this.processRemainingNodes(traversalState.depths);
+
+    return traversalState.depths;
   }
 
   /**
@@ -309,12 +313,9 @@ export class DependencyDepthCalculator {
   /**
    * Initialize leaf nodes in the queue
    */
-  private initializeLeafNodes(
-    depths: Map<NodeId, ComponentDepth>,
-    inDegree: Map<NodeId, number>
-  ): Array<{ nodeId: NodeId; depth: number; path: NodeId[] }> {
-    const queue: Array<{ nodeId: NodeId; depth: number; path: NodeId[] }> = [];
-    
+  private initializeLeafNodes(depths: Map<NodeId, ComponentDepth>, inDegree: Map<NodeId, number>): DepthQueueEntry[] {
+    const queue: DepthQueueEntry[] = [];
+
     for (const [nodeId] of inDegree.entries()) {
       const isInCycle = this.cyclicNodes.has(nodeId);
       const isLeaf = (this.graph.get(nodeId)?.size ?? 0) === 0;
@@ -348,12 +349,19 @@ export class DependencyDepthCalculator {
   }
 
   /**
+   * Initialize traversal state for BFS depth propagation.
+   */
+  private initializeTraversalState(inDegree: Map<NodeId, number>): TraversalState {
+    const depths = new Map<NodeId, ComponentDepth>();
+    const queue = this.initializeLeafNodes(depths, inDegree);
+
+    return { depths, queue };
+  }
+
+  /**
    * Process nodes in BFS order
    */
-  private processNodesInBFS(
-    depths: Map<NodeId, ComponentDepth>,
-    queue: Array<{ nodeId: NodeId; depth: number; path: NodeId[] }>
-  ): void {
+  private processNodesInBFS(depths: Map<NodeId, ComponentDepth>, queue: DepthQueueEntry[]): void {
     const processed = new Set<NodeId>();
 
     while (queue.length > 0) {
@@ -365,11 +373,8 @@ export class DependencyDepthCalculator {
 
       processed.add(nodeId);
 
-      // Find all nodes that depend on this node (reverse edges)
-      for (const [candidateId, candidateDeps] of this.graph.entries()) {
-        if (candidateDeps.has(nodeId) && !this.cyclicNodes.has(candidateId)) {
-          this.updateCandidateDepth(candidateId, path, depths, queue);
-        }
+      for (const candidateId of this.findNonCyclicDependents(nodeId)) {
+        this.updateCandidateDepth(candidateId, path, depths, queue);
       }
     }
   }
@@ -381,10 +386,10 @@ export class DependencyDepthCalculator {
     candidateId: NodeId,
     path: NodeId[],
     depths: Map<NodeId, ComponentDepth>,
-    queue: Array<{ nodeId: NodeId; depth: number; path: NodeId[] }>
+    queue: DepthQueueEntry[]
   ): void {
     const candidateDepth = this.calculateNodeDepth(candidateId, depths);
-    
+
     // Update if this is a longer path
     const existing = depths.get(candidateId);
     if (!existing || candidateDepth > existing.depth) {
@@ -404,23 +409,46 @@ export class DependencyDepthCalculator {
   }
 
   /**
+   * Find all non-cyclic nodes that directly depend on the given node.
+   */
+  private findNonCyclicDependents(nodeId: NodeId): NodeId[] {
+    const dependents: NodeId[] = [];
+
+    for (const [candidateId, candidateDeps] of this.graph.entries()) {
+      if (candidateDeps.has(nodeId) && !this.cyclicNodes.has(candidateId)) {
+        dependents.push(candidateId);
+      }
+    }
+
+    return dependents;
+  }
+
+  /**
    * Process remaining nodes not yet in depths map
    */
   private processRemainingNodes(depths: Map<NodeId, ComponentDepth>): void {
     for (const nodeId of this.graph.keys()) {
       if (!depths.has(nodeId) && !this.cyclicNodes.has(nodeId)) {
-        const nodeDepth = this.calculateNodeDepth(nodeId, depths);
-        depths.set(nodeId, {
-          nodeId,
-          depth: nodeDepth,
-          isInCycle: false,
-          isLeaf: (this.graph.get(nodeId)?.size ?? 0) === 0,
-          isHighRisk: nodeDepth > this.options.highRiskThreshold,
-          isCriticalPath: false,
-          pathToLeaf: [nodeId],
-        });
+        depths.set(nodeId, this.createRemainingNodeDepth(nodeId, depths));
       }
     }
+  }
+
+  /**
+   * Build fallback depth information for nodes not reached during BFS.
+   */
+  private createRemainingNodeDepth(nodeId: NodeId, depths: Map<NodeId, ComponentDepth>): ComponentDepth {
+    const nodeDepth = this.calculateNodeDepth(nodeId, depths);
+
+    return {
+      nodeId,
+      depth: nodeDepth,
+      isInCycle: false,
+      isLeaf: (this.graph.get(nodeId)?.size ?? 0) === 0,
+      isHighRisk: nodeDepth > this.options.highRiskThreshold,
+      isCriticalPath: false,
+      pathToLeaf: [nodeId],
+    };
   }
 
   /**
@@ -481,6 +509,16 @@ export class DependencyDepthCalculator {
   }
 
   /**
+   * Aggregate depth metrics used in the public result.
+   */
+  private calculateDepthMetrics(depths: Map<NodeId, ComponentDepth>): DepthMetrics {
+    return {
+      maxDepth: DependencyDepthCalculator.calculateMaxDepth(depths),
+      averageDepth: DependencyDepthCalculator.calculateAverageDepth(depths),
+    };
+  }
+
+  /**
    * Get depth for a specific component
    */
   public getDepth(nodeId: NodeId): ComponentDepth | undefined {
@@ -488,4 +526,3 @@ export class DependencyDepthCalculator {
     return depths.depths.get(nodeId);
   }
 }
-
