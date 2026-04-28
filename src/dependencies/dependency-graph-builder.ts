@@ -47,6 +47,29 @@ type GraphCounts = {
   dependentCounts: Map<NodeId, number>;
 };
 
+type ComponentIntake = {
+  nodeId: NodeId;
+  dependencyDetails: ExpandedDependencyDetail[];
+};
+
+type BuildAnnotations = {
+  circularDependencies: CircularDependency[];
+  isolatedComponents: NodeId[];
+};
+
+type EdgeEndpoints = {
+  from: NodeId;
+  to: NodeId;
+};
+
+type GraphMetrics = {
+  totalComponents: number;
+  totalDependencies: number;
+  maxDepth: number;
+  componentsByType: Record<string, number>;
+  counts: GraphCounts;
+};
+
 /**
  * Dependency types for tracking relationship strength
  */
@@ -131,13 +154,12 @@ export class DependencyGraphBuilder {
    * @ac US-028-AC-5: Support incremental graph building
    */
   public addComponent(component: MetadataComponent): void {
-    const nodeId = this.intakeComponentNode(component);
-    const dependencyDetails = this.expandTypedDependencies(component);
-    this.assembleComponentEdges(nodeId, dependencyDetails);
+    const intake = this.normalizeComponentIntake(component);
+    this.ingestComponentDependencies(intake);
 
     logger.debug('Added component to graph', {
-      nodeId,
-      dependencies: dependencyDetails.length,
+      nodeId: intake.nodeId,
+      dependencies: intake.dependencyDetails.length,
     });
   }
 
@@ -169,19 +191,10 @@ export class DependencyGraphBuilder {
    * @ac US-028-AC-4: Track dependency types
    */
   public addEdge(from: NodeId, to: NodeId, type: DependencyType = 'hard', reason?: string, confidence?: number): void {
-    // Add forward edge (A depends on B)
-    if (!this.graph.has(from)) {
-      this.graph.set(from, new Set());
-    }
+    this.ensureEdgeEndpoints(from, to);
     this.graph.get(from)!.add(to);
-
-    // Add reverse edge (B is depended on by A)
-    if (!this.reverseGraph.has(to)) {
-      this.reverseGraph.set(to, new Set());
-    }
     this.reverseGraph.get(to)!.add(from);
 
-    // Track edge metadata
     if (this.options.trackDependencyTypes) {
       const edgeKey = `${from}->${to}`;
       this.edges.set(edgeKey, {
@@ -269,28 +282,19 @@ export class DependencyGraphBuilder {
       this.validate();
     }
 
-    const circularDependencies = this.detectCircularDependencies();
-    const isolatedComponents = this.findIsolatedComponents();
+    const annotations = this.createBuildAnnotations();
     const stats = this.generateStats();
 
     const duration = Date.now() - startTime;
     logger.info('Dependency graph built successfully', {
       totalComponents: stats.totalComponents,
       totalDependencies: stats.totalDependencies,
-      circularDeps: circularDependencies.length,
-      isolated: isolatedComponents.length,
+      circularDeps: annotations.circularDependencies.length,
+      isolated: annotations.isolatedComponents.length,
       durationMs: duration,
     });
 
-    return {
-      components: new Map(this.components),
-      graph: new Map(this.graph),
-      reverseGraph: new Map(this.reverseGraph),
-      edges: [...this.edges.values()],
-      circularDependencies,
-      isolatedComponents,
-      stats,
-    };
+    return this.createBuildResult(stats, annotations);
   }
 
   /**
@@ -304,9 +308,51 @@ export class DependencyGraphBuilder {
     logger.debug('Graph cleared');
   }
 
+  private createBuildResult(stats: DependencyStats, annotations: BuildAnnotations): DependencyAnalysisResult {
+    return {
+      components: new Map(this.components),
+      graph: new Map(this.graph),
+      reverseGraph: new Map(this.reverseGraph),
+      edges: [...this.edges.values()],
+      circularDependencies: annotations.circularDependencies,
+      isolatedComponents: annotations.isolatedComponents,
+      stats,
+    };
+  }
+
+  /**
+   * Collect non-statistical build annotations from the graph.
+   */
+  private createBuildAnnotations(): BuildAnnotations {
+    return {
+      circularDependencies: this.detectCircularDependencies(),
+      isolatedComponents: this.findIsolatedComponents(),
+    };
+  }
+
   // Private methods
   /**
-   * Stage 1: intake and register the component node.
+   * Stage 1: normalize node identity and typed dependency details for intake.
+   */
+  private normalizeComponentIntake(component: MetadataComponent): ComponentIntake {
+    const nodeId = this.intakeComponentNode(component);
+    const dependencyDetails = this.expandTypedDependencies(component);
+
+    return {
+      nodeId,
+      dependencyDetails,
+    };
+  }
+
+  /**
+   * Stage 2 orchestration: ingest expanded dependency details for a component.
+   */
+  private ingestComponentDependencies(component: ComponentIntake): void {
+    this.assembleComponentEdges(component.nodeId, component.dependencyDetails);
+  }
+
+  /**
+   * Stage 1a: intake and register the component node.
    */
   private intakeComponentNode(component: MetadataComponent): NodeId {
     const nodeId = DependencyGraphBuilder.createNodeId(component.type, component.name);
@@ -334,8 +380,16 @@ export class DependencyGraphBuilder {
    */
   private assembleComponentEdges(nodeId: NodeId, dependencyDetails: ExpandedDependencyDetail[]): void {
     for (const dependency of dependencyDetails) {
-      this.addEdge(nodeId, dependency.nodeId, dependency.kind, dependency.reason, dependency.confidence);
+      const edge = this.createDependencyEdgeInput(nodeId, dependency);
+      this.addEdge(edge.from, edge.to, dependency.kind, dependency.reason, dependency.confidence);
     }
+  }
+
+  private createDependencyEdgeInput(nodeId: NodeId, dependency: ExpandedDependencyDetail): EdgeEndpoints {
+    return {
+      from: nodeId,
+      to: dependency.nodeId,
+    };
   }
 
   /**
@@ -420,25 +474,36 @@ export class DependencyGraphBuilder {
    * Generate graph statistics
    */
   private generateStats(): DependencyStats {
+    const metrics = this.collectGraphMetrics();
+
+    return {
+      totalComponents: metrics.totalComponents,
+      totalDependencies: metrics.totalDependencies,
+      componentsByType: metrics.componentsByType,
+      maxDepth: metrics.maxDepth,
+      mostDepended: this.findMaxCountEntry(metrics.counts.dependentCounts),
+      mostDependencies: this.findMaxCountEntry(metrics.counts.dependencyCounts),
+    };
+  }
+
+  private collectGraphMetrics(): GraphMetrics {
+    return {
+      totalComponents: this.components.size,
+      totalDependencies: this.countEdges(),
+      maxDepth: this.calculateMaxDepth(),
+      componentsByType: this.collectComponentsByType(),
+      counts: this.collectGraphCounts(),
+    };
+  }
+
+  private collectComponentsByType(): Record<string, number> {
     const componentsByType: Record<string, number> = {};
 
     for (const component of this.components.values()) {
       componentsByType[component.type] = (componentsByType[component.type] ?? 0) + 1;
     }
 
-    const counts = this.collectGraphCounts();
-    const mostDepended = this.findMaxCountEntry(counts.dependentCounts);
-    const mostDependencies = this.findMaxCountEntry(counts.dependencyCounts);
-    const maxDepth = this.calculateMaxDepth();
-
-    return {
-      totalComponents: this.components.size,
-      totalDependencies: this.countEdges(),
-      componentsByType,
-      maxDepth,
-      mostDepended,
-      mostDependencies,
-    };
+    return componentsByType;
   }
 
   /**
@@ -507,6 +572,23 @@ export class DependencyGraphBuilder {
       this.graph.set(nodeId, new Set());
     }
 
+    if (!this.reverseGraph.has(nodeId)) {
+      this.reverseGraph.set(nodeId, new Set());
+    }
+  }
+
+  private ensureEdgeEndpoints(from: NodeId, to: NodeId): void {
+    this.initializeOutgoingNode(from);
+    this.initializeIncomingNode(to);
+  }
+
+  private initializeOutgoingNode(nodeId: NodeId): void {
+    if (!this.graph.has(nodeId)) {
+      this.graph.set(nodeId, new Set());
+    }
+  }
+
+  private initializeIncomingNode(nodeId: NodeId): void {
     if (!this.reverseGraph.has(nodeId)) {
       this.reverseGraph.set(nodeId, new Set());
     }

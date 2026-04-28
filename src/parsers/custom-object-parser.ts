@@ -77,6 +77,44 @@ type CustomObjectBaseSections = {
   listViews: ListView[];
 };
 
+type ParsedCustomObjectXml = {
+  parsedRoot: Record<string, unknown>;
+  customObjectNode: Record<string, unknown>;
+};
+
+type CustomObjectFieldSections = {
+  fields?: CustomField[];
+  fieldSets?: FieldSet[];
+  nameField?: CustomField;
+};
+
+type CustomObjectRelationshipSettings = {
+  compactLayoutAssignment?: string;
+  enableEnhancedLookup?: boolean;
+  externalSharingModel?: CustomObjectMetadata['externalSharingModel'];
+  sharingModel?: CustomObjectMetadata['sharingModel'];
+  sharingReasons?: SharingReason[];
+  sharingRecalculations?: SharingRecalculation[];
+};
+
+type CustomObjectValidationAndExternalSettings = {
+  actionOverrides?: ActionOverride[];
+  customHelpPage?: string;
+  enableActivities?: boolean;
+  enableBulkApi?: boolean;
+  enableChangeDataCapture?: boolean;
+  enableFeeds?: boolean;
+  enableHistory?: boolean;
+  enableReports?: boolean;
+  enableSearch?: boolean;
+  enableSharing?: boolean;
+  enableStreamingApi?: boolean;
+  listViews?: ListView[];
+  recordTypes?: RecordType[];
+  validationRules?: ValidationRule[];
+  webLinks?: WebLink[];
+};
+
 /**
  * Extract object references from formula
  *
@@ -393,91 +431,148 @@ function buildDependencies(
   ];
 }
 
-/**
- * Parse custom object metadata XML
- */
-async function parseMetadataXml(metadataContent: string): Promise<CustomObjectMetadata> {
-  try {
-    const parsed = await parseXml(metadataContent);
-    const parsedObj = parsed as Record<string, unknown>;
-    const customObject = (parsedObj.CustomObject as Record<string, unknown>) || parsedObj;
+async function parseCustomObjectXml(metadataContent: string): Promise<ParsedCustomObjectXml> {
+  const parsed = await parseXml(metadataContent);
+  const parsedRoot = parsed as Record<string, unknown>;
+  const customObjectNode = (parsedRoot.CustomObject as Record<string, unknown>) || parsedRoot;
 
-    // Validate that we have at least label and pluralLabel
-    if (!customObject.label || !customObject.pluralLabel) {
-      logger.warn('Missing required fields in custom object metadata', {
-        hasLabel: Boolean(customObject.label),
-        hasPluralLabel: Boolean(customObject.pluralLabel),
-        parsedKeys: Object.keys(customObject),
-      });
-    }
+  return { parsedRoot, customObjectNode };
+}
 
-    // Map to CustomObjectMetadata using the robust types from src/types/salesforce/object.ts
-    let fields = normalizeOptionalArray(customObject.fields as CustomField | CustomField[] | undefined);
-
-    // Normalize referenceTo within each field (XML parser returns single string, but type expects array)
-    if (fields) {
-      fields = fields.map((field) => ({
-        ...field,
-        referenceTo: field.referenceTo
-          ? Array.isArray(field.referenceTo)
-            ? field.referenceTo
-            : [field.referenceTo]
-          : undefined,
-      }));
-    }
-
-    const metadata: CustomObjectMetadata = {
-      label: (customObject.label as string) ?? '',
-      pluralLabel: (customObject.pluralLabel as string) ?? '',
-      actionOverrides: normalizeOptionalArray(
-        customObject.actionOverrides as ActionOverride | ActionOverride[] | undefined
-      ),
-      allowInChatterGroups: customObject.allowInChatterGroups as boolean | undefined,
-      compactLayoutAssignment: customObject.compactLayoutAssignment as string | undefined,
-      customHelpPage: customObject.customHelpPage as string | undefined,
-      deploymentStatus: customObject.deploymentStatus as CustomObjectMetadata['deploymentStatus'],
-      deprecated: customObject.deprecated as boolean | undefined,
-      description: customObject.description as string | undefined,
-      enableActivities: customObject.enableActivities as boolean | undefined,
-      enableBulkApi: customObject.enableBulkApi as boolean | undefined,
-      enableChangeDataCapture: customObject.enableChangeDataCapture as boolean | undefined,
-      enableEnhancedLookup: customObject.enableEnhancedLookup as boolean | undefined,
-      enableFeeds: customObject.enableFeeds as boolean | undefined,
-      enableHistory: customObject.enableHistory as boolean | undefined,
-      enableReports: customObject.enableReports as boolean | undefined,
-      enableSearch: customObject.enableSearch as boolean | undefined,
-      enableSharing: customObject.enableSharing as boolean | undefined,
-      enableStreamingApi: customObject.enableStreamingApi as boolean | undefined,
-      externalSharingModel: customObject.externalSharingModel as CustomObjectMetadata['externalSharingModel'],
-      fields,
-      fieldSets: normalizeOptionalArray(customObject.fieldSets as FieldSet | FieldSet[] | undefined),
-      gender: customObject.gender as CustomObjectMetadata['gender'],
-      household: customObject.household as boolean | undefined,
-      listViews: normalizeOptionalArray(customObject.listViews as ListView | ListView[] | undefined),
-      nameField: customObject.nameField as CustomField | undefined,
-      recordTypes: normalizeOptionalArray(customObject.recordTypes as RecordType | RecordType[] | undefined),
-      searchLayouts: customObject.searchLayouts as CustomObjectMetadata['searchLayouts'],
-      sharingModel: customObject.sharingModel as CustomObjectMetadata['sharingModel'],
-      sharingReasons: normalizeOptionalArray(
-        customObject.sharingReasons as SharingReason | SharingReason[] | undefined
-      ),
-      sharingRecalculations: normalizeOptionalArray(
-        customObject.sharingRecalculations as SharingRecalculation | SharingRecalculation[] | undefined
-      ),
-      startsWith: customObject.startsWith as CustomObjectMetadata['startsWith'],
-      validationRules: normalizeOptionalArray(
-        customObject.validationRules as ValidationRule | ValidationRule[] | undefined
-      ),
-      visibility: customObject.visibility as CustomObjectMetadata['visibility'],
-      webLinks: normalizeOptionalArray(customObject.webLinks as WebLink | WebLink[] | undefined),
-    };
-
-    return metadata;
-  } catch (error) {
-    throw new ParsingError('Failed to parse custom object metadata XML', {
-      originalError: error instanceof Error ? error.message : String(error),
+function warnOnMissingRequiredMetadata(customObjectNode: Record<string, unknown>): void {
+  if (!customObjectNode.label || !customObjectNode.pluralLabel) {
+    logger.warn('Missing required fields in custom object metadata', {
+      hasLabel: Boolean(customObjectNode.label),
+      hasPluralLabel: Boolean(customObjectNode.pluralLabel),
+      parsedKeys: Object.keys(customObjectNode),
     });
   }
+}
+
+function normalizeReferenceTargets(referenceTo: string | string[] | undefined): string[] | undefined {
+  if (!referenceTo) {
+    return undefined;
+  }
+
+  return Array.isArray(referenceTo) ? referenceTo : [referenceTo];
+}
+
+function normalizeFieldReferences(fields?: CustomField[]): CustomField[] | undefined {
+  return fields?.map((field) => ({
+    ...field,
+    referenceTo: normalizeReferenceTargets(field.referenceTo),
+  }));
+}
+
+function extractFieldSections(customObjectNode: Record<string, unknown>): CustomObjectFieldSections {
+  return {
+    fields: normalizeFieldReferences(
+      normalizeOptionalArray(customObjectNode.fields as CustomField | CustomField[] | undefined)
+    ),
+    fieldSets: normalizeOptionalArray(customObjectNode.fieldSets as FieldSet | FieldSet[] | undefined),
+    nameField: customObjectNode.nameField as CustomField | undefined,
+  };
+}
+
+function extractRelationshipSettings(customObjectNode: Record<string, unknown>): CustomObjectRelationshipSettings {
+  return {
+    compactLayoutAssignment: customObjectNode.compactLayoutAssignment as string | undefined,
+    enableEnhancedLookup: customObjectNode.enableEnhancedLookup as boolean | undefined,
+    externalSharingModel: customObjectNode.externalSharingModel as CustomObjectMetadata['externalSharingModel'],
+    sharingModel: customObjectNode.sharingModel as CustomObjectMetadata['sharingModel'],
+    sharingReasons: normalizeOptionalArray(
+      customObjectNode.sharingReasons as SharingReason | SharingReason[] | undefined
+    ),
+    sharingRecalculations: normalizeOptionalArray(
+      customObjectNode.sharingRecalculations as SharingRecalculation | SharingRecalculation[] | undefined
+    ),
+  };
+}
+
+function extractValidationAndExternalSettings(
+  customObjectNode: Record<string, unknown>
+): CustomObjectValidationAndExternalSettings {
+  return {
+    actionOverrides: normalizeOptionalArray(
+      customObjectNode.actionOverrides as ActionOverride | ActionOverride[] | undefined
+    ),
+    customHelpPage: customObjectNode.customHelpPage as string | undefined,
+    enableActivities: customObjectNode.enableActivities as boolean | undefined,
+    enableBulkApi: customObjectNode.enableBulkApi as boolean | undefined,
+    enableChangeDataCapture: customObjectNode.enableChangeDataCapture as boolean | undefined,
+    enableFeeds: customObjectNode.enableFeeds as boolean | undefined,
+    enableHistory: customObjectNode.enableHistory as boolean | undefined,
+    enableReports: customObjectNode.enableReports as boolean | undefined,
+    enableSearch: customObjectNode.enableSearch as boolean | undefined,
+    enableSharing: customObjectNode.enableSharing as boolean | undefined,
+    enableStreamingApi: customObjectNode.enableStreamingApi as boolean | undefined,
+    listViews: normalizeOptionalArray(customObjectNode.listViews as ListView | ListView[] | undefined),
+    recordTypes: normalizeOptionalArray(customObjectNode.recordTypes as RecordType | RecordType[] | undefined),
+    validationRules: normalizeOptionalArray(
+      customObjectNode.validationRules as ValidationRule | ValidationRule[] | undefined
+    ),
+    webLinks: normalizeOptionalArray(customObjectNode.webLinks as WebLink | WebLink[] | undefined),
+  };
+}
+
+function assembleCustomObjectMetadata(
+  customObjectNode: Record<string, unknown>,
+  fieldSections: CustomObjectFieldSections,
+  relationshipSettings: CustomObjectRelationshipSettings,
+  validationAndExternalSettings: CustomObjectValidationAndExternalSettings
+): CustomObjectMetadata {
+  return {
+    label: (customObjectNode.label as string) ?? '',
+    pluralLabel: (customObjectNode.pluralLabel as string) ?? '',
+    actionOverrides: validationAndExternalSettings.actionOverrides,
+    allowInChatterGroups: customObjectNode.allowInChatterGroups as boolean | undefined,
+    compactLayoutAssignment: relationshipSettings.compactLayoutAssignment,
+    customHelpPage: validationAndExternalSettings.customHelpPage,
+    deploymentStatus: customObjectNode.deploymentStatus as CustomObjectMetadata['deploymentStatus'],
+    deprecated: customObjectNode.deprecated as boolean | undefined,
+    description: customObjectNode.description as string | undefined,
+    enableActivities: validationAndExternalSettings.enableActivities,
+    enableBulkApi: validationAndExternalSettings.enableBulkApi,
+    enableChangeDataCapture: validationAndExternalSettings.enableChangeDataCapture,
+    enableEnhancedLookup: relationshipSettings.enableEnhancedLookup,
+    enableFeeds: validationAndExternalSettings.enableFeeds,
+    enableHistory: validationAndExternalSettings.enableHistory,
+    enableReports: validationAndExternalSettings.enableReports,
+    enableSearch: validationAndExternalSettings.enableSearch,
+    enableSharing: validationAndExternalSettings.enableSharing,
+    enableStreamingApi: validationAndExternalSettings.enableStreamingApi,
+    externalSharingModel: relationshipSettings.externalSharingModel,
+    fields: fieldSections.fields,
+    fieldSets: fieldSections.fieldSets,
+    gender: customObjectNode.gender as CustomObjectMetadata['gender'],
+    household: customObjectNode.household as boolean | undefined,
+    listViews: validationAndExternalSettings.listViews,
+    nameField: fieldSections.nameField,
+    recordTypes: validationAndExternalSettings.recordTypes,
+    searchLayouts: customObjectNode.searchLayouts as CustomObjectMetadata['searchLayouts'],
+    sharingModel: relationshipSettings.sharingModel,
+    sharingReasons: relationshipSettings.sharingReasons,
+    sharingRecalculations: relationshipSettings.sharingRecalculations,
+    startsWith: customObjectNode.startsWith as CustomObjectMetadata['startsWith'],
+    validationRules: validationAndExternalSettings.validationRules,
+    visibility: customObjectNode.visibility as CustomObjectMetadata['visibility'],
+    webLinks: validationAndExternalSettings.webLinks,
+  };
+}
+
+function buildMetadataFromCustomObjectNode(customObjectNode: Record<string, unknown>): CustomObjectMetadata {
+  warnOnMissingRequiredMetadata(customObjectNode);
+
+  const fieldSections = extractFieldSections(customObjectNode);
+  const relationshipSettings = extractRelationshipSettings(customObjectNode);
+  const validationAndExternalSettings = extractValidationAndExternalSettings(customObjectNode);
+
+  return assembleCustomObjectMetadata(
+    customObjectNode,
+    fieldSections,
+    relationshipSettings,
+    validationAndExternalSettings
+  );
 }
 
 /**
@@ -507,15 +602,10 @@ export async function parseCustomObject(objectName: string, metadataContent: str
   try {
     logger.debug(`Parsing custom object: ${objectName}`);
 
-    // Parse metadata XML using Salesforce types
-    const metadata = await parseMetadataXml(metadataContent);
-
-    // Parse the raw XML for sharing rules (not part of CustomObjectMetadata)
-    const parsedRaw = await parseXml(metadataContent);
-    const customObject = ((parsedRaw as Record<string, unknown>).CustomObject as Record<string, unknown>) || parsedRaw;
-    const sharingRules = extractSharingRules(customObject);
-
+    const { customObjectNode } = await parseCustomObjectXml(metadataContent);
+    const metadata = buildMetadataFromCustomObjectNode(customObjectNode);
     const { fields, validationRules, recordTypes, listViews } = extractBaseSections(metadata);
+    const sharingRules = extractSharingRules(customObjectNode);
     const dependencies = buildDependencies(fields, validationRules, recordTypes);
 
     const result: CustomObjectParseResult = {

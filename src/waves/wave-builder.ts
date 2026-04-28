@@ -38,7 +38,12 @@ type DependencyRiskProfile = {
   inferred: number;
 };
 
-type WaveCandidateBatch = {
+type WavePriorityProfile = {
+  typeOrder: number;
+  riskProfile: DependencyRiskProfile;
+};
+
+type WaveTopologyStage = {
   orderedCandidates: NodeId[];
   chunks: NodeId[][];
 };
@@ -46,6 +51,14 @@ type WaveCandidateBatch = {
 type CircularWaveResolution = {
   remaining: NodeId[];
   fallbackWave?: Wave;
+};
+
+type WaveMetadataAssembly = {
+  componentCount: number;
+  types: MetadataType[];
+  maxDepth: number;
+  hasCircularDeps: boolean;
+  estimatedTime: number;
 };
 
 /**
@@ -210,6 +223,22 @@ function compareTypedDependencyRisk(left: DependencyRiskProfile, right: Dependen
   return 0;
 }
 
+function assembleWaveMetadata(components: NodeId[], hasCircularDeps: boolean): WaveMetadataAssembly {
+  const types = new Set<MetadataType>();
+
+  for (const component of components) {
+    types.add(extractMetadataType(component));
+  }
+
+  return {
+    componentCount: components.length,
+    types: Array.from(types),
+    maxDepth: 0,
+    hasCircularDeps,
+    estimatedTime: Math.ceil(components.length * 0.1),
+  };
+}
+
 /**
  * Wave Builder
  *
@@ -268,8 +297,8 @@ export class WaveBuilder {
     const state = this.createPlacementState(graph);
 
     while (state.processed.size < graph.size) {
-      const candidateBatch = this.planCandidateBatch(state, policy);
-      if (candidateBatch.orderedCandidates.length === 0) {
+      const topologyStage = this.planTopologyStage(state, policy);
+      if (topologyStage.orderedCandidates.length === 0) {
         const circularResolution = this.resolveCircularWave(graph, state.processed, state.nextWaveNumber, policy);
         state.unplacedComponents.push(...circularResolution.remaining);
         if (circularResolution.fallbackWave) {
@@ -278,13 +307,13 @@ export class WaveBuilder {
         break;
       }
 
-      for (const chunk of candidateBatch.chunks) {
+      for (const chunk of topologyStage.chunks) {
         state.waves.push(this.createWave(chunk, state.nextWaveNumber, false));
         state.nextWaveNumber += 1;
         this.markProcessed(state.processed, chunk);
       }
 
-      this.updateInDegreeForPlacedCandidates(graph, state.inDegree, state.processed, candidateBatch.orderedCandidates);
+      this.updateInDegreeForPlacedCandidates(graph, state.inDegree, state.processed, topologyStage.orderedCandidates);
     }
 
     const stats = this.calculateStats(state.waves);
@@ -340,10 +369,10 @@ export class WaveBuilder {
     return candidates;
   }
 
-  private planCandidateBatch(
+  private planTopologyStage(
     state: Pick<WavePlacementState, 'inDegree' | 'processed'>,
     policy: WavePlacementPolicy
-  ): WaveCandidateBatch {
+  ): WaveTopologyStage {
     const orderedCandidates = this.selectWaveCandidates(state.inDegree, state.processed, policy);
     return {
       orderedCandidates,
@@ -363,7 +392,7 @@ export class WaveBuilder {
     return {
       number: waveNumber,
       components,
-      metadata: this.generateWaveMetadata(components, hasCircularDeps),
+      metadata: this.assembleWaveMetadata(components, hasCircularDeps),
     };
   }
 
@@ -424,20 +453,27 @@ export class WaveBuilder {
   }
 
   private compareWavePriority(a: NodeId, b: NodeId): number {
-    const typeOrderComparison =
-      getMetadataTypeDeploymentOrder(extractMetadataType(a)) - getMetadataTypeDeploymentOrder(extractMetadataType(b));
+    const priorityA = this.createWavePriorityProfile(a);
+    const priorityB = this.createWavePriorityProfile(b);
+    const typeOrderComparison = priorityA.typeOrder - priorityB.typeOrder;
     if (typeOrderComparison !== 0) {
       return typeOrderComparison;
     }
 
-    const riskA = this.getDependencyRiskProfile(a);
-    const riskB = this.getDependencyRiskProfile(b);
-    const riskComparison = compareTypedDependencyRisk(riskA, riskB);
+    const riskComparison = compareTypedDependencyRisk(priorityA.riskProfile, priorityB.riskProfile);
     if (riskComparison !== 0) {
       return riskComparison;
     }
 
     return a.localeCompare(b);
+  }
+
+  private createWavePriorityProfile(nodeId: NodeId): WavePriorityProfile {
+    const metadataType = extractMetadataType(nodeId);
+    return {
+      typeOrder: getMetadataTypeDeploymentOrder(metadataType),
+      riskProfile: this.getDependencyRiskProfile(nodeId),
+    };
   }
 
   private getDependencyRiskProfile(nodeId: NodeId): DependencyRiskProfile {
@@ -456,25 +492,14 @@ export class WaveBuilder {
     );
   }
 
-  /**
-   * @ac US-038-AC-6: Generate wave metadata
-   */
-  private generateWaveMetadata(components: NodeId[], hasCircularDeps: boolean): WaveMetadata {
-    const types = new Set<MetadataType>();
-    const maxDepth = 0;
-
-    for (const component of components) {
-      types.add(extractMetadataType(component));
-    }
-
-    const estimatedTime = Math.ceil(components.length * 0.1);
-
+  private assembleWaveMetadata(components: NodeId[], hasCircularDeps: boolean): WaveMetadata {
+    const assembly = assembleWaveMetadata(components, hasCircularDeps);
     return {
-      componentCount: components.length,
-      types: Array.from(types),
-      maxDepth,
-      hasCircularDeps,
-      estimatedTime,
+      componentCount: assembly.componentCount,
+      types: assembly.types,
+      maxDepth: assembly.maxDepth,
+      hasCircularDeps: assembly.hasCircularDeps,
+      estimatedTime: assembly.estimatedTime,
     };
   }
 

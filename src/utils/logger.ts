@@ -61,6 +61,17 @@ export type LoggerConfig = {
   maxLogFiles: number;
 };
 
+type LoggerErrorDetails = {
+  name: string;
+  message: string;
+  stack?: string;
+};
+
+type NormalizedLogContext = {
+  context?: Record<string, unknown>;
+  error?: LoggerErrorDetails;
+};
+
 /**
  * Default logger configuration
  */
@@ -119,17 +130,8 @@ export class Logger {
    * Private constructor - use getInstance() instead
    */
   private constructor(config: Partial<LoggerConfig> & { component: string }) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
-
-    if (this.config.logToFile && !this.config.logDirectory) {
-      this.config.logDirectory = path.join(os.homedir(), '.sf', 'smart-deployment', 'logs');
-    }
-
-    if (this.config.logToFile && this.config.logDirectory) {
-      const sanitizedComponent = this.config.component.replaceAll(/[^\w-]/g, '_').toLowerCase();
-      const date = new Date().toISOString().split('T')[0];
-      this.logFilePath = path.join(this.config.logDirectory, `${sanitizedComponent}-${date}.log`);
-    }
+    this.config = this.createConfig(config);
+    this.logFilePath = this.resolveLogFilePath(this.config);
   }
 
   /**
@@ -201,6 +203,7 @@ export class Logger {
    */
   public configure(config: Partial<Omit<LoggerConfig, 'component'>>): void {
     this.config = { ...this.config, ...config };
+    this.logFilePath = this.resolveLogFilePath(this.config);
   }
 
   /**
@@ -221,48 +224,72 @@ export class Logger {
    * Core logging method
    */
   private log(level: LogLevel, message: string, context?: Record<string, unknown>): void {
-    // Check if level is enabled
     if (LOG_LEVEL_VALUES[level] < LOG_LEVEL_VALUES[this.config.level]) {
       return;
     }
 
-    const entry: LogEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      component: this.config.component,
-      message,
-    };
+    const entry = this.createLogEntry(level, message, context);
 
-    // Add context if provided
-    if (context) {
-      // Extract error if present
-      if (context.error instanceof Error) {
-        entry.error = {
-          name: context.error.name,
-          message: context.error.message,
-          stack: context.error.stack,
-        };
-
-        // Remove error from context to avoid duplication
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { error: _, ...restContext } = context;
-        if (Object.keys(restContext).length > 0) {
-          entry.context = restContext;
-        }
-      } else {
-        entry.context = context;
-      }
-    }
-
-    // Log to console
     if (this.config.logToConsole) {
       this.logToConsoleOutput(entry);
     }
 
-    // Log to file (async, non-blocking)
     if (this.config.logToFile && this.logFilePath) {
       void this.logToFileAsync(entry);
     }
+  }
+
+  private createConfig(config: Partial<LoggerConfig> & { component: string }): LoggerConfig {
+    const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+
+    if (mergedConfig.logToFile && !mergedConfig.logDirectory) {
+      mergedConfig.logDirectory = path.join(os.homedir(), '.sf', 'smart-deployment', 'logs');
+    }
+
+    return mergedConfig;
+  }
+
+  private resolveLogFilePath(config: LoggerConfig): string | undefined {
+    if (!config.logToFile || !config.logDirectory) {
+      return undefined;
+    }
+
+    const sanitizedComponent = config.component.replaceAll(/[^\w-]/g, '_').toLowerCase();
+    const date = new Date().toISOString().split('T')[0];
+    return path.join(config.logDirectory, `${sanitizedComponent}-${date}.log`);
+  }
+
+  private createLogEntry(level: LogLevel, message: string, context?: Record<string, unknown>): LogEntry {
+    const normalizedContext = this.normalizeLogContext(context);
+
+    return {
+      timestamp: new Date().toISOString(),
+      level,
+      component: this.config.component,
+      message,
+      context: normalizedContext.context,
+      error: normalizedContext.error,
+    };
+  }
+
+  private normalizeLogContext(context?: Record<string, unknown>): NormalizedLogContext {
+    if (!context) {
+      return {};
+    }
+
+    if (!(context.error instanceof Error)) {
+      return { context };
+    }
+
+    const { error, ...restContext } = context;
+    return {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      },
+      context: Object.keys(restContext).length > 0 ? restContext : undefined,
+    };
   }
 
   /**
@@ -293,26 +320,25 @@ export class Logger {
    * Log to file asynchronously (queued to prevent race conditions)
    */
   private async logToFileAsync(entry: LogEntry): Promise<void> {
-    // Queue writes to prevent concurrent file access
     this.writeQueue = this.writeQueue.then(async () => {
       try {
-        if (!this.logFilePath) return;
-
-        // Create log directory if it doesn't exist
-        await fs.mkdir(path.dirname(this.logFilePath), { recursive: true });
-
-        // Check if rotation is needed
-        await this.rotateIfNeeded();
-
-        // Format and write log entry
-        const formatted = this.formatEntry(entry);
-        await fs.appendFile(this.logFilePath, `${formatted}\n`, 'utf-8');
+        await this.writeLogEntry(entry);
       } catch {
         // Silently ignore file write errors (don't block application)
       }
     });
 
     await this.writeQueue;
+  }
+
+  private async writeLogEntry(entry: LogEntry): Promise<void> {
+    if (!this.logFilePath) {
+      return;
+    }
+
+    await fs.mkdir(path.dirname(this.logFilePath), { recursive: true });
+    await this.rotateIfNeeded();
+    await fs.appendFile(this.logFilePath, `${this.formatEntry(entry)}\n`, 'utf-8');
   }
 
   /**
@@ -340,40 +366,53 @@ export class Logger {
     if (!this.logFilePath) return;
 
     try {
-      // Find existing rotated files
       const dir = path.dirname(this.logFilePath);
       const baseFileName = path.basename(this.logFilePath, '.log');
-      const files = await fs.readdir(dir);
+      const rotatedFiles = await this.findRotatedFiles(dir, baseFileName);
 
-      const rotatedFiles = files
-        .filter((file) => file.startsWith(`${baseFileName}.`) && file.endsWith('.log'))
-        .map((file) => {
-          const match = /\.(\d+)\.log$/.exec(file);
-          return {
-            file,
-            index: match ? Number.parseInt(match[1], 10) : 0,
-          };
-        })
-        .sort((a, b) => b.index - a.index);
-
-      // Delete oldest files if we have too many
-      const filesToDelete = rotatedFiles.slice(this.config.maxLogFiles - 1);
-      await Promise.all(filesToDelete.map((f) => fs.unlink(path.join(dir, f.file))));
-
-      // Rotate existing files in parallel
-      await Promise.all(
-        rotatedFiles.slice(0, this.config.maxLogFiles - 1).map(({ file, index }) => {
-          const oldPath = path.join(dir, file);
-          const newPath = path.join(dir, `${baseFileName}.${index + 1}.log`);
-          return fs.rename(oldPath, newPath);
-        })
-      );
-
-      // Rotate current file to .1.log
+      await this.deleteOverflowRotations(dir, rotatedFiles);
+      await this.bumpRotationIndexes(dir, baseFileName, rotatedFiles);
       await fs.rename(this.logFilePath, `${this.logFilePath.replace(/\.log$/, '')}.1.log`);
     } catch {
       // Rotation failed - continue with current file
     }
+  }
+
+  private async findRotatedFiles(dir: string, baseFileName: string): Promise<Array<{ file: string; index: number }>> {
+    const files = await fs.readdir(dir);
+
+    return files
+      .filter((file) => file.startsWith(`${baseFileName}.`) && file.endsWith('.log'))
+      .map((file) => {
+        const match = /\.(\d+)\.log$/.exec(file);
+        return {
+          file,
+          index: match ? Number.parseInt(match[1], 10) : 0,
+        };
+      })
+      .sort((a, b) => b.index - a.index);
+  }
+
+  private async deleteOverflowRotations(
+    dir: string,
+    rotatedFiles: Array<{ file: string; index: number }>
+  ): Promise<void> {
+    const filesToDelete = rotatedFiles.slice(this.config.maxLogFiles - 1);
+    await Promise.all(filesToDelete.map((file) => fs.unlink(path.join(dir, file.file))));
+  }
+
+  private async bumpRotationIndexes(
+    dir: string,
+    baseFileName: string,
+    rotatedFiles: Array<{ file: string; index: number }>
+  ): Promise<void> {
+    await Promise.all(
+      rotatedFiles.slice(0, this.config.maxLogFiles - 1).map(({ file, index }) => {
+        const oldPath = path.join(dir, file);
+        const newPath = path.join(dir, `${baseFileName}.${index + 1}.log`);
+        return fs.rename(oldPath, newPath);
+      })
+    );
   }
 
   /**
