@@ -42,6 +42,22 @@ type SubWaveAssembly = {
   decision?: SplitDecision;
 };
 
+type SplitValidationState = {
+  currentWave: SubWave;
+  laterComponents: ReadonlySet<NodeId>;
+};
+
+type SplitValidationViolation = {
+  component: NodeId;
+  dependsOn: NodeId;
+  currentWaveId: string;
+};
+
+type SplitReportContent = {
+  statistics: string[];
+  decisions: string[];
+};
+
 /**
  * Sub-wave (split wave)
  */
@@ -182,13 +198,7 @@ export class WaveSplitter {
       }
     }
 
-    // Calculate statistics
-    const stats: SplitStats = {
-      originalWaveCount: waveResult.waves.length,
-      finalWaveCount: splitWaves.length,
-      splitWaveCount: decisions.length,
-      totalComponents: waveResult.totalComponents,
-    };
+    const stats = this.buildSplitStats(waveResult, splitWaves, decisions);
 
     const duration = Date.now() - startTime;
     logger.info('Wave splitting completed', {
@@ -311,14 +321,7 @@ export class WaveSplitter {
   }
 
   private createSequentialSubWaves(wave: Wave, chunks: NodeId[][]): SubWave[] {
-    const subWaves: SubWave[] = [];
-
-    for (const chunk of chunks) {
-      const letter = this.getSubWaveLetter(subWaves.length);
-      subWaves.push(this.createSubWave(wave, chunk, letter));
-    }
-
-    return subWaves;
+    return chunks.map((chunk, index) => this.createSubWave(wave, chunk, this.getSubWaveLetter(index)));
   }
 
   private countCustomMetadataComponents(components: readonly NodeId[]): number {
@@ -409,20 +412,17 @@ export class WaveSplitter {
    * Validate split result (no dependency violations)
    */
   public validateSplit(result: SplitResult, graph: DependencyGraph): boolean {
-    for (let i = 0; i < result.splitWaves.length - 1; i++) {
-      const currentWave = result.splitWaves[i];
-      const laterWaves = result.splitWaves.slice(i + 1);
-      const laterComponents = new Set(laterWaves.flatMap((w) => w.components));
-
-      const violation = this.findDependencyViolation(currentWave.components, laterComponents, graph);
-      if (violation) {
-        logger.error('Dependency violation detected', {
-          component: violation.component,
-          dependsOn: violation.dependsOn,
-          currentWave: currentWave.fullWaveId,
-        });
-        return false;
+    for (const state of this.buildValidationStates(result.splitWaves)) {
+      const violation = this.findDependencyViolation(state.currentWave.components, state.laterComponents, graph);
+      if (!violation) {
+        continue;
       }
+
+      this.logDependencyViolation({
+        ...violation,
+        currentWaveId: state.currentWave.fullWaveId,
+      });
+      return false;
     }
 
     return true;
@@ -454,28 +454,14 @@ export class WaveSplitter {
    */
   public generateReport(result: SplitResult): string {
     const lines: string[] = [];
+    const content = this.buildReportContent(result);
 
     lines.push('# Wave Split Report');
     lines.push('');
-    lines.push('## Statistics');
-    lines.push(`- Original Waves: ${result.stats.originalWaveCount}`);
-    lines.push(`- Final Waves: ${result.stats.finalWaveCount}`);
-    lines.push(`- Waves Split: ${result.stats.splitWaveCount}`);
-    lines.push(`- Total Components: ${result.stats.totalComponents}`);
-    lines.push('');
+    lines.push(...content.statistics);
 
     if (result.decisions.length > 0) {
-      lines.push('## Split Decisions');
-      lines.push('');
-
-      for (const decision of result.decisions) {
-        lines.push(`### Wave ${decision.waveNumber}`);
-        lines.push(`- Reason: ${decision.reason}`);
-        lines.push(`- Original Count: ${decision.originalCount}`);
-        lines.push(`- Split Into: ${decision.subWaveCount} sub-waves`);
-        lines.push(`- Distribution: ${decision.componentsPerSubWave.join(', ')}`);
-        lines.push('');
-      }
+      lines.push(...content.decisions);
     } else {
       lines.push('## No Splits Required');
       lines.push('All waves are within limits.');
@@ -483,5 +469,68 @@ export class WaveSplitter {
     }
 
     return lines.join('\n');
+  }
+
+  private buildSplitStats(
+    waveResult: WaveResult,
+    splitWaves: readonly SubWave[],
+    decisions: readonly SplitDecision[]
+  ): SplitStats {
+    return {
+      originalWaveCount: waveResult.waves.length,
+      finalWaveCount: splitWaves.length,
+      splitWaveCount: decisions.length,
+      totalComponents: waveResult.totalComponents,
+    };
+  }
+
+  private buildValidationStates(splitWaves: readonly SubWave[]): SplitValidationState[] {
+    const states: SplitValidationState[] = [];
+
+    for (let i = 0; i < splitWaves.length - 1; i++) {
+      states.push({
+        currentWave: splitWaves[i],
+        laterComponents: new Set(splitWaves.slice(i + 1).flatMap((wave) => wave.components)),
+      });
+    }
+
+    return states;
+  }
+
+  private logDependencyViolation(violation: SplitValidationViolation): void {
+    logger.error('Dependency violation detected', {
+      component: violation.component,
+      dependsOn: violation.dependsOn,
+      currentWave: violation.currentWaveId,
+    });
+  }
+
+  private buildReportContent(result: SplitResult): SplitReportContent {
+    return {
+      statistics: [
+        '## Statistics',
+        `- Original Waves: ${result.stats.originalWaveCount}`,
+        `- Final Waves: ${result.stats.finalWaveCount}`,
+        `- Waves Split: ${result.stats.splitWaveCount}`,
+        `- Total Components: ${result.stats.totalComponents}`,
+        '',
+      ],
+      decisions: this.buildDecisionReportLines(result.decisions),
+    };
+  }
+
+  private buildDecisionReportLines(decisions: readonly SplitDecision[]): string[] {
+    const lines = ['## Split Decisions', ''];
+
+    for (const decision of decisions) {
+      lines.push(`### Wave ${decision.waveNumber}`);
+      lines.push(`- Reason: ${decision.reason}`);
+      lines.push(`- Original Count: ${decision.originalCount}`);
+      lines.push(`- Split Into: ${decision.subWaveCount} sub-waves`);
+      lines.push(`- Distribution: ${decision.componentsPerSubWave.join(', ')}`);
+      lines.push('');
+    }
+
+    return lines;
   }
 }

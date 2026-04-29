@@ -1,5 +1,9 @@
 import { getLogger } from '../utils/logger.js';
-import { summarizeDeploymentState } from './deployment-state-summary.js';
+import {
+  type CycleRemediationStatusSummary,
+  formatDeploymentStatus,
+  summarizeDeploymentState,
+} from './deployment-state-summary.js';
 import { StateManager } from './state-manager.js';
 
 const logger = getLogger('DeploymentStatusService');
@@ -18,6 +22,7 @@ export type DeploymentStatusSummary = {
   resumable: boolean;
   testStatus: 'unknown' | 'pending' | 'not-run';
   testStatusText: string;
+  cycleRemediation?: CycleRemediationStatusSummary;
   timestamp?: string;
   stateFilePath: string;
 };
@@ -75,6 +80,7 @@ export class DeploymentStatusService {
       resumable: summary.canResume,
       testStatus: this.normalizeTestStatus(summary.testStatus),
       testStatusText: summary.testStatus,
+      cycleRemediation: summary.cycleRemediation,
       timestamp: summary.lastUpdated,
       stateFilePath: this.stateManager.getStateFilePath(),
     };
@@ -118,27 +124,22 @@ export class DeploymentStatusService {
       return ['No deployment state found.', `Expected state file: ${summary.stateFilePath}`].join('\n');
     }
 
-    const lines = [
-      `Status: ${summary.status}`,
-      `Deployment ID: ${summary.deploymentId ?? 'unknown'}`,
-      `Target Org: ${summary.targetOrg ?? 'unknown'}`,
-      `Current Wave: ${summary.currentWave}/${summary.totalWaves}`,
-      `Completed Waves: ${summary.completedWaves.length > 0 ? summary.completedWaves.join(', ') : 'none'}`,
-      `Remaining Waves: ${summary.remainingWaves.length > 0 ? summary.remainingWaves.join(', ') : 'none'}`,
-      `Estimated Time Remaining: ${summary.timestamp !== undefined ? this.estimateTimeRemaining(summary) : 'unknown'}`,
-      `Test Status: ${summary.testStatus}`,
-      `Updated: ${summary.timestamp ?? 'unknown'}`,
-    ];
-
-    if (summary.failedWaveNumber !== undefined) {
-      lines.push(`Failed Wave: ${summary.failedWaveNumber}`);
-    }
-
-    if (summary.failedWaveError) {
-      lines.push(`Failure: ${summary.failedWaveError}`);
-    }
-
-    return lines.join('\n');
+    return formatDeploymentStatus({
+      deploymentId: summary.deploymentId ?? 'unknown',
+      targetOrg: summary.targetOrg ?? 'unknown',
+      status: this.toDisplayStatus(summary.status),
+      currentWave: summary.currentWave,
+      totalWaves: summary.totalWaves,
+      completedWaves: summary.completedWaves,
+      remainingWaves: summary.remainingWaves.length,
+      canResume: summary.resumable,
+      etaSeconds: this.estimateTimeRemainingSeconds(summary),
+      testStatus: summary.testStatusText,
+      lastUpdated: summary.timestamp ?? 'unknown',
+      failedWaveNumber: summary.failedWaveNumber,
+      failureReason: summary.failedWaveError,
+      cycleRemediation: summary.cycleRemediation,
+    }).join('\n');
   }
 
   private expandRemainingWaves(currentWave: number, remainingCount: number, totalWaves: number): number[] {
@@ -178,16 +179,27 @@ export class DeploymentStatusService {
     return 'pending';
   }
 
-  private estimateTimeRemaining(summary: DeploymentStatusSummary): string {
+  private toDisplayStatus(
+    status: DeploymentStatusSummary['status']
+  ): 'Not Started' | 'In Progress' | 'Failed' | 'Completed' {
+    switch (status) {
+      case 'not-started':
+        return 'Not Started';
+      case 'in-progress':
+        return 'In Progress';
+      case 'failed':
+        return 'Failed';
+      default:
+        return 'Completed';
+    }
+  }
+
+  private estimateTimeRemainingSeconds(summary: DeploymentStatusSummary): number {
     const remainingCount = summary.remainingWaves.length;
     if (remainingCount === 0) {
-      return '0s';
+      return 0;
     }
 
-    if (summary.failedWaveNumber !== undefined) {
-      return `${remainingCount * 60}s`;
-    }
-
-    return `${remainingCount * 60}s`;
+    return remainingCount * 60;
   }
 }

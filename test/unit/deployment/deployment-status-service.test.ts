@@ -98,15 +98,24 @@ describe('DeploymentStatusService', () => {
       metadata: {
         skipTests: true,
       },
+      cycleRemediation: {
+        cycleId: 'ApexClass:Alpha|ApexClass:Beta',
+        strategy: 'comment-reference',
+        activePhase: 2,
+        startedAt: '2026-04-20T00:00:05.000Z',
+        completedPhases: [1],
+        editRecords: [],
+      },
     });
 
     const summary = await service.getStatus();
     const formatted = service.formatStatus(summary);
 
-    expect(formatted).to.include('Status: failed');
+    expect(formatted).to.include('Status: Failed');
     expect(formatted).to.include('Current Wave: 2/2');
-    expect(formatted).to.include('Failed Wave: 2');
-    expect(formatted).to.include('FIELD_INTEGRITY_EXCEPTION');
-    expect(formatted).to.include('Test Status: not-run');
+    expect(formatted).to.include('Failure: Wave 2 - FIELD_INTEGRITY_EXCEPTION');
+    expect(formatted).to.include('Cycle Remediation: Phase 2 of 2');
+    expect(formatted).to.include('Remediation Strategy: comment-reference');
+    expect(formatted).to.include('Test Status: No tests run');
   });
 });

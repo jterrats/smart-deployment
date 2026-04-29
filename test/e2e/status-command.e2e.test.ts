@@ -65,7 +65,8 @@ describe('E2E: Status Command - US-067', () => {
 
     expect(summary.status).to.equal('failed');
     expect(summary.resumable).to.equal(true);
-    expect(formatted).to.include('Remaining Waves: 4, 5');
+    expect(formatted).to.include('Remaining Waves: 2');
+    expect(formatted).to.include('Failure: Wave 4 - FIELD_INTEGRITY_EXCEPTION');
   });
 
   it('shows no deployment state when none exists', async () => {

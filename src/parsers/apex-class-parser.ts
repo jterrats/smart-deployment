@@ -49,6 +49,8 @@ type ApexLexicalContext = {
   cleanCode: string;
 };
 
+type ApexLexicalPreparation = Pick<ApexLexicalContext, 'originalCode' | 'cleanCode'>;
+
 type ApexSymbolExtraction = {
   namespace?: string;
   extendsClass?: string;
@@ -67,6 +69,11 @@ type ApexReferenceDependencyExtraction = {
   instantiations: ApexDependency[];
   variableDeclarations: ApexDependency[];
   dynamicInstantiations: ApexDependency[];
+};
+
+type ApexDependencyBuckets = {
+  signatureDependencies: ApexDependency[];
+  referenceDependencies: ApexReferenceDependencyExtraction;
 };
 
 /**
@@ -439,15 +446,21 @@ function extractClassNameFromFilePath(filePath: string): string {
   return classNameMatch[1];
 }
 
+function prepareLexicalSource(content: string): ApexLexicalPreparation {
+  return {
+    originalCode: content,
+    cleanCode: removeComments(content),
+  };
+}
+
 function createLexicalContext(filePath: string, content: string): ApexLexicalContext {
   const className = extractClassNameFromFilePath(filePath);
-  const cleanCode = removeComments(content);
+  const lexicalPreparation = prepareLexicalSource(content);
 
   return {
     filePath,
     className,
-    originalCode: content,
-    cleanCode,
+    ...lexicalPreparation,
   };
 }
 
@@ -463,8 +476,15 @@ function extractSymbols(context: ApexLexicalContext): ApexSymbolExtraction {
 }
 
 function detectTestMetadata(context: ApexLexicalContext): ApexTestMetadata {
-  const usesIsTestAnnotation = TEST_ANNOTATION_PATTERN.test(context.originalCode);
-  const usesTestMethodKeyword = TEST_METHOD_PATTERN.test(context.cleanCode);
+  return detectTestMetadataFromPreparation({
+    originalCode: context.originalCode,
+    cleanCode: context.cleanCode,
+  });
+}
+
+function detectTestMetadataFromPreparation(preparation: ApexLexicalPreparation): ApexTestMetadata {
+  const usesIsTestAnnotation = TEST_ANNOTATION_PATTERN.test(preparation.originalCode);
+  const usesTestMethodKeyword = TEST_METHOD_PATTERN.test(preparation.cleanCode);
 
   return {
     isTestClass: usesIsTestAnnotation || usesTestMethodKeyword,
@@ -507,11 +527,18 @@ function flattenReferenceDependencies(referenceDependencies: ApexReferenceDepend
   ];
 }
 
-function collectDependencies(
-  symbols: ApexSymbolExtraction,
-  referenceDependencies: ApexReferenceDependencyExtraction
-): ApexDependency[] {
-  return [...extractSignatureDependencies(symbols), ...flattenReferenceDependencies(referenceDependencies)];
+function collectDependencyBuckets(context: ApexLexicalContext, symbols: ApexSymbolExtraction): ApexDependencyBuckets {
+  return {
+    signatureDependencies: extractSignatureDependencies(symbols),
+    referenceDependencies: extractReferenceDependencies(context),
+  };
+}
+
+function collectDependencies(dependencyBuckets: ApexDependencyBuckets): ApexDependency[] {
+  return [
+    ...dependencyBuckets.signatureDependencies,
+    ...flattenReferenceDependencies(dependencyBuckets.referenceDependencies),
+  ];
 }
 
 function buildParseResult(
@@ -553,15 +580,15 @@ export function parseApexClass(filePath: string, content: string): ApexParseResu
     const lexicalContext = createLexicalContext(filePath, content);
     const symbols = extractSymbols(lexicalContext);
     const testMetadata = detectTestMetadata(lexicalContext);
-    const referenceDependencies = extractReferenceDependencies(lexicalContext);
-    const dependencies = collectDependencies(symbols, referenceDependencies);
+    const dependencyBuckets = collectDependencyBuckets(lexicalContext, symbols);
+    const dependencies = collectDependencies(dependencyBuckets);
     const result = buildParseResult(lexicalContext, symbols, dependencies);
 
     logger.debug(`Parsed Apex class: ${lexicalContext.className}`, {
       dependencies: dependencies.length,
       innerClasses: symbols.innerClasses.length,
       isTestClass: testMetadata.isTestClass,
-      referenceDependencies: flattenReferenceDependencies(referenceDependencies).length,
+      referenceDependencies: flattenReferenceDependencies(dependencyBuckets.referenceDependencies).length,
     });
 
     return result;

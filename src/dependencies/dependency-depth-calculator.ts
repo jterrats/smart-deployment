@@ -32,6 +32,18 @@ type TraversalState = {
   queue: DepthQueueEntry[];
 };
 
+type DepthSummary = {
+  highRiskComponents: ComponentDepth[];
+  criticalPath: NodeId[];
+  distribution: DepthDistribution[];
+  metrics: DepthMetrics;
+};
+
+type RemainingDepthState = {
+  nodeId: NodeId;
+  nodeDepth: number;
+};
+
 /**
  * Depth information for a component
  */
@@ -248,29 +260,38 @@ export class DependencyDepthCalculator {
   public calculate(): DepthAnalysisResult {
     const startTime = Date.now();
     const depths = this.calculateDepths();
-    const highRiskComponents = this.findHighRiskComponents(depths);
-    const criticalPath = DependencyDepthCalculator.findCriticalPath(depths);
-    const distribution = DependencyDepthCalculator.generateDistribution(depths);
-    const metrics = this.calculateDepthMetrics(depths);
+    const summary = this.summarizeDepths(depths);
 
     const duration = Date.now() - startTime;
     logger.info('Depth calculation completed', {
       totalNodes: depths.size,
-      maxDepth: metrics.maxDepth,
-      averageDepth: metrics.averageDepth.toFixed(2),
-      highRisk: highRiskComponents.length,
+      maxDepth: summary.metrics.maxDepth,
+      averageDepth: summary.metrics.averageDepth.toFixed(2),
+      highRisk: summary.highRiskComponents.length,
       cyclicNodes: this.cyclicNodes.size,
       durationMs: duration,
     });
 
     return {
       depths,
-      highRiskComponents,
-      criticalPath,
-      maxDepth: metrics.maxDepth,
-      averageDepth: metrics.averageDepth,
-      distribution,
+      highRiskComponents: summary.highRiskComponents,
+      criticalPath: summary.criticalPath,
+      maxDepth: summary.metrics.maxDepth,
+      averageDepth: summary.metrics.averageDepth,
+      distribution: summary.distribution,
       cyclicComponents: Array.from(this.cyclicNodes),
+    };
+  }
+
+  /**
+   * Summarize calculated depths into the public analysis shape.
+   */
+  private summarizeDepths(depths: Map<NodeId, ComponentDepth>): DepthSummary {
+    return {
+      highRiskComponents: this.findHighRiskComponents(depths),
+      criticalPath: DependencyDepthCalculator.findCriticalPath(depths),
+      distribution: DependencyDepthCalculator.generateDistribution(depths),
+      metrics: this.calculateDepthMetrics(depths),
     };
   }
 
@@ -373,9 +394,21 @@ export class DependencyDepthCalculator {
 
       processed.add(nodeId);
 
-      for (const candidateId of this.findNonCyclicDependents(nodeId)) {
-        this.updateCandidateDepth(candidateId, path, depths, queue);
-      }
+      this.processDependentCandidates(nodeId, path, depths, queue);
+    }
+  }
+
+  /**
+   * Traverse one BFS frontier by visiting non-cyclic dependents.
+   */
+  private processDependentCandidates(
+    nodeId: NodeId,
+    path: NodeId[],
+    depths: Map<NodeId, ComponentDepth>,
+    queue: DepthQueueEntry[]
+  ): void {
+    for (const candidateId of this.findNonCyclicDependents(nodeId)) {
+      this.updateCandidateDepth(candidateId, path, depths, queue);
     }
   }
 
@@ -429,25 +462,33 @@ export class DependencyDepthCalculator {
   private processRemainingNodes(depths: Map<NodeId, ComponentDepth>): void {
     for (const nodeId of this.graph.keys()) {
       if (!depths.has(nodeId) && !this.cyclicNodes.has(nodeId)) {
-        depths.set(nodeId, this.createRemainingNodeDepth(nodeId, depths));
+        depths.set(nodeId, this.createRemainingNodeDepth(this.buildRemainingDepthState(nodeId, depths)));
       }
     }
   }
 
   /**
-   * Build fallback depth information for nodes not reached during BFS.
+   * Collect the data needed to synthesize a remnant node depth entry.
    */
-  private createRemainingNodeDepth(nodeId: NodeId, depths: Map<NodeId, ComponentDepth>): ComponentDepth {
-    const nodeDepth = this.calculateNodeDepth(nodeId, depths);
-
+  private buildRemainingDepthState(nodeId: NodeId, depths: Map<NodeId, ComponentDepth>): RemainingDepthState {
     return {
       nodeId,
-      depth: nodeDepth,
+      nodeDepth: this.calculateNodeDepth(nodeId, depths),
+    };
+  }
+
+  /**
+   * Build fallback depth information for nodes not reached during BFS.
+   */
+  private createRemainingNodeDepth(state: RemainingDepthState): ComponentDepth {
+    return {
+      nodeId: state.nodeId,
+      depth: state.nodeDepth,
       isInCycle: false,
-      isLeaf: (this.graph.get(nodeId)?.size ?? 0) === 0,
-      isHighRisk: nodeDepth > this.options.highRiskThreshold,
+      isLeaf: (this.graph.get(state.nodeId)?.size ?? 0) === 0,
+      isHighRisk: state.nodeDepth > this.options.highRiskThreshold,
       isCriticalPath: false,
-      pathToLeaf: [nodeId],
+      pathToLeaf: [state.nodeId],
     };
   }
 
