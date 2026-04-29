@@ -32,10 +32,21 @@ type ImpactAggregate = {
   allAffected: Set<NodeId>;
 };
 
+type ImpactTraversal = {
+  affected: Set<NodeId>;
+  impactRadius: number;
+};
+
 type TestBuckets = {
   requiredTests: NodeId[];
   recommendedTests: NodeId[];
   optionalTests: NodeId[];
+};
+
+type TestAssociation = {
+  nodeId: NodeId;
+  associatedTest?: NodeId;
+  directTest: boolean;
 };
 
 /**
@@ -167,19 +178,26 @@ export class DependencyImpactAnalyzer {
    */
   private calculateImpact(nodeId: NodeId): ComponentImpact {
     const directDependents = Array.from(this.reverseGraph.get(nodeId) ?? []);
-    const allAffected = this.findAllDependents(nodeId);
-    const impactRadius = this.calculateImpactRadius(nodeId, allAffected);
-    const riskScore = this.calculateRiskScore(directDependents.length, allAffected.size);
+    const traversal = this.analyzeDependentTraversal(nodeId);
+    const riskScore = this.calculateRiskScore(directDependents.length, traversal.affected.size);
     const impactLevel = DependencyImpactAnalyzer.getImpactLevel(riskScore);
 
     return {
       nodeId,
       directDependents,
-      totalAffected: allAffected.size,
-      impactRadius,
+      totalAffected: traversal.affected.size,
+      impactRadius: traversal.impactRadius,
       impactLevel,
       riskScore,
       isCritical: directDependents.length >= this.options.criticalThreshold,
+    };
+  }
+
+  private analyzeDependentTraversal(nodeId: NodeId): ImpactTraversal {
+    const affected = this.findAllDependents(nodeId);
+    return {
+      affected,
+      impactRadius: this.calculateImpactRadius(nodeId, affected),
     };
   }
 
@@ -357,17 +375,21 @@ export class DependencyImpactAnalyzer {
     const allAffected = new Set<NodeId>();
 
     for (const nodeId of changedComponents) {
-      const impact = this.calculateImpact(nodeId);
-      impacts.set(nodeId, impact);
-      allAffected.add(nodeId);
-
-      const transitiveAffected = this.findAllDependents(nodeId);
-      for (const affected of transitiveAffected) {
-        allAffected.add(affected);
-      }
+      this.mergeComponentImpact(nodeId, impacts, allAffected);
     }
 
     return { impacts, allAffected };
+  }
+
+  private mergeComponentImpact(nodeId: NodeId, impacts: Map<NodeId, ComponentImpact>, allAffected: Set<NodeId>): void {
+    const impact = this.calculateImpact(nodeId);
+    impacts.set(nodeId, impact);
+    allAffected.add(nodeId);
+
+    const transitiveAffected = this.findAllDependents(nodeId);
+    for (const affectedNode of transitiveAffected) {
+      allAffected.add(affectedNode);
+    }
   }
 
   private collectTraversableDependents(nodeId: NodeId): NodeId[] {
@@ -411,22 +433,7 @@ export class DependencyImpactAnalyzer {
     const optionalTests: NodeId[] = [];
 
     for (const nodeId of affectedComponents) {
-      if (this.isTestClass(nodeId)) {
-        if (impacts.has(nodeId)) {
-          requiredTests.push(nodeId);
-        } else {
-          recommendedTests.push(nodeId);
-        }
-
-        continue;
-      }
-
-      const testClass = this.findTestClass(nodeId);
-      if (!testClass) {
-        continue;
-      }
-
-      this.assignAssociatedTest(testClass, impacts.get(nodeId), requiredTests, recommendedTests, optionalTests);
+      this.assignTestBucketsForNode(nodeId, impacts, requiredTests, recommendedTests, optionalTests);
     }
 
     return {
@@ -434,6 +441,61 @@ export class DependencyImpactAnalyzer {
       recommendedTests,
       optionalTests,
     };
+  }
+
+  private assignTestBucketsForNode(
+    nodeId: NodeId,
+    impacts: Map<NodeId, ComponentImpact>,
+    requiredTests: NodeId[],
+    recommendedTests: NodeId[],
+    optionalTests: NodeId[]
+  ): void {
+    const association = this.resolveTestAssociation(nodeId);
+    if (association.directTest) {
+      this.assignDirectTest(nodeId, impacts, requiredTests, recommendedTests);
+      return;
+    }
+
+    if (!association.associatedTest) {
+      return;
+    }
+
+    this.assignAssociatedTest(
+      association.associatedTest,
+      impacts.get(nodeId),
+      requiredTests,
+      recommendedTests,
+      optionalTests
+    );
+  }
+
+  private resolveTestAssociation(nodeId: NodeId): TestAssociation {
+    if (this.isTestClass(nodeId)) {
+      return {
+        nodeId,
+        directTest: true,
+      };
+    }
+
+    return {
+      nodeId,
+      associatedTest: this.findTestClass(nodeId),
+      directTest: false,
+    };
+  }
+
+  private assignDirectTest(
+    nodeId: NodeId,
+    impacts: Map<NodeId, ComponentImpact>,
+    requiredTests: NodeId[],
+    recommendedTests: NodeId[]
+  ): void {
+    if (impacts.has(nodeId)) {
+      requiredTests.push(nodeId);
+      return;
+    }
+
+    recommendedTests.push(nodeId);
   }
 
   private assignAssociatedTest(
