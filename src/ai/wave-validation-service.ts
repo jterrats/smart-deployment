@@ -40,6 +40,12 @@ type EvaluatedValidationOutcome = Pick<
   'isValid' | 'issues' | 'optimizations' | 'riskAssessments' | 'overallRisk'
 >;
 
+type ParsedValidationEnvelope = {
+  issues?: unknown[];
+  optimizations?: unknown[];
+  riskAssessments?: unknown[];
+};
+
 export type WaveValidationIssue = {
   waveNumber: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -110,36 +116,18 @@ export class WaveValidationService {
     const result = this.createDefaultResult();
 
     try {
-      if (!this.llmProvider.isEnabled()) {
-        logger.info('Agentforce disabled, skipping AI validation');
-        return result;
+      if (this.shouldSkipAIValidation()) {
+        return this.finalizeWithoutAI(result);
       }
 
       const validation = await this.runAIValidation(waves);
       const evaluated = this.evaluateValidationPayload(validation);
-      result.issues = evaluated.issues;
-      result.optimizations = evaluated.optimizations;
-      result.riskAssessments = evaluated.riskAssessments;
-      result.overallRisk = evaluated.overallRisk;
-      result.isValid = evaluated.isValid;
-      result.aiAnalyzed = true;
-      result.executionTime = this.calculateExecutionTime(startTime);
+      const analyzedResult = this.markAIAnalysisComplete(this.applyEvaluatedOutcome(result, evaluated), startTime);
+      this.logValidationCompleted(waves, analyzedResult);
 
-      logger.info('Wave validation completed', {
-        waves: waves.length,
-        issues: result.issues.length,
-        optimizations: result.optimizations.length,
-        overallRisk: result.overallRisk,
-      });
-
-      return result;
+      return analyzedResult;
     } catch (error) {
-      logger.error('Wave validation failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      result.executionTime = this.calculateExecutionTime(startTime);
-      return result;
+      return this.handleValidationFailure(error, result, startTime);
     }
   }
 
@@ -157,6 +145,15 @@ export class WaveValidationService {
 
   private calculateExecutionTime(startTime: number): number {
     return Date.now() - startTime;
+  }
+
+  private shouldSkipAIValidation(): boolean {
+    return !this.llmProvider.isEnabled();
+  }
+
+  private finalizeWithoutAI(result: WaveValidationResult): WaveValidationResult {
+    logger.info('Agentforce disabled, skipping AI validation');
+    return result;
   }
 
   private async runAIValidation(waves: Wave[]): Promise<WaveValidationPayload> {
@@ -182,6 +179,52 @@ export class WaveValidationService {
       optimizations: validation.optimizations,
       riskAssessments: validation.riskAssessments,
       overallRisk: this.calculateOverallRisk(validation.riskAssessments),
+    };
+  }
+
+  private applyEvaluatedOutcome(
+    result: WaveValidationResult,
+    evaluated: EvaluatedValidationOutcome
+  ): WaveValidationResult {
+    return {
+      ...result,
+      issues: evaluated.issues,
+      optimizations: evaluated.optimizations,
+      riskAssessments: evaluated.riskAssessments,
+      overallRisk: evaluated.overallRisk,
+      isValid: evaluated.isValid,
+    };
+  }
+
+  private markAIAnalysisComplete(result: WaveValidationResult, startTime: number): WaveValidationResult {
+    return {
+      ...result,
+      aiAnalyzed: true,
+      executionTime: this.calculateExecutionTime(startTime),
+    };
+  }
+
+  private logValidationCompleted(waves: Wave[], result: WaveValidationResult): void {
+    logger.info('Wave validation completed', {
+      waves: waves.length,
+      issues: result.issues.length,
+      optimizations: result.optimizations.length,
+      overallRisk: result.overallRisk,
+    });
+  }
+
+  private handleValidationFailure(
+    error: unknown,
+    result: WaveValidationResult,
+    startTime: number
+  ): WaveValidationResult {
+    logger.error('Wave validation failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
+      ...result,
+      executionTime: this.calculateExecutionTime(startTime),
     };
   }
 
@@ -256,46 +299,43 @@ Be conservative - only report issues with high confidence.`;
     try {
       const parsed = this.extractValidationJson(content);
       if (!parsed) {
-        logger.warn('No JSON found in validation response');
-        return this.getMockValidation(waves);
+        return this.createFallbackValidation(waves, 'No JSON found in validation response');
       }
 
       return this.normalizeValidationPayload(parsed);
     } catch (error) {
-      logger.error('Failed to parse validation response', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return this.getMockValidation(waves);
+      return this.handleValidationParseFailure(error, waves);
     }
   }
 
-  private extractValidationJson(content: string): {
-    issues?: unknown[];
-    optimizations?: unknown[];
-    riskAssessments?: unknown[];
-  } | null {
+  private extractValidationJson(content: string): ParsedValidationEnvelope | null {
     const jsonMatch = /\{[\s\S]*\}/.exec(content);
     if (!jsonMatch) {
       return null;
     }
 
-    return JSON.parse(jsonMatch[0]) as {
-      issues?: unknown[];
-      optimizations?: unknown[];
-      riskAssessments?: unknown[];
-    };
+    return JSON.parse(jsonMatch[0]) as ParsedValidationEnvelope;
   }
 
-  private normalizeValidationPayload(parsed: {
-    issues?: unknown[];
-    optimizations?: unknown[];
-    riskAssessments?: unknown[];
-  }): WaveValidationPayload {
+  private normalizeValidationPayload(parsed: ParsedValidationEnvelope): WaveValidationPayload {
     return {
       issues: this.parseIssues(parsed.issues ?? []),
       optimizations: this.parseOptimizations(parsed.optimizations ?? []),
       riskAssessments: this.parseRiskAssessments(parsed.riskAssessments ?? []),
     };
+  }
+
+  private handleValidationParseFailure(error: unknown, waves: Wave[]): WaveValidationPayload {
+    logger.error('Failed to parse validation response', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return this.getMockValidation(waves);
+  }
+
+  private createFallbackValidation(waves: Wave[], reason: string): WaveValidationPayload {
+    logger.warn(reason);
+    return this.getMockValidation(waves);
   }
 
   /**
@@ -382,18 +422,24 @@ Be conservative - only report issues with high confidence.`;
    * Get mock validation (fallback when AI unavailable)
    */
   private getMockValidation(waves: Wave[]): WaveValidationPayload {
-    const riskAssessments: WaveRiskAssessment[] = waves.map((wave) => ({
-      waveNumber: wave.number,
-      riskLevel: wave.metadata.componentCount > 200 ? 'high' : 'low',
-      riskFactors: wave.metadata.componentCount > 200 ? ['Large wave size'] : [],
-      mitigation: wave.metadata.componentCount > 200 ? ['Consider splitting wave'] : [],
-      recommendedActions: [],
-    }));
+    const riskAssessments = waves.map((wave) => this.createFallbackRiskAssessment(wave));
 
     return {
       issues: [],
       optimizations: [],
       riskAssessments,
+    };
+  }
+
+  private createFallbackRiskAssessment(wave: Wave): WaveRiskAssessment {
+    const isLargeWave = wave.metadata.componentCount > 200;
+
+    return {
+      waveNumber: wave.number,
+      riskLevel: isLargeWave ? 'high' : 'low',
+      riskFactors: isLargeWave ? ['Large wave size'] : [],
+      mitigation: isLargeWave ? ['Consider splitting wave'] : [],
+      recommendedActions: [],
     };
   }
 

@@ -5,8 +5,10 @@ import type {
   LWCMetadata,
   LWCCapability,
   LWCFormFactor,
+  LWCProperty,
   LWCPropertyRole,
   LWCPropertyType,
+  LWCSupportedFormFactor,
   LWCTarget,
 } from '../types/salesforce/lwc.js';
 import { normalizeArray } from './parser-utils.js';
@@ -59,6 +61,19 @@ type LwcMetadataAnalysis = {
   hasMetadataXml: boolean;
   metadata?: LWCMetadata;
 };
+
+type LwcImportExtraction = {
+  apexImports: string[];
+  lwcImports: string[];
+};
+
+type LwcDecoratorExtraction = {
+  wireAdapters: string[];
+  apiProperties: string[];
+  navigationRefs: string[];
+};
+
+type InterpretedLwcTargetConfig = NonNullable<LWCMetadata['targetConfigs']>[number];
 
 /**
  * Remove comments from JavaScript/TypeScript code
@@ -333,18 +348,103 @@ function parseOptionalNumber(value: string | number | undefined): number | undef
   return undefined;
 }
 
-function analyzeComponentCode(jsCode: string): LwcCodeAnalysis {
+function createCodeAnalysisContext(jsCode: string): Pick<LwcCodeAnalysis, 'cleanCode' | 'isTypeScript'> {
   const cleanCode = removeComments(jsCode);
-  const isTypeScript = isTypeScriptComponent(cleanCode);
-
   return {
     cleanCode,
-    isTypeScript,
-    apexImports: extractApexImports(cleanCode),
-    lwcImports: extractLWCImports(cleanCode),
-    wireAdapters: extractWireAdapters(cleanCode),
-    apiProperties: extractApiProperties(cleanCode),
-    navigationRefs: extractNavigationRefs(cleanCode),
+    isTypeScript: isTypeScriptComponent(cleanCode),
+  };
+}
+
+function extractImports(code: string): LwcImportExtraction {
+  return {
+    apexImports: extractApexImports(code),
+    lwcImports: extractLWCImports(code),
+  };
+}
+
+function extractDecoratorsAndProperties(code: string): LwcDecoratorExtraction {
+  return {
+    wireAdapters: extractWireAdapters(code),
+    apiProperties: extractApiProperties(code),
+    navigationRefs: extractNavigationRefs(code),
+  };
+}
+
+function analyzeComponentCode(jsCode: string): LwcCodeAnalysis {
+  const context = createCodeAnalysisContext(jsCode);
+  const imports = extractImports(context.cleanCode);
+  const decorators = extractDecoratorsAndProperties(context.cleanCode);
+
+  return {
+    ...context,
+    ...imports,
+    ...decorators,
+  };
+}
+
+function interpretProperty(property: ParsedLwcProperty): LWCProperty | undefined {
+  if (property['@_name'] === undefined || property['@_type'] === undefined) {
+    return undefined;
+  }
+
+  return {
+    name: property['@_name'],
+    type: property['@_type'] as LWCPropertyType,
+    default: property['@_default'],
+    required: parseBoolean(property['@_required']),
+    label: property['@_label'],
+    description: property['@_description'],
+    placeholder: property['@_placeholder'],
+    role: property['@_role'] as LWCPropertyRole,
+    datasource: property['@_datasource'],
+    min: parseOptionalNumber(property['@_min']),
+    max: parseOptionalNumber(property['@_max']),
+  };
+}
+
+function interpretSupportedFormFactors(targetConfig: ParsedLwcTargetConfig): LWCSupportedFormFactor[] | undefined {
+  if (targetConfig.supportedFormFactors === undefined) {
+    return undefined;
+  }
+
+  return normalizeArray(targetConfig.supportedFormFactors.supportedFormFactor)
+    .filter((formFactor) => formFactor['@_type'] !== undefined)
+    .map((formFactor) => ({
+      type: formFactor['@_type']! as LWCFormFactor,
+    }));
+}
+
+function interpretTargetConfig(targetConfig: ParsedLwcTargetConfig): InterpretedLwcTargetConfig {
+  const properties = normalizeArray(targetConfig.property)
+    .map(interpretProperty)
+    .filter((property): property is LWCProperty => property !== undefined);
+
+  return {
+    targets: targetConfig['@_targets'] ?? '',
+    configurationEditor: targetConfig.configurationEditor,
+    objects:
+      targetConfig.objects === undefined
+        ? undefined
+        : normalizeArray(targetConfig.objects.object).map((object) => ({ object })),
+    property: properties,
+    supportedFormFactors: interpretSupportedFormFactors(targetConfig),
+  };
+}
+
+function interpretMetadataBundle(metadata: NonNullable<ParsedLwcMetadataXml['LightningComponentBundle']>): LWCMetadata {
+  const targets = normalizeArray(metadata.targets?.target);
+  const targetConfigs = normalizeArray(metadata.targetConfigs?.targetConfig).map(interpretTargetConfig);
+  const capabilities = normalizeArray(metadata.capabilities?.capability) as LWCCapability[];
+
+  return {
+    apiVersion: metadata.apiVersion !== undefined ? String(metadata.apiVersion) : '',
+    description: metadata.description,
+    isExposed: parseBoolean(metadata.isExposed) ?? false,
+    masterLabel: metadata.masterLabel,
+    targets: targets.length > 0 ? { target: targets as LWCTarget[] } : undefined,
+    targetConfigs: targetConfigs.length > 0 ? targetConfigs : undefined,
+    capabilities: capabilities.length > 0 ? capabilities : undefined,
   };
 }
 
@@ -361,50 +461,7 @@ function parseMetadataXml(metadataContent: string): LWCMetadata | undefined {
     return undefined;
   }
 
-  const targets = normalizeArray(metadata.targets?.target);
-  const targetConfigs = normalizeArray(metadata.targetConfigs?.targetConfig).map((targetConfig) => ({
-    targets: targetConfig['@_targets'] ?? '',
-    configurationEditor: targetConfig.configurationEditor,
-    objects:
-      targetConfig.objects === undefined
-        ? undefined
-        : normalizeArray(targetConfig.objects.object).map((object) => ({ object })),
-    property: normalizeArray(targetConfig.property)
-      .filter((property) => property['@_name'] !== undefined && property['@_type'] !== undefined)
-      .map((property) => ({
-        name: property['@_name']!,
-        type: property['@_type']! as LWCPropertyType,
-        default: property['@_default'],
-        required: parseBoolean(property['@_required']),
-        label: property['@_label'],
-        description: property['@_description'],
-        placeholder: property['@_placeholder'],
-        role: property['@_role'] as LWCPropertyRole,
-        datasource: property['@_datasource'],
-        min: parseOptionalNumber(property['@_min']),
-        max: parseOptionalNumber(property['@_max']),
-      })),
-    supportedFormFactors:
-      targetConfig.supportedFormFactors === undefined
-        ? undefined
-        : normalizeArray(targetConfig.supportedFormFactors.supportedFormFactor)
-            .filter((formFactor) => formFactor['@_type'] !== undefined)
-            .map((formFactor) => ({
-              type: formFactor['@_type']! as LWCFormFactor,
-            })),
-  }));
-
-  const capabilities = normalizeArray(metadata.capabilities?.capability) as LWCCapability[];
-
-  return {
-    apiVersion: metadata.apiVersion !== undefined ? String(metadata.apiVersion) : '',
-    description: metadata.description,
-    isExposed: parseBoolean(metadata.isExposed) ?? false,
-    masterLabel: metadata.masterLabel,
-    targets: targets.length > 0 ? { target: targets as LWCTarget[] } : undefined,
-    targetConfigs: targetConfigs.length > 0 ? targetConfigs : undefined,
-    capabilities: capabilities.length > 0 ? capabilities : undefined,
-  };
+  return interpretMetadataBundle(metadata);
 }
 
 function analyzeMetadataXml(componentName: string, metadataXml?: string): LwcMetadataAnalysis {

@@ -22,14 +22,6 @@ const logger = {
 };
 
 /**
- * Generate safe filename from cache key
- */
-function getCacheFileName(key: string): string {
-  const hash = Buffer.from(key).toString('base64').replaceAll(/[/+=]/g, '_');
-  return `cache_${hash}.json`;
-}
-
-/**
  * Cache entry with TTL (Time To Live)
  */
 export type CacheEntry<T> = {
@@ -93,6 +85,58 @@ type CacheMutationResult = {
   deletedKeys: string[];
 };
 
+class CacheKeyDerivation {
+  private static readonly CACHE_FILE_PREFIX = 'cache_';
+  private static readonly CACHE_FILE_SUFFIX = '.json';
+  private static readonly LOCK_DIRECTORY_NAME = 'sf-smart-deployment-locks';
+
+  public toPersistedFileName(key: string): string {
+    const hash = Buffer.from(key).toString('base64').replaceAll(/[/+=]/g, '_');
+    return `${CacheKeyDerivation.CACHE_FILE_PREFIX}${hash}${CacheKeyDerivation.CACHE_FILE_SUFFIX}`;
+  }
+
+  public isPersistedCacheFile(fileName: string): boolean {
+    return (
+      fileName.startsWith(CacheKeyDerivation.CACHE_FILE_PREFIX) &&
+      fileName.endsWith(CacheKeyDerivation.CACHE_FILE_SUFFIX)
+    );
+  }
+
+  public toPersistedKey(fileName: string): string {
+    return fileName.replace(CacheKeyDerivation.CACHE_FILE_PREFIX, '').replace(CacheKeyDerivation.CACHE_FILE_SUFFIX, '');
+  }
+
+  public sanitizeLockTarget(orgAlias: string): string {
+    return orgAlias.replaceAll(/[^\w-]/g, '_');
+  }
+
+  public resolveLockDirectory(): string {
+    return path.join(os.tmpdir(), CacheKeyDerivation.LOCK_DIRECTORY_NAME);
+  }
+
+  public resolveLockFilePath(orgAlias: string): string {
+    return path.join(this.resolveLockDirectory(), `${this.sanitizeLockTarget(orgAlias)}.lock`);
+  }
+}
+
+class CacheEntrySerializer {
+  public serialize<T>(entry: CacheEntry<T>): string {
+    return JSON.stringify(entry);
+  }
+
+  public deserialize(content: string): CacheEntry<unknown> {
+    return JSON.parse(content) as CacheEntry<unknown>;
+  }
+
+  public serializeLock(lockInfo: LockInfo): string {
+    return JSON.stringify(lockInfo, null, 2);
+  }
+
+  public deserializeLock(content: string): LockInfo {
+    return JSON.parse(content) as LockInfo;
+  }
+}
+
 class CacheExpiryPolicy {
   public createEntry<T>(value: T, ttlMs: number, now = Date.now()): CacheEntry<T> {
     return {
@@ -135,7 +179,11 @@ class CacheExpiryPolicy {
 }
 
 class CacheStorage {
-  public constructor(private readonly getConfig: () => CacheConfig) {}
+  public constructor(
+    private readonly getConfig: () => CacheConfig,
+    private readonly keyDerivation: CacheKeyDerivation,
+    private readonly serializer: CacheEntrySerializer
+  ) {}
 
   public async persistEntry<T>(key: string, entry: CacheEntry<T>): Promise<void> {
     const config = this.getConfig();
@@ -145,9 +193,9 @@ class CacheStorage {
 
     try {
       await fs.mkdir(config.cacheDirectory, { recursive: true });
-      const fileName = getCacheFileName(key);
+      const fileName = this.keyDerivation.toPersistedFileName(key);
       const filePath = path.join(config.cacheDirectory, fileName);
-      await fs.writeFile(filePath, JSON.stringify(entry), 'utf-8');
+      await fs.writeFile(filePath, this.serializer.serialize(entry), 'utf-8');
     } catch (error) {
       logger.warn('Failed to persist cache entry', { error, key, cacheDirectory: config.cacheDirectory });
     }
@@ -160,7 +208,7 @@ class CacheStorage {
     }
 
     try {
-      const fileName = getCacheFileName(key);
+      const fileName = this.keyDerivation.toPersistedFileName(key);
       const filePath = path.join(config.cacheDirectory, fileName);
       await fs.unlink(filePath);
     } catch {
@@ -188,7 +236,7 @@ class CacheStorage {
     }
 
     const files = await fs.readdir(config.cacheDirectory);
-    const cacheFiles = files.filter((file) => file.startsWith('cache_'));
+    const cacheFiles = files.filter((file) => this.keyDerivation.isPersistedCacheFile(file));
     const results = await Promise.all(cacheFiles.map(async (file) => this.loadPersistedEntry(file, expiryPolicy)));
 
     return results.filter((result): result is PersistedCacheEntry => result !== null);
@@ -199,14 +247,14 @@ class CacheStorage {
     try {
       const filePath = path.join(config.cacheDirectory!, file);
       const content = await fs.readFile(filePath, 'utf-8');
-      const entry = JSON.parse(content) as CacheEntry<unknown>;
+      const entry = this.serializer.deserialize(content);
 
       if (expiryPolicy.isExpired(entry)) {
         await fs.unlink(filePath);
         return null;
       }
 
-      const key = file.replace('cache_', '').replace('.json', '');
+      const key = this.keyDerivation.toPersistedKey(file);
       return { key, entry };
     } catch (error) {
       logger.warn('Skipping invalid cache file', { error, file });
@@ -219,7 +267,11 @@ class CacheLockLifecycle {
   private lockFilePath: string | null = null;
   private lockFileHandle: fs.FileHandle | null = null;
 
-  public constructor(private readonly getConfig: () => CacheConfig) {}
+  public constructor(
+    private readonly getConfig: () => CacheConfig,
+    private readonly keyDerivation: CacheKeyDerivation,
+    private readonly serializer: CacheEntrySerializer
+  ) {}
 
   public hasActiveLock(): boolean {
     return this.lockFileHandle !== null;
@@ -231,21 +283,19 @@ class CacheLockLifecycle {
     }
 
     try {
-      const lockDir = path.join(os.tmpdir(), 'sf-smart-deployment-locks');
+      const lockDir = this.keyDerivation.resolveLockDirectory();
       await fs.mkdir(lockDir, { recursive: true });
 
-      const lockFileName = `${orgAlias.replaceAll(/[^\w-]/g, '_')}.lock`;
-      this.lockFilePath = path.join(lockDir, lockFileName);
+      this.lockFilePath = this.keyDerivation.resolveLockFilePath(orgAlias);
       this.lockFileHandle = await fs.open(this.lockFilePath, 'wx');
 
       const lockInfo = {
         pid: process.pid,
-        orgAlias,
         timestamp: new Date().toISOString(),
         hostname: os.hostname(),
       };
 
-      await this.lockFileHandle.writeFile(JSON.stringify(lockInfo, null, 2));
+      await this.lockFileHandle.writeFile(this.serializer.serializeLock(lockInfo));
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
@@ -283,11 +333,9 @@ class CacheLockLifecycle {
     }
 
     try {
-      const lockDir = path.join(os.tmpdir(), 'sf-smart-deployment-locks');
-      const lockFileName = `${orgAlias.replaceAll(/[^\w-]/g, '_')}.lock`;
-      const lockFilePath = path.join(lockDir, lockFileName);
+      const lockFilePath = this.keyDerivation.resolveLockFilePath(orgAlias);
       const lockContent = await fs.readFile(lockFilePath, 'utf-8');
-      const lockInfo = JSON.parse(lockContent) as LockInfo;
+      const lockInfo = this.serializer.deserializeLock(lockContent);
 
       try {
         process.kill(lockInfo.pid, 0);
@@ -325,6 +373,8 @@ export class CacheManager {
   private readonly storage: CacheStorage;
   private readonly expiryPolicy: CacheExpiryPolicy;
   private readonly lockLifecycle: CacheLockLifecycle;
+  private readonly keyDerivation: CacheKeyDerivation;
+  private readonly serializer: CacheEntrySerializer;
 
   /**
    * Private constructor - use getInstance() instead
@@ -333,9 +383,11 @@ export class CacheManager {
   private constructor(config?: Partial<CacheConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.cache = new Map();
+    this.keyDerivation = new CacheKeyDerivation();
+    this.serializer = new CacheEntrySerializer();
     this.expiryPolicy = new CacheExpiryPolicy();
-    this.storage = new CacheStorage(() => this.config);
-    this.lockLifecycle = new CacheLockLifecycle(() => this.config);
+    this.storage = new CacheStorage(() => this.config, this.keyDerivation, this.serializer);
+    this.lockLifecycle = new CacheLockLifecycle(() => this.config, this.keyDerivation, this.serializer);
     this.stats = {
       hits: 0,
       misses: 0,
