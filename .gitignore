@@ -42,6 +42,7 @@ oclif.lock
 *.tsbuildinfo
 .eslintcache
 .wireit
+.wrangler/
 node_modules
 
 # --
