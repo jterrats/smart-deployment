@@ -34,6 +34,12 @@ type ResolutionPipelineState = {
   managed: NodeId[];
 };
 
+type TopologicalTraversalState = {
+  deploymentOrder: NodeId[];
+  inDegree: Map<NodeId, number>;
+  queue: NodeId[];
+};
+
 /**
  * Dependency resolution status
  */
@@ -108,6 +114,7 @@ export class DependencyResolver {
   private graph: DependencyGraph;
   private components: Map<NodeId, MetadataComponent>;
   private options: Required<ResolverOptions>;
+  private cachedResult?: ResolutionResult;
 
   public constructor(
     graph: DependencyGraph,
@@ -139,6 +146,10 @@ export class DependencyResolver {
    * @ac US-033-AC-6: Generate dependency report
    */
   public resolve(): ResolutionResult {
+    if (this.cachedResult !== undefined) {
+      return this.cachedResult;
+    }
+
     const startTime = Date.now();
     const pipelineState = this.runResolutionPipeline();
     const report = this.generateReport(
@@ -157,7 +168,7 @@ export class DependencyResolver {
       durationMs: duration,
     });
 
-    return {
+    this.cachedResult = {
       resolved: pipelineState.resolved,
       deploymentOrder: pipelineState.deploymentOrder,
       unresolved: pipelineState.unresolved,
@@ -166,6 +177,8 @@ export class DependencyResolver {
       circular: this.options.circularDependencies,
       report,
     };
+
+    return this.cachedResult;
   }
 
   /**
@@ -227,39 +240,13 @@ export class DependencyResolver {
     deploymentOrder: NodeId[];
     unresolved: Array<{ nodeId: NodeId; missingDependencies: NodeId[] }>;
   } {
-    const deploymentOrder: NodeId[] = [];
-    const unresolved: Array<{ nodeId: NodeId; missingDependencies: NodeId[] }> = [];
+    const traversalState = this.createTopologicalTraversalState(graph);
+    this.processTopologicalQueue(graph, traversalState);
 
-    const inDegree = this.calculateInDegree(graph);
-    const queue = this.collectZeroDegreeNodes(inDegree);
-
-    while (queue.length > 0) {
-      const nodeId = queue.shift()!;
-      deploymentOrder.push(nodeId);
-
-      const deps = graph.get(nodeId) ?? new Set();
-      for (const dep of deps) {
-        if (!inDegree.has(dep)) {
-          continue; // External dependency
-        }
-
-        const newDegree = (inDegree.get(dep) ?? 0) - 1;
-        inDegree.set(dep, newDegree);
-
-        if (newDegree === 0) {
-          queue.push(dep);
-        }
-      }
-    }
-
-    for (const [nodeId, degree] of inDegree.entries()) {
-      if (degree > 0) {
-        const missingDeps = this.findMissingDependencies(nodeId, graph);
-        unresolved.push({ nodeId, missingDependencies: missingDeps });
-      }
-    }
-
-    return { deploymentOrder, unresolved };
+    return {
+      deploymentOrder: traversalState.deploymentOrder,
+      unresolved: this.collectUnresolvedNodes(graph, traversalState.inDegree),
+    };
   }
 
   /**
@@ -281,6 +268,77 @@ export class DependencyResolver {
     }
 
     return resolved;
+  }
+
+  /**
+   * Create the mutable state used by Kahn's topological traversal.
+   */
+  private createTopologicalTraversalState(graph: DependencyGraph): TopologicalTraversalState {
+    const inDegree = this.calculateInDegree(graph);
+
+    return {
+      deploymentOrder: [],
+      inDegree,
+      queue: this.collectZeroDegreeNodes(inDegree),
+    };
+  }
+
+  /**
+   * Drain the topological queue and update in-degree state.
+   */
+  private processTopologicalQueue(graph: DependencyGraph, state: TopologicalTraversalState): void {
+    while (state.queue.length > 0) {
+      const nodeId = state.queue.shift()!;
+      state.deploymentOrder.push(nodeId);
+      this.releaseResolvedDependencies(nodeId, graph, state);
+    }
+  }
+
+  /**
+   * Lower in-degree counts after resolving one node and enqueue newly unblocked nodes.
+   */
+  private releaseResolvedDependencies(
+    nodeId: NodeId,
+    graph: DependencyGraph,
+    state: Pick<TopologicalTraversalState, 'inDegree' | 'queue'>
+  ): void {
+    const deps = graph.get(nodeId) ?? new Set();
+
+    for (const dep of deps) {
+      if (!state.inDegree.has(dep)) {
+        continue;
+      }
+
+      const newDegree = (state.inDegree.get(dep) ?? 0) - 1;
+      state.inDegree.set(dep, newDegree);
+
+      if (newDegree === 0) {
+        state.queue.push(dep);
+      }
+    }
+  }
+
+  /**
+   * Collect nodes that remain blocked after traversal.
+   */
+  private collectUnresolvedNodes(
+    graph: DependencyGraph,
+    inDegree: ReadonlyMap<NodeId, number>
+  ): Array<{ nodeId: NodeId; missingDependencies: NodeId[] }> {
+    const unresolved: Array<{ nodeId: NodeId; missingDependencies: NodeId[] }> = [];
+
+    for (const [nodeId, degree] of inDegree.entries()) {
+      if (degree <= 0) {
+        continue;
+      }
+
+      unresolved.push({
+        nodeId,
+        missingDependencies: this.findMissingDependencies(nodeId, graph),
+      });
+    }
+
+    return unresolved;
   }
 
   /**
@@ -371,12 +429,6 @@ export class DependencyResolver {
     optional: NodeId[],
     managed: NodeId[]
   ): DependencyReport {
-    // Calculate deployment levels
-    let maxOrder = 0;
-    for (const dep of resolved.values()) {
-      maxOrder = Math.max(maxOrder, dep.order);
-    }
-
     return {
       totalComponents: this.components.size,
       resolvedCount: resolved.size,
@@ -384,8 +436,18 @@ export class DependencyResolver {
       optionalCount: optional.length,
       managedCount: managed.length,
       circularCount: this.options.circularDependencies.length,
-      deploymentLevels: maxOrder + 1,
+      deploymentLevels: this.calculateDeploymentLevels(resolved),
     };
+  }
+
+  private calculateDeploymentLevels(resolved: ReadonlyMap<NodeId, ResolvedDependency>): number {
+    let maxOrder = 0;
+
+    for (const dep of resolved.values()) {
+      maxOrder = Math.max(maxOrder, dep.order);
+    }
+
+    return maxOrder + 1;
   }
 
   private shouldIncludeNode(nodeId: NodeId): boolean {
@@ -458,16 +520,14 @@ export class DependencyResolver {
    * Get resolution status for a specific component
    */
   public getResolution(nodeId: NodeId): ResolvedDependency | undefined {
-    const result = this.resolve();
-    return result.resolved.get(nodeId);
+    return this.resolve().resolved.get(nodeId);
   }
 
   /**
    * Check if a component can be resolved
    */
   public canResolve(nodeId: NodeId): boolean {
-    const result = this.resolve();
-    return result.resolved.has(nodeId);
+    return this.resolve().resolved.has(nodeId);
   }
 
   /**
