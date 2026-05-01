@@ -39,6 +39,12 @@ type WaveTestPlan = {
   decision: OptimizationDecision;
 };
 
+type OptimizationPlanningState = {
+  allTestClasses: NodeId[];
+  waveContexts: WaveTestContext[];
+  wavePlans: WaveTestPlan[];
+};
+
 /**
  * Test optimization result
  */
@@ -157,14 +163,12 @@ export class TestOptimizer {
    */
   public optimizeTests(waves: Wave[]): TestOptimizationResult {
     const startTime = Date.now();
-    const policy = this.getPolicy();
-    const allTestClasses = this.collectAllTestClasses(waves);
-    const waveContexts = waves.map((wave) => this.analyzeWave(wave));
-    const wavePlans = waveContexts.map((context) => this.createWaveTestPlan(context, allTestClasses, policy));
-
-    const optimizedWaves = waveContexts.map((context, index) => this.createOptimizedWave(context, wavePlans[index]));
-    const decisions = wavePlans.map((plan) => plan.decision);
-    const stats = this.calculateStats(optimizedWaves, allTestClasses.length);
+    const planningState = this.createOptimizationPlanningState(waves);
+    const optimizedWaves = planningState.waveContexts.map((context, index) =>
+      this.createOptimizedWave(context, planningState.wavePlans[index])
+    );
+    const decisions = this.collectOptimizationDecisions(planningState.wavePlans);
+    const stats = this.calculateStats(optimizedWaves, planningState.allTestClasses.length);
 
     const duration = Date.now() - startTime;
     logger.info('Test optimization completed', {
@@ -188,6 +192,19 @@ export class TestOptimizer {
       alwaysRunAllTests: this.options.alwaysRunAllTests,
       minCoverageRequired: this.options.minCoverageRequired,
       includeRelatedTests: this.options.includeRelatedTests,
+    };
+  }
+
+  private createOptimizationPlanningState(waves: Wave[]): OptimizationPlanningState {
+    const policy = this.getPolicy();
+    const allTestClasses = this.collectAllTestClasses(waves);
+    const waveContexts = waves.map((wave) => this.analyzeWave(wave));
+    const wavePlans = waveContexts.map((context) => this.createWaveTestPlan(context, allTestClasses, policy));
+
+    return {
+      allTestClasses,
+      waveContexts,
+      wavePlans,
     };
   }
 
@@ -260,6 +277,10 @@ export class TestOptimizer {
       needsTests: context.needsTests,
       estimatedCoverage: plan.estimatedCoverage,
     };
+  }
+
+  private collectOptimizationDecisions(wavePlans: readonly WaveTestPlan[]): OptimizationDecision[] {
+    return wavePlans.map((plan) => plan.decision);
   }
 
   /**
@@ -383,6 +404,23 @@ export class TestOptimizer {
    * Calculate optimization statistics
    */
   private calculateStats(optimizedWaves: OptimizedWave[], totalAvailableTests: number): OptimizationStats {
+    const totals = this.collectWaveTestTotals(optimizedWaves);
+    const timeSaved = this.calculateTimeSaved(optimizedWaves.length, totalAvailableTests, totals.totalTestsAdded);
+
+    return {
+      totalWaves: optimizedWaves.length,
+      wavesWithTests: totals.wavesWithTests,
+      wavesWithoutTests: totals.wavesWithoutTests,
+      totalTestsAdded: totals.totalTestsAdded,
+      timeSaved,
+    };
+  }
+
+  private collectWaveTestTotals(optimizedWaves: readonly OptimizedWave[]): {
+    wavesWithTests: number;
+    wavesWithoutTests: number;
+    totalTestsAdded: number;
+  } {
     let wavesWithTests = 0;
     let wavesWithoutTests = 0;
     let totalTestsAdded = 0;
@@ -391,22 +429,22 @@ export class TestOptimizer {
       if (wave.testClasses.length > 0) {
         wavesWithTests++;
         totalTestsAdded += wave.testClasses.length;
-      } else {
-        wavesWithoutTests++;
+        continue;
       }
+
+      wavesWithoutTests++;
     }
 
-    // Estimate time saved (assume 5s per test class skipped)
-    const testsSkipped = optimizedWaves.length * totalAvailableTests - totalTestsAdded;
-    const timeSaved = testsSkipped * 5;
-
     return {
-      totalWaves: optimizedWaves.length,
       wavesWithTests,
       wavesWithoutTests,
       totalTestsAdded,
-      timeSaved,
     };
+  }
+
+  private calculateTimeSaved(totalWaves: number, totalAvailableTests: number, totalTestsAdded: number): number {
+    const testsSkipped = totalWaves * totalAvailableTests - totalTestsAdded;
+    return testsSkipped * 5;
   }
 
   /**
@@ -415,6 +453,14 @@ export class TestOptimizer {
   public generateReport(result: TestOptimizationResult): string {
     const lines: string[] = [];
 
+    this.appendStatisticsSection(lines, result);
+    this.appendDecisionsSection(lines, result.decisions);
+    this.appendWaveDetailsSection(lines, result.optimizedWaves);
+
+    return lines.join('\n');
+  }
+
+  private appendStatisticsSection(lines: string[], result: TestOptimizationResult): void {
     lines.push('# Test Optimization Report');
     lines.push('');
     lines.push('## Statistics');
@@ -424,22 +470,26 @@ export class TestOptimizer {
     lines.push(`- Total Test Classes Added: ${result.stats.totalTestsAdded}`);
     lines.push(`- Estimated Time Saved: ${result.stats.timeSaved}s (${Math.round(result.stats.timeSaved / 60)}min)`);
     lines.push('');
+  }
 
+  private appendDecisionsSection(lines: string[], decisions: readonly OptimizationDecision[]): void {
     lines.push('## Optimization Decisions');
     lines.push('');
 
-    for (const decision of result.decisions) {
+    for (const decision of decisions) {
       lines.push(`### Wave ${decision.waveNumber}`);
       lines.push(`- Type: ${decision.type}`);
       lines.push(`- Reason: ${decision.reason}`);
       lines.push(`- Tests Affected: ${decision.testsAffected}`);
       lines.push('');
     }
+  }
 
+  private appendWaveDetailsSection(lines: string[], optimizedWaves: readonly OptimizedWave[]): void {
     lines.push('## Wave Details');
     lines.push('');
 
-    for (const wave of result.optimizedWaves) {
+    for (const wave of optimizedWaves) {
       lines.push(`### Wave ${wave.number}`);
       lines.push(`- Code Classes: ${wave.codeClasses.length}`);
       lines.push(`- Triggers: ${wave.triggers.length}`);
@@ -448,8 +498,6 @@ export class TestOptimizer {
       lines.push(`- Estimated Coverage: ${wave.estimatedCoverage}%`);
       lines.push('');
     }
-
-    return lines.join('\n');
   }
 
   /**
