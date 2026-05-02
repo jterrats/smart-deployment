@@ -36,6 +36,11 @@ sf smart-deployment config --source-path . --set-llm-provider openai
 - `--skip-tests`
 - `--allow-cycle-remediation`
 
+## `validate` vs `start --dry-run`
+
+- `validate` is the lighter diagnostic path: it checks project readiness, generated waves, and risk.
+- `start --dry-run` is the closer operational rehearsal: it follows the real `start` orchestration path, but does not execute the deploy.
+
 ## Detailed Reference
 
 The full command detail lives in the repository docs:

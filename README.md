@@ -98,6 +98,11 @@ sf smart-deployment validate \
   --use-ai
 ```
 
+When to use each:
+
+- use `validate` for a readiness and risk check
+- use `start --dry-run` to rehearse the real deployment command flow without executing the deploy
+
 Show persisted deployment state:
 
 ```bash

@@ -48,6 +48,8 @@ Behavior:
 - can execute real deployment through `SfCliIntegration`
 - persists deployment state for `status` and `resume`
 - can attempt conservative cycle remediation for supported `ApexClass` cycles only
+- `--dry-run` follows the real `start` orchestration path without executing the deploy, so it is the closest rehearsal of an actual deployment command run
+- `--validate-only` keeps the command in the `start` command family, but stops short of real deployment execution
 
 Important:
 
@@ -71,6 +73,12 @@ Behavior:
 - reports issues and summary data
 - can enrich validation with AI wave analysis
 - does not execute deployment
+- focuses on deployment readiness and risk reporting, not on rehearsing the full `start` command flow
+
+Difference from `start --dry-run`:
+
+- use `validate` when you want a diagnostic readiness check
+- use `start --dry-run` when you want to exercise the real deployment command path without sending a deploy
 
 ## `sf smart-deployment status`
 
