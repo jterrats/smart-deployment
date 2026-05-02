@@ -109,6 +109,7 @@ export class DependencyGraphBuilder {
   private reverseGraph: ReverseGraph = new Map();
   private edges: Map<string, DependencyEdge> = new Map(); // "from->to" => edge
   private options: Required<GraphBuilderOptions>;
+  private cachedBuildResult?: DependencyAnalysisResult;
 
   // Constructor
   public constructor(options: GraphBuilderOptions = {}) {
@@ -154,6 +155,7 @@ export class DependencyGraphBuilder {
    * @ac US-028-AC-5: Support incremental graph building
    */
   public addComponent(component: MetadataComponent): void {
+    this.invalidateBuildCache();
     const intake = this.normalizeComponentIntake(component);
     this.ingestComponentDependencies(intake);
 
@@ -191,6 +193,7 @@ export class DependencyGraphBuilder {
    * @ac US-028-AC-4: Track dependency types
    */
   public addEdge(from: NodeId, to: NodeId, type: DependencyType = 'hard', reason?: string, confidence?: number): void {
+    this.invalidateBuildCache();
     this.ensureEdgeEndpoints(from, to);
     this.graph.get(from)!.add(to);
     this.reverseGraph.get(to)!.add(from);
@@ -218,26 +221,16 @@ export class DependencyGraphBuilder {
       return false;
     }
 
+    this.invalidateBuildCache();
+
     // Remove component
     this.components.delete(nodeId);
 
     // Remove outgoing edges
-    const outgoing = this.graph.get(nodeId);
-    if (outgoing) {
-      for (const to of outgoing) {
-        this.reverseGraph.get(to)?.delete(nodeId);
-      }
-      this.graph.delete(nodeId);
-    }
+    this.removeOutgoingEdges(nodeId);
 
     // Remove incoming edges
-    const incoming = this.reverseGraph.get(nodeId);
-    if (incoming) {
-      for (const from of incoming) {
-        this.graph.get(from)?.delete(nodeId);
-      }
-      this.reverseGraph.delete(nodeId);
-    }
+    this.removeIncomingEdges(nodeId);
 
     logger.debug('Removed component from graph', { nodeId });
     return true;
@@ -270,6 +263,10 @@ export class DependencyGraphBuilder {
    * @ac US-028-AC-6: Validate graph structure
    */
   public build(): DependencyAnalysisResult {
+    if (this.cachedBuildResult !== undefined) {
+      return this.cachedBuildResult;
+    }
+
     const startTime = Date.now();
     const totalEdges = this.countEdges();
 
@@ -294,13 +291,15 @@ export class DependencyGraphBuilder {
       durationMs: duration,
     });
 
-    return this.createBuildResult(stats, annotations);
+    this.cachedBuildResult = this.createBuildResult(stats, annotations);
+    return this.cachedBuildResult;
   }
 
   /**
    * Clear the entire graph
    */
   public clear(): void {
+    this.invalidateBuildCache();
     this.components.clear();
     this.graph.clear();
     this.reverseGraph.clear();
@@ -318,6 +317,10 @@ export class DependencyGraphBuilder {
       isolatedComponents: annotations.isolatedComponents,
       stats,
     };
+  }
+
+  private invalidateBuildCache(): void {
+    this.cachedBuildResult = undefined;
   }
 
   /**
@@ -349,6 +352,34 @@ export class DependencyGraphBuilder {
    */
   private ingestComponentDependencies(component: ComponentIntake): void {
     this.assembleComponentEdges(component.nodeId, component.dependencyDetails);
+  }
+
+  private removeOutgoingEdges(nodeId: NodeId): void {
+    const outgoing = this.graph.get(nodeId);
+    if (!outgoing) {
+      return;
+    }
+
+    for (const to of outgoing) {
+      this.reverseGraph.get(to)?.delete(nodeId);
+      this.edges.delete(`${nodeId}->${to}`);
+    }
+
+    this.graph.delete(nodeId);
+  }
+
+  private removeIncomingEdges(nodeId: NodeId): void {
+    const incoming = this.reverseGraph.get(nodeId);
+    if (!incoming) {
+      return;
+    }
+
+    for (const from of incoming) {
+      this.graph.get(from)?.delete(nodeId);
+      this.edges.delete(`${from}->${nodeId}`);
+    }
+
+    this.reverseGraph.delete(nodeId);
   }
 
   /**

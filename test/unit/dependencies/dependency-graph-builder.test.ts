@@ -301,6 +301,20 @@ describe('DependencyGraphBuilder', () => {
       expect(result.isolatedComponents).to.have.lengthOf(1);
       expect(result.isolatedComponents[0]).to.equal('ApexClass:IsolatedService');
     });
+
+    it('should invalidate cached build results after graph mutations', () => {
+      const builder = new DependencyGraphBuilder();
+
+      builder.addComponent(createComponent('ServiceA'));
+      const initial = builder.build();
+      expect(initial.components.size).to.equal(1);
+
+      builder.addComponent(createComponent('ServiceB', 'ApexClass', ['ApexClass:ServiceA']));
+      const updated = builder.build();
+
+      expect(updated.components.size).to.equal(2);
+      expect(updated.graph.get('ApexClass:ServiceB')?.has('ApexClass:ServiceA')).to.be.true;
+    });
   });
 
   describe('statistics', () => {
