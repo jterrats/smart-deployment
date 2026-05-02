@@ -128,6 +128,7 @@ See:
 - [CLI reference](docs/cli-reference.md)
 - [AI configuration](docs/ai-configuration.md)
 - [Known limitations](docs/known-limitations.md)
+- [Release candidate checklist](docs/release-candidate-checklist.md)
 - [Documentation index](docs/README.md)
 
 ## AI Providers

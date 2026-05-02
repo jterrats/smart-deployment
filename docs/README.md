@@ -7,6 +7,7 @@ This directory contains the current documentation for the Smart Deployment plugi
 - [CLI reference](cli-reference.md)
 - [AI configuration](ai-configuration.md)
 - [Known limitations](known-limitations.md)
+- [Release candidate checklist](release-candidate-checklist.md)
 
 ## Current Technical Docs
 
